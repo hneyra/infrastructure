@@ -240,3 +240,56 @@ levantándolo a mano; el tercero no lo va a encontrar nadie.
   raíz del repositorio fuera el directorio que contiene todos los repos, y con ella se irían
   los ocho archivos de §2 que entran en los manifiestos. El AC de los manifiestos idénticos
   manda sobre la comodidad de la estructura.
+
+## 7. Los cuatro sistemas, compuestos (P1C)
+
+Los cuatro repositorios existen con su carpeta `infrastructure/`, su descriptor contra el
+contrato de §1 y su CI. **Sin una línea de código de negocio**: eso es la etapa 5.
+
+### 7.1 El grafo de egreso, compuesto de los cuatro descriptores
+
+No está escrito en ningún sitio: **sale de lo que cada sistema declara**, y por eso el diff de
+un PR lo enseña. `cd infra && yarn grafo`:
+
+```
+Grafo de egreso de «stg» — 4 sistemas
+
+  caja       ──▶  rentas
+  catastro   ──▶  normativa, rentas
+  normativa  ──▶  (ninguno)
+  rentas     ──▶  caja, catastro, normativa
+
+  6 aristas entre sistemas. El motor y la identidad no cuentan: los
+  cuatro los necesitan y no son un sistema.
+```
+
+Es ARQ-01 reducido a cuatro nodos, y **`normativa` sin egreso es la arista que más dice**: si
+alguna vez lo necesita, lo que está mal es la arquitectura y no el descriptor. `catastro → rentas`
+existe por una sola cosa —resolver el nombre del titular— y `rentas → catastro` es la que lleva la
+valuación, que es la que ADR-0029 nombra como la única que puede salir mal.
+
+### 7.2 Lo medido
+
+| Criterio | Resultado |
+|---|---|
+| `yarn verificar` en los cuatro descriptores | **25 pruebas en verde**: rentas 7, catastro 6, normativa 6, caja 6 |
+| `yarn manifiestos` compone los cuatro | `stg` **98 objetos**, `prod` **95**. Los cuatro sistemas aportan 25 y 25 |
+| La auditoría pasa | Sí, y **sin tocar la plataforma**: §3, adición pura |
+| Los `Deployment` apuntan a imágenes que no existen | **Correcto en esta etapa**, y no se despliega nada |
+
+### 7.3 Y la auditoría muerde a través de la frontera del repositorio
+
+Es lo que ADR-0031 §2 compra y lo único que hace que esto no sea un documento. Con `rentas`
+reclamando el prefijo de `catastro` —una línea en **otro repositorio**—, el emisor de aquí se
+niega:
+
+```
+Error: La auditoria rechazo 1 cosa(s) de los descriptores de sistema.
+
+  - [rentas] IngressRoute/kamayuk-rentas reclama «/catastro», que esta fuera de su
+    prefijo «/rentas». El enrutado por prefijo decide quien responde a que
+    (ADR-0030 §2): un sistema que reclama el de otro no falla, se lo queda, y las
+    peticiones dejan de llegar a su dueno sin que nada se ponga rojo.
+```
+
+Restaurado por copia y comparado con `cmp`: idéntico byte a byte, y vuelve a componer en verde.
