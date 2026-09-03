@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """
-Que los 32 ADR esten repartidos, que ninguno este en dos con contenido, y que el estado de
-cada uno sea el mismo que tenia en `sgtm`.
+Que los 32 ADR esten repartidos, que ninguno este en dos con contenido, que el estado de cada
+uno sea el mismo que tenia en `sgtm`, y que el indice de cada repositorio diga la verdad.
 
-Las tres cosas se leen de los archivos, no de una lista escrita a mano: una lista se
+Las cuatro cosas se leen de los archivos, no de una lista escrita a mano: una lista se
 actualiza sola en la cabeza de quien la escribio.
+
+LA GUARDA TIENE QUE PODER FALLAR
+La version anterior leia `sys.argv[1]` sin comprobar nada: apuntada a una raiz equivocada,
+`originales` salia vacio, los tres apartados pasaban sobre cero archivos y el guion salia en
+VERDE. Ahora la raiz es obligatoria y se comprueba que haya ADR que comparar.
 """
 import hashlib
 import re
@@ -13,6 +18,18 @@ from pathlib import Path
 
 REPOS = ["infrastructure", "rentas", "catastro", "normativa", "caja"]
 REL = "docs/30-arquitectura/adr"
+ORG = "https://github.com/hneyra"
+# Se quedan en `sgtm` con contenido: `docs/60-frontend/` no se ha portado, asi que la decision
+# de la interfaz sigue viviendo donde vive su codigo (GOB-05 §4.3).
+SE_QUEDAN = {"0009", "0010"}
+
+if len(sys.argv) < 2:
+    print("uso: verificar-reparto-adr.py <raiz que contiene los seis repositorios>",
+          file=sys.stderr)
+    print("     la raiz es OBLIGATORIA: sin ella `originales` sale vacio y los apartados "
+          "pasan sobre cero archivos.", file=sys.stderr)
+    sys.exit(2)
+
 RAIZ = Path(sys.argv[1]).resolve()
 ORIGEN = RAIZ / "sgtm" / REL
 
@@ -25,16 +42,33 @@ def estado_de(texto: str) -> str:
     return m.group(1).strip() if m else "(sin estado)"
 
 
+def seccion(texto: str, titulo_empieza_por: str) -> str:
+    """El cuerpo de la seccion `## <titulo…>` del README, hasta el siguiente `## `."""
+    partes = re.split(r"^## ", texto, flags=re.M)
+    for p in partes[1:]:
+        if p.startswith(titulo_empieza_por):
+            return p
+    return ""
+
+
 originales = {p.name[4:8]: p for p in sorted(ORIGEN.glob("ADR-*.md"))}
+fallos = 0
+
+# 0. Que haya algo que comparar. Sin esto, todo lo de abajo pasa sobre el conjunto vacio.
+faltan = [r for r in REPOS + ["sgtm"] if not (RAIZ / r / REL).is_dir()]
+print("0. La raiz contiene los seis repositorios y sus ADR: ", end="")
+if faltan or not originales:
+    print(f"ROJO. Sin `{REL}` en: {faltan or '(ninguno)'}; "
+          f"{len(originales)} ADR en `sgtm`. La raiz «{RAIZ}» no es la buena.")
+    sys.exit(1)
+print(f"OK ({len(originales)} ADR en `sgtm`)")
+
 copias: dict[str, list[str]] = {}
 for repo in REPOS:
     for p in sorted((RAIZ / repo / REL).glob("ADR-*.md")):
         copias.setdefault(p.name[4:8], []).append(repo)
 
-fallos = 0
-
 # 1. Los 32 estan en algun repositorio (o se quedan en `sgtm`, declarado).
-SE_QUEDAN = {"0009", "0010"}
 sin_destino = [n for n in originales if n not in copias and n not in SE_QUEDAN]
 print(f"1. Los {len(originales)} ADR tienen destino: ", end="")
 print("OK" if not sin_destino else f"ROJO, sin destino: {sin_destino}")
@@ -71,6 +105,36 @@ for n in sorted(originales):
         marca += "" if igual else "   <-- CUERPO EDITADO"
     print(f"   {n}  {e_o:22s} {e_c:22s} {repo:16s} {'identico' if igual else 'EDITADO'}{marca}")
 fallos += bool(distintos)
-print(f"\n   {len(originales)} comparados, {distintos} con estado o cuerpo distinto.")
+print(f"\n   {len(originales)} comparados, {distintos} con estado o cuerpo distinto.\n")
+
+# 4. El indice de cada repositorio dice la verdad: lista lo que aloja, no lista lo que no
+#    aloja, y los que enlaza apuntan al repositorio que de verdad los tiene.
+#    Sin esto la tabla del README envejece sola, que es como se llega a dos fuentes de verdad.
+print("4. El indice de cada repositorio coincide con el disco:")
+print(f"   {'repositorio':16s} {'aloja':>6s} {'listados':>9s} {'enlaza':>7s}  veredicto")
+DUENO = {n: r[0] for n, r in copias.items()}
+malos = 0
+for repo in REPOS:
+    carpeta = RAIZ / repo / REL
+    en_disco = {p.name[4:8] for p in carpeta.glob("ADR-*.md")}
+    texto = (carpeta / "README.md").read_text(encoding="utf-8")
+    propios = set(re.findall(r"^\| \[(\d{4})\]\(ADR-", seccion(texto, "Los de este"), re.M))
+    sec_enlaza = seccion(texto, "Los que enlaza")
+    enlazados = dict(re.findall(
+        rf"^\| \[(\d{{4}})\]\({re.escape(ORG)}/([a-z]+)/blob/", sec_enlaza, re.M))
+    quejas = []
+    if propios != en_disco:
+        quejas.append(f"lista {sorted(propios) or '(nada)'} y en disco hay "
+                      f"{sorted(en_disco) or '(nada)'}")
+    if propios & set(enlazados):
+        quejas.append(f"aloja Y enlaza los mismos: {sorted(propios & set(enlazados))}")
+    mal_dirigidos = {n: (d, DUENO.get(n, "sgtm")) for n, d in enlazados.items()
+                     if DUENO.get(n, "sgtm") != d}
+    if mal_dirigidos:
+        quejas.append(f"enlaza a quien no lo tiene: {mal_dirigidos}")
+    print(f"   {repo:16s} {len(en_disco):6d} {len(propios):9d} {len(enlazados):7d}  "
+          + ("OK" if not quejas else "ROJO: " + "; ".join(quejas)))
+    malos += bool(quejas)
+fallos += bool(malos)
 
 sys.exit(1 if fallos else 0)

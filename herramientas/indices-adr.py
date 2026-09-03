@@ -1,6 +1,24 @@
 #!/usr/bin/env python3
-"""Escribe el `adr/README.md` de cada repositorio: su tabla, su estado y su plantilla."""
+"""
+Escribe el `adr/README.md` de cada repositorio: su tabla, su estado y su plantilla.
+
+    uso: indices-adr.py <raiz> [reparto-adr.json]
+
+DOS COSAS QUE NO ESTABAN, Y POR QUE
+
+**El estado y el titulo se derivan de los propios ADR**, no de un tercer archivo escrito a
+mano. La version anterior los leia de un `n|estado|titulo` que se le pasaba por argumento y
+que **no esta en el repositorio**: el guion no se podia volver a ejecutar, y una lista de 32
+estados escrita a mano envejece sola. Ahora salen del `**Estado:**` (o de la fila `| Estado |`)
+y del `# ADR-NNNN — ...` de cada archivo de `sgtm`, que es donde viven.
+
+**Se niega a pisar un README con secciones que el no genera.** Este guion SOBRESCRIBE, y el
+`README.md` de `infrastructure` lleva a mano el entregable de la etapa P2 —la tabla de estado
+de los 32, la salida de los verificadores, los huecos declarados—. Volver a ejecutarlo sin esta
+guarda se lo llevaria por delante sin decir nada.
+"""
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -9,13 +27,32 @@ RAMA_SGTM = "blob/migracion-a-microservicios"
 RAMA = "blob/main"
 REL = "docs/30-arquitectura/adr"
 
+if len(sys.argv) < 2:
+    print("uso: indices-adr.py <raiz> [reparto-adr.json]", file=sys.stderr)
+    sys.exit(2)
+
 RAIZ = Path(sys.argv[1]).resolve()
-REPARTO = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
-ESTADOS = {}
-for linea in Path(sys.argv[3]).read_text(encoding="utf-8").splitlines():
-    n, e, t = linea.split("|", 2)
-    ESTADOS[n] = (e, t)
-ARCHIVOS = {p.name[4:8]: p.name for p in sorted((RAIZ / "sgtm" / REL).glob("ADR-*.md"))}
+REPARTO = json.loads(Path(
+    sys.argv[2] if len(sys.argv) > 2 else Path(__file__).parent / "reparto-adr.json"
+).read_text(encoding="utf-8"))
+
+ORIGEN = RAIZ / "sgtm" / REL
+ARCHIVOS = {p.name[4:8]: p.name for p in sorted(ORIGEN.glob("ADR-*.md"))}
+if not ARCHIVOS:
+    print(f"ROJO: no hay ningun ADR en {ORIGEN}. La raiz no es la buena.", file=sys.stderr)
+    sys.exit(1)
+
+
+def _estado_y_titulo(ruta: Path) -> tuple[str, str]:
+    texto = ruta.read_text(encoding="utf-8")
+    m = (re.search(r"^\*\*Estado:\*\* *(.+)$", texto, re.M)
+         or re.search(r"^\| Estado \| *(.+?) *\|$", texto, re.M))
+    estado = m.group(1).strip() if m else "(sin estado)"
+    h1 = re.search(r"^# ADR-\d{4} +[—-] +(.+)$", texto, re.M)
+    return estado, (h1.group(1).strip() if h1 else ruta.name)
+
+
+ESTADOS = {n: _estado_y_titulo(ORIGEN / a) for n, a in ARCHIVOS.items()}
 DUENO = {n: r for r, ns in REPARTO.items() for n in ns}
 
 # Lo que cada repositorio ENLAZA sin alojar, con el motivo de por que le importa.
@@ -166,5 +203,21 @@ for repo, numeros in REPARTO.items():
           "", "Decisiones **pendientes**: "
           f"[GOB-02]({ORG}/sgtm/{RAMA_SGTM}/docs/00-gobierno/decisiones-abiertas.md).", "",
           PLANTILLA]
-    (carpeta / "README.md").write_text("\n".join(l), encoding="utf-8")
+    destino = carpeta / "README.md"
+    if destino.exists():
+        MIAS = {"Los de este repositorio", "Los que enlaza, y no copia", "Plantilla",
+                "La numeracion NO se reinicia"}
+        # Sin los bloques de codigo: la PLANTILLA lleva dentro `## Contexto`, `## Decision`…
+        # y leerlos como secciones del documento hacia que la guarda se negara SIEMPRE, que es
+        # lo mismo que no tenerla.
+        cuerpo = re.sub(r"^```.*?^```", "", destino.read_text(encoding="utf-8"),
+                        flags=re.M | re.S)
+        ajenas = [s.splitlines()[0].strip()
+                  for s in re.split(r"^## ", cuerpo, flags=re.M)[1:]
+                  if s.splitlines()[0].strip() not in MIAS]
+        if ajenas:
+            print(f"  {repo:16s} NO se toca: lleva {len(ajenas)} seccion(es) escritas a mano "
+                  f"que este guion no genera y perderia -> {ajenas}")
+            continue
+    destino.write_text("\n".join(l), encoding="utf-8")
     print(f"  {repo:16s} indice con {len(numeros)} propio(s) y {len(enlaza)} enlazado(s)")
