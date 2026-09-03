@@ -9,6 +9,12 @@ en `sgtm`).
 Es la mudanza de `sgtm/infra/` y `sgtm/despliegue/`, **sin cambiar una línea de código**. Lo
 que lo demuestra está en §3: los manifiestos de los dos repositorios son byte a byte idénticos.
 
+**Por dónde entrar:** para montar el entorno y ejecutarlo,
+[`docs/D0-desarrollo/README.md`](docs/D0-desarrollo/README.md); para el contexto de agente —las
+diez reglas y lo que este repositorio no hace—, [`CLAUDE.md`](CLAUDE.md); y para los estándares
+de código del backend, que valen para los cinco,
+[ARQ-04](docs/30-arquitectura/estandares-de-codigo-backend.md).
+
 ```bash
 cd infrastructure
 yarn install

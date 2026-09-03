@@ -1,0 +1,50 @@
+# La guarda de #711: un PR que cierra un issue y toca codigo de produccion deja su fila en la
+# tabla «Verificar antes de afirmar» de CLAUDE.md.
+#
+# POR QUE ESTA EN CI Y NO EN UNA COSTUMBRE
+# Esa tabla es la memoria del proyecto: cada issue deja ahi que se implemento y COMO SE DEMOSTRO
+# QUE LA VERIFICACION PUEDE FALLAR. Y no la comprobaba nadie: al integrar #585 y #618 en `sgtm` la
+# fila no se escribio y los dos PR pasaron todos sus checks en verde. El modo de fallo es
+# silencioso —la fila que falta no se distingue de la que nadie tenia que escribir—, que es
+# exactamente la clase de defecto que este proyecto persigue.
+#
+# En `sgtm` la guarda existe desde #711 y NO CORRE EN CI, porque engancharla exige tocar
+# `.github/workflows/` y el token de aquella sesion no tenia alcance `workflow`. Aqui se engancha.
+#
+# QUE EXIGE Y QUE NO
+# Exige que la fila EXISTA. Que diga la verdad —que la mutacion sea real y las cifras cuadren— no
+# lo puede leer una maquina: eso lo lee la revision. Y un PR de solo documentacion, de solo
+# pruebas o sin issue asociado pasa en verde: una guarda que grita siempre acaba esquivada, y una
+# guarda esquivada no protege nada.
+
+name: Registro
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  fila:
+    name: El PR deja su fila en «Verificar antes de afirmar»
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # `fetch-depth: 0` NO es decorativo: la comprobacion compara contra `origin/main`, y con un
+      # clon superficial el `git diff` no tiene con que comparar. Es la misma leccion que #675.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: La autoprueba de la guarda, antes de usarla
+        run: node docs/00-gobierno/verificar-las-muestras-del-registro.mjs
+
+      - name: La fila del registro
+        env:
+          KAMAYUK_CUERPO_DEL_PR: ${{ github.event.pull_request.body }}
+        run: node docs/00-gobierno/verificar-fila-del-registro.mjs --base origin/${{ github.event.pull_request.base.ref }}
