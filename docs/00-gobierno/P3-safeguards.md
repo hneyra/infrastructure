@@ -33,7 +33,14 @@ cinco que «desaparecen» son renombres, y las doce que aparecen se explican una
 | `FronteraDeSistemaTest`, 6 pruebas | La regla nueva de §3. **+6** |
 
 **En los cuatro repositorios nuevos** (`rentas`, `catastro`, `normativa`, `caja`), idénticos entre
-sí: `verificarArquitectura` **77** pruebas y `verificarAislamiento` **9**, las dos verdes.
+sí: `verificarArquitectura` **79** pruebas y `verificarAislamiento` **9**, las dos verdes.
+
+Las 79 no son un verde vacío: `ReglasDeArquitecturaMuerdenTest` aplica **las 18** reglas a sus
+muestras y exige que cada una falle, y esa demostración corre entera con cero clases de negocio
+porque las muestras viajan con las reglas. Y las 9 tampoco: verifican los cuatro roles, `FORCE ROW
+LEVEL SECURITY`, el `WITH CHECK`, que sin contexto la consulta **revienta en vez de devolver
+vacío**, y la trampa del superusuario — sobre una tabla que la propia prueba crea, así que valen
+sin baseline y seguirán valiendo con él.
 
 Cómo se midieron sin Docker: ver §7.
 
