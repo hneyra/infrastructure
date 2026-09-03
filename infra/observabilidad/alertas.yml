@@ -1,0 +1,148 @@
+# Las reglas minimas del issue #156, en el formato de reglas de Prometheus.
+#
+# Estatico y compartido entre stg y prod: los `job` que nombra son los mismos en los
+# dos ambientes -"aplicacion", "postgres", "node", "kube-state-metrics"-, porque
+# `prometheus.yml` los etiqueta asi sin el nombre del ambiente dentro (el label
+# `cluster`, que si varia, lo pone `Observabilidad.ts` con `external_labels`). Es lo
+# que permite que este archivo se lea de un solo sitio y sea el mismo en los dos.
+#
+# Las ultimas cuatro -CrashLoopBackOff, pod no listo, presion de CPU, disco- existen
+# por el mismo motivo que en `../iaac`: las reglas de "promedio de 5 minutos" no ven
+# una saturacion transitoria que tira las sondas y deja un contenedor muerto antes de
+# que el promedio suba. Sin destino de notificacion configurado (`Alertmanager.ts`),
+# estas reglas se EVALUAN igual mientras el clúster corre, y no le avisan a nadie:
+# esa es la mitad que "una regla no es una alerta" pide no dar por hecha.
+#
+# Cada regla lleva una anotacion `runbook`, con la ruta -relativa a la raiz del
+# repositorio- del procedimiento de `docs/B0-operacion/runbooks/` que le corresponde
+# (issue #158). Alertmanager la pasa tal cual al receptor configurado: quien recibe la
+# alerta recibe tambien que hacer con ella, no solo que algo esta mal.
+groups:
+  - name: sgtm
+    rules:
+      # `pg_up`, no solo: ese metrico lo emite el propio sidecar de `postgres-exporter`
+      # (issue #156), que vive en el MISMO pod que el motor. Si el pod entero cae
+      # -crash, desalojo, o esta prueba escalando el Deployment a cero-, el sidecar
+      # cae con el y deja de reportar NADA: la serie `pg_up` no pasa a 0,
+      # sencillamente deja de existir, y una regla que solo mirara `pg_up == 0` nunca
+      # llegaria a "pending". `up{job="postgres"}` es la metrica que el propio
+      # Prometheus genera para CADA intento de scrape, exista o no el objetivo al
+      # otro lado, y por eso es la que de verdad cubre "el pod entero desaparecio"
+      # -descubierto ejecutando el simulacro de esta alerta contra un clúster real
+      # (verificar-alertas.sh): con solo `pg_up`, la alerta nunca llegaba a firing.
+      - alert: PostgreSQLCaido
+        expr: pg_up == 0 or up{job="postgres"} == 0
+        for: 2m
+        labels:
+          severidad: critica
+        annotations:
+          resumen: "PostgreSQL no responde"
+          descripcion: "El motor o su sidecar de metricas llevan 2 minutos sin responder. El padron entero deja de servirse."
+          runbook: "docs/B0-operacion/runbooks/el-disco-del-nodo-se-lleno.md"
+
+      - alert: JobDeMigracionFallido
+        expr: kube_job_status_failed{job_name=~".*migracion.*"} == 1
+        for: 0m
+        labels:
+          severidad: critica
+        annotations:
+          resumen: "El Job de migracion fallo"
+          descripcion: "Un despliegue con el esquema a medias: nadie migra sin que esto se vea."
+          runbook: "docs/B0-operacion/runbooks/la-migracion-fallo-a-mitad.md"
+
+      - alert: RespaldoQueNoCorrio
+        # `kube_cronjob_status_last_successful_time` la publica kube-state-metrics,
+        # leyendo el estado del propio CronJob -no hace falta que postgres_exporter
+        # entre a la tabla `respaldo` (RF-126) para saberlo, y evita darle a
+        # sgtm_monitor un privilegio sobre una tabla de negocio que pg_monitor no
+        # le da por si solo-. `Respaldo.ts` corre a las 06:00 UTC: si a las 08:00 UTC
+        # el ultimo exito tiene mas de 26 horas, o no hay ninguno, algo fallo o el
+        # CronJob ni siquiera corrio -las dos cosas son la misma emergencia: no hay
+        # con que restaurar-.
+        expr: |
+          (hour() == 8 and minute() < 5)
+          and (time() - max(kube_cronjob_status_last_successful_time{cronjob=~".*respaldo.*"}) > 26 * 3600)
+        for: 0m
+        labels:
+          severidad: critica
+        annotations:
+          resumen: "El respaldo no corrio, o no termino EXITOSO"
+          descripcion: "RNF-079: un respaldo que no corrio no protege a nadie. Revisar la tabla `respaldo` (RF-126) y el estado del CronJob."
+          runbook: "docs/B0-operacion/runbooks/restaurar-a-un-punto-en-el-tiempo.md"
+
+      - alert: PodEnCrashLoopBackOff
+        expr: kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"} == 1
+        for: 2m
+        labels:
+          severidad: critica
+        annotations:
+          resumen: "Un pod esta en CrashLoopBackOff"
+          descripcion: "{{ $labels.namespace }}/{{ $labels.pod }} reinicia en bucle."
+          runbook: "docs/B0-operacion/runbooks/mantenimiento-del-vps.md"
+
+      - alert: PodNoListo
+        expr: kube_pod_status_ready{condition="false"} == 1 and on(pod) kube_pod_status_phase{phase="Running"} == 1
+        for: 10m
+        labels:
+          severidad: advertencia
+        annotations:
+          resumen: "Un pod lleva 10 minutos corriendo sin estar listo"
+          descripcion: "{{ $labels.namespace }}/{{ $labels.pod }} no pasa las sondas de disponibilidad."
+          runbook: "docs/B0-operacion/runbooks/mantenimiento-del-vps.md"
+
+      - alert: CPUDelNodoAlta
+        expr: (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))) * 100 > 80
+        for: 5m
+        labels:
+          severidad: advertencia
+        annotations:
+          resumen: "CPU del nodo por encima del 80%"
+          descripcion: "Promedio de 5 minutos. Con un solo nodo, esto degrada la ventanilla y cualquier emision en curso."
+          runbook: "docs/B0-operacion/runbooks/mantenimiento-del-vps.md"
+
+      - alert: MemoriaDelNodoAlta
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 85
+        for: 5m
+        labels:
+          severidad: advertencia
+        annotations:
+          resumen: "Memoria del nodo por encima del 85%"
+          descripcion: "El kubelet empieza a desalojar por prioridad (INF-01 §4) antes de que esto llegue al 100%."
+          runbook: "docs/B0-operacion/runbooks/mantenimiento-del-vps.md"
+
+      - alert: DiscoDelNodoAlto
+        expr: (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 > 80
+        for: 5m
+        labels:
+          severidad: critica
+        annotations:
+          resumen: "Disco del nodo por encima del 80%"
+          descripcion: "Con un solo nodo, WAL, imagenes y registros crecen sobre el mismo volumen: el disco lleno es un modo de falla de primera clase (INF-01, issue #156), no una curiosidad."
+          runbook: "docs/B0-operacion/runbooks/el-disco-del-nodo-se-lleno.md"
+
+      - alert: CertificadoPorExpirar
+        # `traefik_tls_certs_not_after` la publica el propio Traefik -k3s la habilita
+        # con `metrics.prometheus.entryPoint` en `Ingreso.ts`-. Menos de 14 dias:
+        # tiempo de sobra para investigar un fallo de renovacion de Let's Encrypt
+        # antes de que RNF-074 (siempre cifrado) se incumpla de verdad.
+        expr: (traefik_tls_certs_not_after - time()) < 14 * 86400
+        for: 1h
+        labels:
+          severidad: advertencia
+        annotations:
+          resumen: "Un certificado TLS vence en menos de 14 dias"
+          descripcion: "Si la renovacion automatica de Let's Encrypt fallara, esta es la ventana para notarlo antes que un navegador."
+          runbook: "docs/B0-operacion/runbooks/mantenimiento-del-vps.md"
+
+      - alert: PresionDeCPUDelNodo
+        # La misma señal que el incidente del 2026-05-29 en `../iaac`: saturacion
+        # TRANSITORIA de CPU que el promedio de 5 minutos de arriba no alcanza a ver
+        # antes de que las sondas empiecen a expirar.
+        expr: rate(node_pressure_cpu_waiting_seconds_total[5m]) > 0.2
+        for: 5m
+        labels:
+          severidad: advertencia
+        annotations:
+          resumen: "El nodo tiene procesos esperando CPU de forma sostenida"
+          descripcion: "PSI > 0.2 durante 5 minutos: el sintoma que precede a un CrashLoopBackOff por sondas que expiran."
+          runbook: "docs/B0-operacion/runbooks/mantenimiento-del-vps.md"

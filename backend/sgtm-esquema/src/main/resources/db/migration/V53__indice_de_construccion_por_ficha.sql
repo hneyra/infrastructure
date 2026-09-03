@@ -1,0 +1,75 @@
+-- ============================================================================
+--  V53 — Indice de construccion por ficha (#313, hallazgo de #309)
+--
+--  `construccion` es la unica parte de la ficha que se quedo SIN indice por
+--  ficha. V13 se lo dio a las cinco que creo —`actividad_ficha_ix`,
+--  `bien_comun_ficha_ix`, `participacion_ficha_ix`, `tierra_ficha_ix` y
+--  `colindante_ficha_ix`—; las dos que venian de V1, `construccion` y
+--  `otra_instalacion`, siguen con el unico indice de su clave primaria,
+--  `(municipalidad_id, id)`. Con esa forma, «las construcciones de esta ficha»
+--  no tiene por donde entrar: la unica columna util de ese indice es
+--  `municipalidad_id`, y bajo RLS esa condicion la cumplen TODAS las filas que
+--  el inquilino puede ver.
+--
+--  Lo que se lee sin el, medido contra PostgreSQL 16 con 30 000 fichas y sus
+--  dos pisos —60 000 construcciones—, como `sgtm_app` y con la politica activa:
+--
+--    -- la suma del area construida de una pagina de VEINTE fichas
+--    Seq Scan on construccion  (cost=0.05..2000.05 rows=40)
+--      Filter: ((ficha_id = ANY ('{...}'))
+--               AND (municipalidad_id = current_setting(...)::bigint))
+--      Rows Removed by Filter: 59960          <- 500 buffers para devolver 40 filas
+--
+--    -- construccionesDe(ficha), el camino que ya existia antes de #309
+--    Seq Scan on construccion  (cost=0.00..1851.22 rows=2)
+--      Filter: ((ficha_id = 35) AND (municipalidad_id = current_setting(...)::bigint))
+--
+--  El `ficha_id` cae del lado del `Filter`: la consulta esta acotada en filas
+--  DEVUELTAS, no en filas LEIDAS. El coste crece con el padron entero aunque la
+--  pantalla siga mostrando veinte fichas.
+--
+--  Con el indice, las mismas dos consultas y los mismos datos:
+--
+--    Index Scan using construccion_ficha_ix   (cost=0.30..153.11)  -- la suma
+--    Index Scan using construccion_ficha_ix   (cost=0.30..10.09)   -- el detalle
+--      Index Cond: ((municipalidad_id = current_setting(...)::bigint)
+--                   AND (ficha_id = ANY ('{...}')))
+--
+--  Y ahi esta lo que hay que mirar: las DOS condiciones entran en el `Index
+--  Cond`, la del filtro y la de la POLITICA. Es el reverso exacto del hallazgo
+--  del `LIKE` (DAT-01 §0, hallazgo 3): `textlike` no es leakproof, PostgreSQL
+--  no lo evalua antes de la politica de seguridad y lo deja como `Filter`
+--  despues del recorrido; `int8eq` SI es leakproof, y por eso la igualdad sobre
+--  `ficha_id` se empuja por debajo de la politica y llega al indice. La prueba
+--  de volumen de `ConsultaDeFichasTest` no se conforma con ver la palabra
+--  «Index»: exige que `ficha_id` sea condicion del indice, porque un plan que
+--  usa el indice solo para `municipalidad_id` vuelve a leer la tabla entera.
+--
+--  ---------------------------------------------------------------------------
+--  Por que sin INCLUDE (area_construida)
+--
+--  Se midio, porque el `Index Only Scan` estaba a mano: con la columna en el
+--  INCLUDE, y sobre las mismas 60 000 filas, la suma de la pagina baja de
+--  153,11 a 89,11 y de 83 a 64 buffers. No se toma, por tres motivos:
+--
+--    1. Lo que este issue cierra es el factor 13 —2 000 -> 153, con 59 960
+--       filas descartadas por el `Filter`—, no el 1,7 que queda despues. Y la
+--       suma ya esta acotada a UNA pagina: no crece con el padron.
+--    2. El indice pasa de 1 464 kB a 2 400 kB sobre las mismas filas, y esta es
+--       la tabla que mas crece del catastro: la ficha no se sobrescribe nunca
+--       (V1), asi que cada version nueva COPIA todas sus construcciones.
+--       Engordar el indice es encarecer la escritura justo en ese camino.
+--    3. El `Index Only Scan` depende del mapa de visibilidad, y esta tabla
+--       recibe altas continuas: recien insertadas 30 000 filas, la misma
+--       consulta ya declara `Heap Fetches: 20` de 60. La ventaja se encoge sola
+--       cuando la tabla esta viva, que es cuando importaria.
+--
+--  Y al detalle —`construccionesDe`, que necesita las quince columnas— el
+--  INCLUDE no le da nada: va al monton igual.
+--
+--  `otra_instalacion` tiene el mismo hueco y NO se toca aqui: su consulta no la
+--  mide ninguna prueba todavia, y un indice que nadie verifica es un indice que
+--  quiza no se usa (V14).
+-- ============================================================================
+
+CREATE INDEX construccion_ficha_ix ON construccion (municipalidad_id, ficha_id);

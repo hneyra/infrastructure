@@ -1,0 +1,30 @@
+{
+  // El código que ejecuta Pulumi es CommonJS: su runtime de Node carga `index.ts`
+  // con ts-node y no admite módulos ES. Las pruebas se compilan aparte, en
+  // `tsconfig.test.json`, porque vitest arrastra los tipos de vite y esos solo
+  // resuelven con `moduleResolution: bundler`.
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "target": "es2022",
+    "lib": ["es2023"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "types": ["node"],
+    "sourceMap": true,
+    "pretty": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "index.ts",
+    "config.ts",
+    "auditoria.ts",
+    "componentes/**/*.ts",
+    "herramientas/**/*.ts",
+    "verificaciones/stacks.ts"
+  ]
+}

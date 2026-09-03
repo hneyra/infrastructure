@@ -1,0 +1,51 @@
+# Contribuyentes de DEMOSTRACION — personas INVENTADAS. No existe ninguna de ellas.
+# Solo se cargan contra una municipalidad con municipalidad.es_demostracion = true:
+# CargarContribuyentesDeDemostracion se niega a correr contra cualquier otra.
+#
+# Los documentos son de forma valida y de contenido evidentemente falso: los DNI van
+# de 00000001 en adelante y los RUC empiezan por 20000000; ninguno corresponde a nadie.
+# El codigo de contribuyente es el del padron de esta municipalidad, no el documento.
+#
+# Formato de ImportarContribuyentes:
+#   codigo,tipoDocumento,numeroDocumento,tipoPersona,nombreRazonSocial,
+#   condicionEspecial,fechaNacimiento,estadoCivil
+# Las tres ultimas admiten quedar vacias. condicionEspecial se REGISTRA, no se aplica:
+# cuanto deduce un pensionista es D-02a.
+#
+# QUE ESCENARIO CUBRE CADA UNO (el resto del juego de datos se apoya en esta columna
+# mental; ver README.md de este directorio):
+#
+#   C-000001  tres predios, uno de ellos con cuota del 50 % — la base predial por
+#             contribuyente de NEG-05 §1 con mas de un predio detras
+#   C-000002  pensionista, un predio
+#   C-000003  adulto mayor, un predio
+#   C-000004  copropietario al 50 %
+#   C-000005  poseedor, no propietario
+#   C-000006  persona juridica con ficha economica
+#   C-000007  dos predios y dos vehiculos: el contribuyente que aparece en casi toda pantalla
+#   C-000008  sucesion indivisa sobre predio rustico
+#   C-000009  adquiriente de una transferencia TOTAL (compraventa): antes de ella no tenia predio
+#   C-000010  adquiriente de una transferencia PARCIAL: acaba con el 40 % de un predio ajeno
+#   C-000011  solo vehiculo: ni un predio, para que la ficha 360 tenga que decirlo
+#   C-000012  juridica pequena, un predio economico
+#   C-000013  pensionista con DOS predios
+#   C-000014  CUATRO predios: el de mayor base del padron de demostracion
+#   C-000015  juridica con predio en construccion
+#   C-000016  ni predio ni vehiculo: existe solo en el padron
+codigo,tipoDocumento,numeroDocumento,tipoPersona,nombreRazonSocial,condicionEspecial,fechaNacimiento,estadoCivil
+C-000001,DNI,00000001,NATURAL,DEMO Ramirez Chulle Marina,,1975-03-14,CASADA
+C-000002,DNI,00000002,NATURAL,DEMO Yovera Sandoval Teodoro,PENSIONISTA,1952-11-02,CASADO
+C-000003,DNI,00000003,NATURAL,DEMO Ipanaque Cruz Rosalia,ADULTO_MAYOR,1948-06-30,VIUDA
+C-000004,DNI,00000004,NATURAL,DEMO Fiestas Zapata Wilmer,,1988-01-21,SOLTERO
+C-000005,DNI,00000005,NATURAL,DEMO Ancajima Purizaca Elsa,DISCAPACIDAD,1969-09-09,SOLTERA
+C-000006,RUC,20000000001,JURIDICA,DEMO Ceramica Narihuala S.A.C.,,,
+C-000007,RUC,20000000002,JURIDICA,DEMO Transportes La Legua E.I.R.L.,,,
+C-000008,DNI,00000008,SUCESION_INDIVISA,DEMO Sucesion Intestada de Juan Panta,,,
+C-000009,DNI,00000009,NATURAL,DEMO Chero Silupu Manuel,,1981-07-05,CASADO
+C-000010,DNI,00000010,NATURAL,DEMO Ojeda Rivas Carmen,,1990-12-11,SOLTERA
+C-000011,DNI,00000011,NATURAL,DEMO Saavedra More Julio,,1979-04-27,CASADO
+C-000012,RUC,20000000003,JURIDICA,DEMO Panaderia Simbila S.R.L.,,,
+C-000013,DNI,00000013,NATURAL,DEMO Nunura Vilela Zoila,PENSIONISTA,1955-02-18,VIUDA
+C-000014,DNI,00000014,NATURAL,DEMO Querevalu Eche Segundo,,1966-08-03,CASADO
+C-000015,RUC,20000000004,JURIDICA,DEMO Constructora Tallan S.A.,,,
+C-000016,DNI,00000016,NATURAL,DEMO Ipanaque Lopez Deysi,,1994-05-30,SOLTERA

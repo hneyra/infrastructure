@@ -1,0 +1,172 @@
+{
+  "title": "SGTM — Resumen operativo",
+  "uid": "sgtm-resumen-operativo",
+  "editable": true,
+  "timezone": "utc",
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["sgtm", "issue-156"],
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "JVM y Spring Boot",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Memoria de la JVM en uso",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(jvm_memory_used_bytes{application=\"sgtm\"})" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Peticiones HTTP por segundo, por ruta",
+      "gridPos": { "h": 6, "w": 16, "x": 8, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(http_server_requests_seconds_count{application=\"sgtm\"}[5m])) by (uri)",
+          "legendFormat": "{{uri}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "row",
+      "title": "PostgreSQL",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "El motor responde",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "Arriba", "color": "green" }, "0": { "text": "Caido", "color": "red" } } }
+          ]
+        },
+        "overrides": []
+      },
+      "targets": [{ "refId": "A", "expr": "pg_up" }]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Conexiones activas",
+      "gridPos": { "h": 6, "w": 9, "x": 6, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "sum(pg_stat_activity_count) by (datname)", "legendFormat": "{{datname}}" }]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Filas leidas vs. escritas por segundo",
+      "gridPos": { "h": 6, "w": 9, "x": 15, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(pg_stat_database_tup_fetched[5m]))", "legendFormat": "leidas" },
+        { "refId": "B", "expr": "sum(rate(pg_stat_database_tup_inserted[5m]) + rate(pg_stat_database_tup_updated[5m]))", "legendFormat": "escritas" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "El nodo",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "CPU en uso (%)",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100 }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "(1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))) * 100" }]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Memoria en uso (%)",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100 }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100" }]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Disco en uso, raiz (%) — el modo de falla de INF-01",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "Pods",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 }
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Reinicios por pod, ultimos 10 minutos",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(kube_pod_container_status_restarts_total[10m])) by (namespace, pod)",
+          "instant": true,
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Pods no listos",
+      "gridPos": { "h": 7, "w": 6, "x": 12, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(kube_pod_status_ready{condition=\"false\"} and on(pod) kube_pod_status_phase{phase=\"Running\"})"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "stat",
+      "title": "Version desplegada y desde cuando",
+      "description": "AC de #156: responder que version corre y desde cuando, desde el tablero.",
+      "gridPos": { "h": 7, "w": 6, "x": 18, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "dtdurations" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - max(kube_pod_start_time{namespace=~\".*\", pod=~\".*aplicacion.*\"})",
+          "legendFormat": "{{pod}}"
+        }
+      ]
+    }
+  ]
+}

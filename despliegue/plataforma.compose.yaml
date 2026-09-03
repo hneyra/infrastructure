@@ -1,0 +1,137 @@
+# ============================================================================
+#  LA PLATAFORMA — lo que todo el mundo levanta, siempre (ADR-0031 §4)
+#
+#  PostgreSQL con las CUATRO bases, Keycloak con sus DOS realms sembrados, y
+#  Traefik con el enrutado por prefijo. Nada de esto es de ningun sistema: es el
+#  suelo sobre el que cada repositorio levanta lo suyo.
+#
+#      docker compose -f despliegue/plataforma.compose.yaml up -d
+#
+#  POR QUE PARTIRLO, Y POR QUE ASI
+#  Levantar cuatro backends, cuatro frontends, Keycloak y PostgreSQL en un
+#  portatil es pesado, y la respuesta correcta no es un compose mas grande. El
+#  desarrollador de catastro no necesita rentas arriba salvo para las pantallas
+#  que cruzan — **y que lo necesite para trabajar en catastro es una senal de que
+#  la frontera esta mal puesta**, no una molestia (ADR-0031 §4).
+#
+#  EL COMPOSE ENTERO NO SE RETIRA: `compose.yaml`, el de al lado, sigue tal cual y
+#  es el perfil `todo` —levanta los cuatro y es lo que usa CI para las pruebas de
+#  integracion—. Ver `README.md` §«Los dos composes».
+#
+#  Y hereda la trampa que ADR-0011 ya anoto: dos formas de levantar el sistema se
+#  separan sola. Con cuatro sistemas se multiplica, y la mitigacion escrita sigue
+#  siendo la buena: que las comprobaciones de `despliegue.yml` se trasladen al
+#  cluster en vez de duplicarse.
+# ============================================================================
+
+name: kamayuk-plataforma
+
+services:
+  base:
+    # La misma imagen que el compose entero y que el cluster: PostgreSQL 16 con
+    # PostGIS dentro (ADR-0021). `catastro` la necesita desde `V61`, y la imagen
+    # oficial no la trae —con ella el arranque falla con «extension "postgis" is
+    # not available»—.
+    image: postgis/postgis:16-3.4-alpine
+    environment:
+      # `postgres` y no `sgtm`: aqui no hay una base del producto, hay CUATRO, y
+      # las crea `05-crear-bases.sh`. Dejar `POSTGRES_DB: sgtm` crearia una quinta
+      # que no es de nadie.
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${SGTM_CLAVE_SUPERUSUARIO:?falta SGTM_CLAVE_SUPERUSUARIO en .env}
+      SGTM_CLAVE_OWNER: ${SGTM_CLAVE_OWNER:?falta SGTM_CLAVE_OWNER en .env}
+      SGTM_CLAVE_APP: ${SGTM_CLAVE_APP:?falta SGTM_CLAVE_APP en .env}
+      SGTM_CLAVE_CARGA: ${SGTM_CLAVE_CARGA:?falta SGTM_CLAVE_CARGA en .env}
+    volumes:
+      # Orden alfabetico, una sola vez, con el volumen vacio. El `05` va antes que
+      # el `10` a proposito: `crear-roles.sql` instala extensiones y concede sobre
+      # `public`, y necesita que las bases ya esten.
+      - ./inicializacion-del-motor/05-crear-bases.sh:/docker-entrypoint-initdb.d/05-crear-bases.sh:ro
+      - ../backend/sgtm-esquema/src/main/resources/db/roles/crear-roles.sql:/docker-entrypoint-initdb.d/10-crear-roles.sql:ro
+      - ./inicializacion-del-motor/20-asignar-claves.sh:/docker-entrypoint-initdb.d/20-asignar-claves.sh:ro
+      - datos-plataforma:/var/lib/postgresql/data
+    ports:
+      - "${SGTM_PUERTO_BASE:-5432}:5432"
+    healthcheck:
+      # `--host=127.0.0.1` NO es decorativo: sin el, `pg_isready` pregunta por el
+      # socket unix, y durante la inicializacion el motor arranca con
+      # `listen_addresses=''`. El contenedor se declaraba sano mientras todavia
+      # corrian los guiones de initdb, y quien entra por TCP se estrellaba con
+      # «Connection refused». Una sonda comprueba lo que sus dependientes
+      # necesitan, no otra cosa parecida.
+      test: ["CMD-SHELL", "pg_isready --host=127.0.0.1 --username=postgres --dbname=postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 40
+
+  correo:
+    # El buzon al que Keycloak manda el enlace de clave del alta declarativa
+    # (ADR-0012). Es de la plataforma porque la identidad lo es.
+    image: axllent/mailpit:v1.20
+    ports:
+      - "${SGTM_PUERTO_CORREO:-8025}:8025"
+
+  identidad:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm", "--http-port=8080"]
+    depends_on:
+      correo:
+        condition: service_started
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${SGTM_KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${SGTM_CLAVE_KEYCLOAK:?falta SGTM_CLAVE_KEYCLOAK en .env}
+      KC_HEALTH_ENABLED: "true"
+      # El emisor que Keycloak pone en el `iss` tiene que ser el mismo que los
+      # cuatro backends validan y el mismo al que el navegador va. Con dos nombres
+      # —uno de red interna, otro del anfitrion— la firma valida y el emisor no
+      # cuadra, y el 401 no dice por que.
+      KC_HOSTNAME: ${SGTM_OIDC_EMISOR:-http://localhost:8180}
+      KC_HOSTNAME_STRICT: "false"
+    volumes:
+      # Los DOS realms. No son dos clientes de uno: son **dos emisores**, y es lo
+      # que separa a las dos poblaciones estructuralmente (ADR-0020). Un login
+      # para los cuatro sistemas, con un *client* publico por frontend
+      # (ADR-0030 §3).
+      - ./identidad/realm-sgtm.json:/opt/keycloak/data/import/realm-sgtm.json:ro
+      - ./identidad/realm-sgtm-ciudadano.json:/opt/keycloak/data/import/realm-sgtm-ciudadano.json:ro
+    ports:
+      - "${SGTM_PUERTO_IDENTIDAD:-8180}:8080"
+
+  ingreso:
+    # Traefik con el enrutado POR PREFIJO (ADR-0030 §2): el primer segmento dice
+    # quien responde, sin mirar mas. En el cluster esto lo hace el Traefik que k3s
+    # ya trae; aqui se levanta uno para que la ruta sea la misma en las dos partes
+    # y nadie descubra en `stg` que su prefijo no era el que creia.
+    image: traefik:v3.1
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --api.dashboard=false
+    ports:
+      - "${SGTM_PUERTO_INGRESO:-8080}:80"
+    volumes:
+      # De solo lectura: Traefik lee las etiquetas de los contenedores y no
+      # escribe nada. Un socket de Docker escribible en un contenedor es root en
+      # el anfitrion.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+# Cada sistema levanta LO SUYO contra esta red, y publica sus etiquetas de Traefik
+# bajo SU prefijo. Ver `README.md` §«Como levanta un sistema lo suyo».
+networks:
+  default:
+    name: kamayuk-plataforma
+
+volumes:
+  # Nombre propio: no comparte volumen con `compose.yaml`, y es deliberado. Los dos
+  # crean bases distintas en su primer arranque —uno `sgtm`, este las cuatro— y un
+  # volumen compartido dejaria los guiones de `initdb` sin correr en el segundo,
+  # porque solo corren con el volumen VACIO. El sintoma seria una base que falta y
+  # ningun error.
+  datos-plataforma:

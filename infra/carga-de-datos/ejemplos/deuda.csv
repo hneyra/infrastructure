@@ -1,0 +1,99 @@
+# Saldo inicial del libro de cuenta corriente, de DEMOSTRACION — cifras INVENTADAS.
+# Solo se cargan contra una municipalidad con municipalidad.es_demostracion = true:
+# CargarDeudaDeDemostracion se niega a correr contra cualquier otra.
+#
+# QUE ES ESTA CIFRA, Y QUE NO ES
+#
+# El monto de cada fila NO LO CALCULA NADIE: entra como dato, igual que entraria el saldo
+# de la base anterior el dia que se cierre D-04. No es una determinacion —no hay tramo, ni
+# alicuota, ni UIT de por medio— y por eso no depende de D-02a ni de D-11. Es el mismo acto
+# que la pantalla «Alta de deuda» publica (RF-043), donde el importe lo teclea quien
+# atiende y el sistema no lo discute.
+#
+# Lo que estas filas NO hacen, y no es una omision: no emiten ninguna resolucion de
+# determinacion, no escriben una fila de `determinacion` y no reclaman haber aplicado
+# ninguna regla. Una deuda sembrada asi se lee en la caja, en el estado de cuenta, en la
+# consulta unificada y en el panel de recaudacion; lo que no se puede es pedirle al sistema
+# que explique de donde sale, porque no sale de un calculo. En una instalacion de
+# demostracion eso es lo correcto: la alternativa —inventar los tramos para que «cuadre»—
+# produce cifras indistinguibles de las de una determinacion real.
+#
+# EL TRIBUTO ES UN VOCABULARIO CERRADO (#553). Los doce de
+# `pe.gob.sgtm.cuentacorriente.TributoDelLibro`, que son los del CHECK de V74: PREDIAL,
+# ARBITRIO —en SINGULAR—, VEHICULAR, ALCABALA, ESPECTACULOS, ANUNCIOS, JUEGOS,
+# MULTA_TRIBUTARIA, MULTA_TRANSITO, MULTA_ADMINISTRATIVA, CONVENIO y «COSTAS PROCESALES».
+# Este archivo sembraba ARBITRIOS en plural, y como la clave de una obligacion compara ese
+# texto por igualdad exacta, esas 18 filas caian AL LADO de la deuda que `DeterminarArbitrios`
+# asienta: se cobraban, sumaban en el total del contribuyente y el filtro «Arbitrios» de la
+# consulta unificada no las encontraba. Una fila con una grafia de fuera se rechaza ahora con
+# su numero de linea, en vez de sembrar una obligacion paralela en silencio.
+#
+# SOLO 2026 Y 2027. `cuenta_corriente_asiento` esta particionado por ejercicio y hoy solo
+# tiene declaradas esas dos particiones: una fila de 2024 se rechaza con «no partition of
+# relation found». Por eso no hay aqui deuda de ejercicios anteriores, que es justo lo que
+# alimentaria coactiva; ver README.md de este directorio.
+#
+# LA UNIDAD SE RESUELVE A LA FECHA VALOR. `codigoPredial` no se busca en el padron entero
+# sino entre los predios DE ESE CONTRIBUYENTE al dia de `fechaValor` (regla 9). Una fila que
+# nombre un predio que a esa fecha era de otro se rechaza, en vez de asentarle la deuda a
+# quien no la debe. Es tambien lo que hace que estas filas convivan con transferencias.csv.
+#
+# Formato de ImportarDeudaDeDemostracion:
+#   codigoContribuyente,tributo,ejercicio,periodo,codigoPredial,placa,monto,fechaValor,
+#   documentoOrigen,referenciaExterna
+# periodo vacio o 0 es anual; codigoPredial y placa son excluyentes y admiten quedar vacios.
+codigoContribuyente,tributo,ejercicio,periodo,codigoPredial,placa,monto,fechaValor,documentoOrigen,referenciaExterna
+C-000001,PREDIAL,2026,1,,,148.30,2026-02-28,SALDO-INICIAL-DEMO,
+C-000001,PREDIAL,2026,2,,,148.30,2026-05-31,SALDO-INICIAL-DEMO,
+C-000001,PREDIAL,2026,3,,,148.30,2026-08-31,SALDO-INICIAL-DEMO,
+C-000001,PREDIAL,2026,4,,,148.30,2026-11-30,SALDO-INICIAL-DEMO,
+C-000002,PREDIAL,2026,1,,,62.75,2026-02-28,SALDO-INICIAL-DEMO,
+C-000002,PREDIAL,2026,2,,,62.75,2026-05-31,SALDO-INICIAL-DEMO,
+C-000002,PREDIAL,2026,3,,,62.75,2026-08-31,SALDO-INICIAL-DEMO,
+C-000002,PREDIAL,2026,4,,,62.75,2026-11-30,SALDO-INICIAL-DEMO,
+C-000003,PREDIAL,2026,1,,,45.10,2026-02-28,SALDO-INICIAL-DEMO,
+C-000003,PREDIAL,2026,2,,,45.10,2026-05-31,SALDO-INICIAL-DEMO,
+C-000003,PREDIAL,2026,3,,,45.10,2026-08-31,SALDO-INICIAL-DEMO,
+C-000003,PREDIAL,2026,4,,,45.10,2026-11-30,SALDO-INICIAL-DEMO,
+C-000004,PREDIAL,2026,1,,,97.60,2026-02-28,SALDO-INICIAL-DEMO,
+C-000004,PREDIAL,2026,2,,,97.60,2026-05-31,SALDO-INICIAL-DEMO,
+C-000004,PREDIAL,2026,3,,,97.60,2026-08-31,SALDO-INICIAL-DEMO,
+C-000004,PREDIAL,2026,4,,,97.60,2026-11-30,SALDO-INICIAL-DEMO,
+C-000006,PREDIAL,2026,1,,,412.85,2026-02-28,SALDO-INICIAL-DEMO,
+C-000006,PREDIAL,2026,2,,,412.85,2026-05-31,SALDO-INICIAL-DEMO,
+C-000006,PREDIAL,2026,3,,,412.85,2026-08-31,SALDO-INICIAL-DEMO,
+C-000006,PREDIAL,2026,4,,,412.85,2026-11-30,SALDO-INICIAL-DEMO,
+C-000007,PREDIAL,2026,1,,,631.40,2026-02-28,SALDO-INICIAL-DEMO,
+C-000007,PREDIAL,2026,2,,,631.40,2026-05-31,SALDO-INICIAL-DEMO,
+C-000007,PREDIAL,2026,3,,,631.40,2026-08-31,SALDO-INICIAL-DEMO,
+C-000007,PREDIAL,2026,4,,,631.40,2026-11-30,SALDO-INICIAL-DEMO,
+C-000013,PREDIAL,2026,1,,,88.20,2026-02-28,SALDO-INICIAL-DEMO,
+C-000013,PREDIAL,2026,2,,,88.20,2026-05-31,SALDO-INICIAL-DEMO,
+C-000014,PREDIAL,2026,1,,,1043.55,2026-02-28,SALDO-INICIAL-DEMO,
+C-000014,PREDIAL,2026,2,,,1043.55,2026-05-31,SALDO-INICIAL-DEMO,
+C-000014,PREDIAL,2026,3,,,1043.55,2026-08-31,SALDO-INICIAL-DEMO,
+C-000014,PREDIAL,2026,4,,,1043.55,2026-11-30,SALDO-INICIAL-DEMO,
+C-000015,PREDIAL,2026,1,,,720.00,2026-02-28,SALDO-INICIAL-DEMO,
+C-000015,PREDIAL,2027,1,,,742.00,2027-02-28,SALDO-INICIAL-DEMO,
+C-000001,ARBITRIO,2026,1,20010401001001000000000,,36.50,2026-01-31,SALDO-INICIAL-DEMO,
+C-000001,ARBITRIO,2026,2,20010401001001000000000,,36.50,2026-02-28,SALDO-INICIAL-DEMO,
+C-000001,ARBITRIO,2026,3,20010401001001000000000,,36.50,2026-03-31,SALDO-INICIAL-DEMO,
+C-000001,ARBITRIO,2026,4,20010401001001000000000,,36.50,2026-04-30,SALDO-INICIAL-DEMO,
+C-000002,ARBITRIO,2026,1,20010401001002000000000,,28.90,2026-01-31,SALDO-INICIAL-DEMO,
+C-000002,ARBITRIO,2026,2,20010401001002000000000,,28.90,2026-02-28,SALDO-INICIAL-DEMO,
+C-000003,ARBITRIO,2026,1,20010401002001000000000,,21.40,2026-01-31,SALDO-INICIAL-DEMO,
+C-000003,ARBITRIO,2026,2,20010401002001000000000,,21.40,2026-02-28,SALDO-INICIAL-DEMO,
+C-000006,ARBITRIO,2026,1,20010401002002000000000,,118.75,2026-01-31,SALDO-INICIAL-DEMO,
+C-000006,ARBITRIO,2026,2,20010401002002000000000,,118.75,2026-02-28,SALDO-INICIAL-DEMO,
+C-000006,ARBITRIO,2026,3,20010401002002000000000,,118.75,2026-03-31,SALDO-INICIAL-DEMO,
+C-000007,ARBITRIO,2026,1,20010403001001000000000,,204.60,2026-01-31,SALDO-INICIAL-DEMO,
+C-000007,ARBITRIO,2026,2,20010403001001000000000,,204.60,2026-02-28,SALDO-INICIAL-DEMO,
+C-000007,ARBITRIO,2026,3,20010403001001000000000,,204.60,2026-03-31,SALDO-INICIAL-DEMO,
+C-000014,ARBITRIO,2026,1,20010402004001000000000,,176.20,2026-01-31,SALDO-INICIAL-DEMO,
+C-000014,ARBITRIO,2026,2,20010402004001000000000,,176.20,2026-02-28,SALDO-INICIAL-DEMO,
+C-000014,ARBITRIO,2026,1,20010401004001000000000,,64.30,2026-01-31,SALDO-INICIAL-DEMO,
+C-000014,ARBITRIO,2026,2,20010401004001000000000,,64.30,2026-02-28,SALDO-INICIAL-DEMO,
+C-000007,VEHICULAR,2026,0,,ZLG-702,382.00,2026-02-28,SALDO-INICIAL-DEMO,
+C-000007,VEHICULAR,2026,0,,ZLG-703,915.50,2026-02-28,SALDO-INICIAL-DEMO,
+C-000014,VEHICULAR,2026,0,,ZPB-330,74.20,2026-02-28,SALDO-INICIAL-DEMO,
+C-000013,VEHICULAR,2026,0,,ZKS-916,51.80,2026-02-28,SALDO-INICIAL-DEMO,

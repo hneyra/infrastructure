@@ -1,0 +1,19 @@
+---
+# `kind` trae "kindnet" como CNI por omision, y kindnet NO aplica `NetworkPolicy`
+# -es la razon por la que ningun otro `kind` de todo `infra/` prueba una politica
+# de red de verdad: sus clústeres aplican los manifiestos, y a veces levantan
+# pods, pero ninguno depende de que una política bloquee algo-. Este archivo
+# desactiva kindnet para que `verificar-red.sh` pueda instalar Calico en su
+# lugar, el único paso adicional que hace falta para que `NetworkPolicy` deje de
+# ser un YAML decorativo (issue #157).
+#
+# En el VPS real, k3s no usa Calico: usa flannel con el controlador de política
+# de red de kube-router, integrado y activo por omisión. Los dos implementan la
+# misma API de `NetworkPolicy` de Kubernetes -no hay una "de kind" y otra "de
+# k3s"-, así que lo que este clúster demuestra es que las políticas de `Red.ts`
+# hacen lo que dicen contra CUALQUIER implementación conforme, no que kindnet en
+# particular las aplicaría -no las aplica-.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  disableDefaultCNI: true

@@ -1,0 +1,109 @@
+# Stack de ensayo: un segundo VPS, más pequeño, donde se ensaya la restauración
+# (INF-03 §2). No es un namespace dentro del VPS de producción: lo que se ensaya es
+# perder el nodo, y ensayarlo dentro del nodo que se pierde es no ensayarlo.
+#
+# El kubeconfig y las credenciales de respaldo NO viven en este archivo, ni siquiera
+# cifrados (`stacks.test.ts`: "ningun stack versiona un secreto en claro"). CI los
+# inyecta frescos en cada corrida desde los secretos `KUBECONFIG`/`BACKUP_ACCESS_KEY_ID`/
+# `BACKUP_SECRET_ACCESS_KEY` del *environment* `stg` de GitHub, con
+# `pulumi config set --secret ... --stack stg` como paso previo a `preview`/`up`
+# (`.github/workflows/infra.yml`). Localmente hay que correr esos mismos tres comandos
+# antes de poder previsualizar o aplicar — y nunca `git add` el resultado: son
+# credenciales distintas a las de prod (INF-03 §4), un secreto de stg comprometido no
+# puede abrir prod.
+config:
+  # Lo ASIGNABLE del nodo (`capacidad.ts`). ⚠ A DIFERENCIA DE `prod`, ESTO NO ESTÁ
+  # MEDIDO: `reservar-recursos-del-nodo.sh` todavía no se ha ejecutado contra el nodo de
+  # `stg` (su registro en INF-10 §4 tiene una sola fila, y es la de `prod`), así que no
+  # hay ninguna cifra de este nodo escrita en el repositorio.
+  #
+  # Lo que hay es una **cota inferior demostrable**: `stg` despliega hoy su stack
+  # completo, y su pico de arranque son 3 560m y 6 368Mi (los Jobs de migración e
+  # implantación piden 1 CPU cada uno y coexisten con los Deployment). Un nodo que ubica
+  # eso tiene al menos esto asignable. Declarar por debajo de lo real es seguro en los
+  # dos sentidos: `capacidad.ts` sigue exigiendo que el stack quepa, y el paso
+  # «Lo declarado cabe en el nodo real» de `infra.yml` rechaza cualquier declaración que
+  # sea MAYOR que lo que el nodo dice — así que una cifra optimista no puede pasar en
+  # silencio, solo una pesimista, y una pesimista solo aprieta la comprobación.
+  #
+  # Sustituir por la medición en cuanto alguien tenga el túnel abierto:
+  #   kubectl get node -o jsonpath='{.items[0].status.allocatable.cpu}{"/"}{.items[0].status.allocatable.memory}'
+  sgtm:nodeAllocatableCpu: "4"
+  sgtm:nodeAllocatableMemory: 7Gi
+  sgtm:domain: sv-RFoVCw2ifaqy3G9NZ1eT.cloud.elastika.pe
+  sgtm:acmeEmail: operaciones@example.pe
+  # Certificado del entorno de pruebas de Let's Encrypt: aquí se ajusta el ingreso sin
+  # gastar el límite de tasa. En prod está prohibido, porque ese certificado no lo
+  # acepta ningún navegador (RNF-074).
+  sgtm:acmeStaging: "true"
+  sgtm:postgresImage: postgis/postgis:16-3.4-alpine
+  sgtm:postgresStorageSize: 20Gi
+  sgtm:keycloakImage: quay.io/keycloak/keycloak:26.0
+  sgtm:keycloakRealm: sgtm
+  sgtm:keycloakSeedTestUsers: "true"
+  # El relay SMTP del alta declarativa de usuarios (ADR-0012). En stg es un buzón
+  # Mailpit del propio clúster —`Identidad.ts` lo despliega— sin autenticación: la
+  # escalera de identidad comprueba que el enlace de clave se envía de verdad, no
+  # que llegue a un buzón real. En prod está prohibido un buzón así (INF-03 §4).
+  sgtm:keycloakSmtpHost: sgtm-stg-correo
+  sgtm:keycloakSmtpPort: "1025"
+  sgtm:keycloakSmtpFrom: no-responder@sv-RFoVCw2ifaqy3G9NZ1eT.cloud.elastika.pe
+  sgtm:keycloakSmtpStartTls: "false"
+  sgtm:keycloakSmtpAuth: "false"
+  sgtm:applicationImageRepository: ghcr.io/hneyra
+  # No es secreto; `registryPullToken` (un PAT con `read:packages`) sí lo es, y CI lo
+  # inyecta igual que `backupAccessKeyId` (issue #257).
+  sgtm:registryUsername: hneyra
+  # Sube con `prod`, y en el mismo PR a propósito: `aplicar-prod` tiene
+  # `needs: aplicar-stg` (`infra.yml`), así que `stg` es la puerta por la que pasa toda
+  # versión que llegue a producción, y dejarla atrás convierte el ensayo en un ensayo de
+  # otra cosa. Medido el 2026-08-29, antes de subirla: `stg` corría `1ec6bd6`
+  # (2026-08-25) con **25 migraciones aplicadas** —dos menos que `prod`—, de modo que las
+  # tres tablas de valuación de `V55` no existían tampoco aquí y la secuencia de
+  # publicación de valores normativos (`publicar-cuadros.sh`) no podía correrse de punta a
+  # punta en el único ambiente donde el issue #435 pide correrla.
+  #
+  # Ver el comentario largo de `Pulumi.prod.yaml`: subir esta línea CREA un Job de
+  # migración nuevo —lleva la versión en el nombre— y vuelve a implantar la municipalidad.
+  #
+  # **Y no subirla también hace algo, aunque no lo parezca (issue #675).** Medido el
+  # 2026-09-02: esta línea llevaba desde el 2026-08-29 en `5fc02f3` —que trae **48**
+  # migraciones— mientras `main` declaraba **61**, así que `stg` corría 48 de 61 y le
+  # faltaban `V58`…`V71`, entre ellas la `V68` que añade `cuenta_corriente_asiento.acto`.
+  # Nada lo delataba: el único Job del namespace era `sgtm-stg-migracion-5fc02f3a4493`,
+  # `Complete`, y `verificar-el-ambiente.sh` decía «48 · 48 · OK» con toda la razón,
+  # porque compara la base con **esta** línea y no con `main`. Ese tercer número lo mide
+  # ahora `infra/verificaciones/deriva-de-migraciones.test.ts`, que corre sin clúster.
+  #
+  # **Desde #720 esta linea NO la escribe una persona.** La escribe el merge:
+  # `.github/workflows/declarar-version.yml` se dispara al terminar
+  # `publicar-imagenes.yml` en verde sobre `main` —el unico momento en que se saben las
+  # dos cosas que hacen falta, cual es el `sha` y que sus tres imagenes existen— y la
+  # sube si algun ambiente tiene deriva. Por eso aqui no se narra ningun `sha` concreto:
+  # el valor cambia solo y un comentario que dijera «se sube a X porque trae N
+  # migraciones» quedaria falso en el siguiente merge, sin que nadie lo notara.
+  #
+  # Lo llevaba una persona hasta el 2026-09-02, y ese dia se midio lo que costaba:
+  # **cuatro** PR de dos lineas en hora y media (#705, #715, #717, #719), y el tercero
+  # obsoleto durante su propio CI porque otra migracion entro mientras corria.
+  sgtm:applicationBootstrapVersion: c755de2149344b8033736958ee8ae6f643c90281
+  sgtm:webReplicas: "1"
+  # La municipalidad de ensayo. El ubigeo es el de Catacaos, igual que en prod (D-01,
+  # 2026-08-24), porque stg restaura los respaldos de prod anonimizados (INF-03 §2 y
+  # §3): con otro ubigeo, lo restaurado no cuadraría con lo implantado.
+  sgtm:ubigeo: "200105"
+  sgtm:municipalidad: Municipalidad Distrital de Catacaos (ensayo)
+  sgtm:tipoDeMunicipalidad: DISTRITAL
+  sgtm:administrador: administrador
+  sgtm:nombreDelAdministrador: Administrador del sistema
+  # La municipalidad de stg se da de alta MARCADA: todo documento que emita sale
+  # marcado en los tres formatos (INF-03 §3.2, issue #122). `config.ts` lo exige.
+  sgtm:esDemostracion: "true"
+  # AWS S3 (issue #158, decision de 2026-08-24). us-east-1: es donde vive el bucket.
+  sgtm:backupEndpoint: https://s3.us-east-1.amazonaws.com
+  sgtm:backupRegion: us-east-1
+  sgtm:backupBucket: sgtm-stg-respaldos
+  sgtm:walArchiveTimeoutSeconds: "300"
+  # De dónde lee stg para ensayar la restauración. Es el contenedor de prod, y la
+  # credencial con que lo lee es de SOLO LECTURA (INF-03 §4).
+  sgtm:restoreSourceBucket: sgtm-prod-respaldos

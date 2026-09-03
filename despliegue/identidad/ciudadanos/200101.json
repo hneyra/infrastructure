@@ -1,0 +1,12 @@
+{
+  "ubigeo": "200101",
+  "ciudadanos": [
+    {
+      "nombre": "Rosa",
+      "apellido": "Chero Zapata",
+      "tipoDocumento": "DNI",
+      "numeroDocumento": "70123456",
+      "correo": "rosa.chero@ejemplo.pe"
+    }
+  ]
+}

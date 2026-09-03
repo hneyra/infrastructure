@@ -1,0 +1,6 @@
+/bin/
+/node_modules/
+
+# Kubeconfigs y credenciales de respaldo para probar contra los VPS reales a mano.
+# NUNCA se versionan (stacks.test.ts lo exige incluso cifrado); ver probar-localmente.sh.
+/.local/

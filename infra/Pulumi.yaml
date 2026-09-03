@@ -1,0 +1,8 @@
+name: sgtm
+description: SGTM — infraestructura como código (ADR-0011)
+runtime:
+  name: nodejs
+  options:
+    # yarn, como el resto del repositorio. Un segundo gestor de paquetes es un segundo
+    # archivo de bloqueo que se desincroniza en silencio (ADR-0011 §2).
+    packagemanager: yarn

@@ -1,0 +1,16 @@
+{
+  "name": "infrastructure",
+  "private": true,
+  "description": "La plataforma del SGTM: Pulumi sobre k3s, PostgreSQL, Keycloak, Traefik, respaldo y observabilidad (ADR-0031).",
+  "scripts": {
+    "install:infra": "cd infra && yarn install",
+    "verificar": "cd infra && yarn verificar",
+    "lint": "cd infra && yarn lint",
+    "typecheck": "cd infra && yarn typecheck",
+    "test": "cd infra && yarn test",
+    "manifiestos": "cd infra && yarn --silent manifiestos",
+    "secretos": "cd infra && yarn --silent secretos",
+    "capacidad": "cd infra && yarn --silent capacidad",
+    "postinstall": "cd infra && yarn install"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "ubigeo": "200105",
+  "municipalidadId": 9,
+  "grupo": "200105 - Municipalidad Distrital de Catacaos",
+  "usuarios": [
+    {
+      "cuenta": "administrador",
+      "nombre": "Administrador",
+      "apellido": "del Sistema",
+      "correo": "administrador@catacaos.gob.pe",
+      "administrador": true
+    }
+  ]
+}

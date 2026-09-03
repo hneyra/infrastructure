@@ -1,0 +1,101 @@
+-- ============================================================================
+--  V69 — Titularidad por predio, sin la condicion parcial (#561)
+--
+--  `titularidad` tiene tres indices y NINGUNO responde a la pregunta que este
+--  sistema le hace siempre: «de quien es este predio A UNA FECHA» (regla 9).
+--
+--    titularidad_pk                 (municipalidad_id, id)
+--    titularidad_contribuyente_ix   (municipalidad_id, contribuyente_id)
+--                                     WHERE vigencia_hasta IS NULL
+--    titularidad_predio_vigente_ix  (municipalidad_id, predio_id, porcentaje DESC)
+--                                     WHERE vigencia_hasta IS NULL
+--
+--  El tercero parece el bueno y no lo es: es PARCIAL. Solo indexa la cuota
+--  abierta, asi que sirve para «quien es hoy el titular» —el LATERAL de la
+--  grilla de fichas, que es para lo que V14 lo creo— y no puede servir a
+--  ninguna consulta que pregunte por una fecha, porque la fila que rige el 15
+--  de marzo puede ser una que se cerro en julio. PostgreSQL no puede usar un
+--  indice parcial cuando el WHERE de la consulta no implica su predicado, y
+--  `vigencia_desde <= :fecha AND (vigencia_hasta IS NULL OR vigencia_hasta >=
+--  :fecha)` no lo implica: admite las cerradas a proposito.
+--
+--  De modo que las dos lecturas de titularidad por predio —`titularesDe`, el
+--  clic de #366, y `titularesDeVarios`, la pagina de omisos de #545— se quedan
+--  con `titularidad_pk`, cuya unica columna util bajo RLS es
+--  `municipalidad_id`: una condicion que TODAS las filas que el inquilino ve
+--  cumplen.
+--
+--  ---------------------------------------------------------------------------
+--  Lo que se lee sin este indice
+--
+--  Medido contra PostgreSQL 16.10 como `sgtm_app` y con la politica activa, con
+--  el padron de Catacaos —14 422 predios— sembrado en DOS municipalidades
+--  (28 844 titularidades), pidiendo los titulares de UNA pagina de veinte:
+--
+--    Sort  (actual rows=20)
+--      Buffers: shared hit=242
+--      ->  Bitmap Heap Scan on titularidad  (actual rows=20)
+--            Recheck Cond: (municipalidad_id = current_setting(...)::bigint)
+--            Filter: ((vigencia_desde <= '2026-09-01')
+--                     AND ((vigencia_hasta IS NULL) OR (vigencia_hasta >= '2026-09-01'))
+--                     AND (predio_id = ANY ('{1,...,20}')))
+--            Rows Removed by Filter: 14402      <- 14 402 descartadas para devolver 20
+--            Heap Blocks: exact=179
+--            ->  Bitmap Index Scan on titularidad_pk  (actual rows=14422)
+--                  Index Cond: (municipalidad_id = current_setting(...)::bigint)
+--    Execution Time: 23.913 ms
+--
+--  `predio_id` cae del lado del `Filter`. La consulta esta acotada en filas
+--  DEVUELTAS y no en filas LEIDAS, asi que cuesta lo mismo pedir un titular que
+--  pedir doscientos: es exactamente el sintoma que da nombre a #561 —«el coste
+--  no depende del tamano de pagina»— visto en el trozo del camino que sobrevive
+--  a #545.
+--
+--  Y el plan dice «Index». Es la leccion de #313 repetida: un plan que usa el
+--  indice SOLO por `municipalidad_id` vuelve a leer la tabla entera del
+--  inquilino y sigue diciendo «Index Scan». Por eso `TitularesEnElIndiceTest`
+--  no busca esa palabra: exige que `predio_id` este dentro del `Index Cond`.
+--
+--  ---------------------------------------------------------------------------
+--  Lo que se lee con el, mismos datos y misma conexion
+--
+--    Sort  (actual rows=20)
+--      Buffers: shared hit=45
+--      ->  Index Scan using titularidad_predio_ix on titularidad  (actual rows=20)
+--            Index Cond: ((municipalidad_id = current_setting(...)::bigint)
+--                         AND (predio_id = ANY ('{1,...,20}'))
+--                         AND (vigencia_desde <= '2026-09-01'))
+--            Filter: ((vigencia_hasta IS NULL) OR (vigencia_hasta >= '2026-09-01'))
+--    Execution Time: 0.243 ms
+--
+--  236 buffers -> 39, y ninguna fila descartada. Las TRES condiciones entran en
+--  el `Index Cond`: la del filtro, la de la vigencia y la de la POLITICA. Es el
+--  reverso del hallazgo del `LIKE` (DAT-01 §0, hallazgo 3) y del operador
+--  espacial (hallazgo 5): `int8eq` y `date_le` SI son leakproof, asi que
+--  PostgreSQL los evalua por debajo de la politica de seguridad y los empuja al
+--  indice.
+--
+--  ---------------------------------------------------------------------------
+--  Por que `vigencia_desde` y por que NO `vigencia_hasta`
+--
+--  `vigencia_desde` entra porque llega al `Index Cond` —se midio: sin ella la
+--  desigualdad se queda en el `Filter`— y porque no hay lectura de titularidad
+--  en este sistema que no pregunte por una fecha. `vigencia_hasta` no entra
+--  porque su mitad de la condicion es un `OR` con `IS NULL`, y eso no es un
+--  rango: se queda en el `Filter` de todas formas.
+--
+--  ---------------------------------------------------------------------------
+--  Lo que NO se toca
+--
+--  `titularidad_predio_vigente_ix` se queda. No es redundante con este: es
+--  parcial y ordena por `porcentaje DESC`, que es lo que necesita el LATERAL de
+--  «un titular por predio» de la consulta de fichas (V14). Este otro responde
+--  otra pregunta.
+-- ============================================================================
+
+CREATE INDEX titularidad_predio_ix
+    ON titularidad (municipalidad_id, predio_id, vigencia_desde);
+
+COMMENT ON INDEX titularidad_predio_ix IS
+    'De quien es este predio A UNA FECHA (regla 9). titularidad_predio_vigente_ix no puede '
+    'servirla: es parcial —solo la cuota abierta— y la vigencia a una fecha admite las cerradas.';

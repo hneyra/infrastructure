@@ -1,0 +1,9 @@
+{
+  "name": "@sgtm/infra-contrato",
+  "version": "1.0.0",
+  "private": true,
+  "description": "El contrato con el que cada sistema aporta su infraestructura (ADR-0031 §2). Solo tipos: no trae codigo que ejecutar.",
+  "types": "index.ts",
+  "main": "index.ts",
+  "exports": { ".": "./index.ts" }
+}

@@ -1,0 +1,147 @@
+# Quién escribe `sgtm:applicationBootstrapVersion` (issue #720).
+#
+# **El merge lo escribe.** Hasta el 2026-09-02 lo escribía una persona, en un PR de dos
+# líneas, y ese día hicieron falta **cuatro en hora y media** (#705, #715, #717, #719):
+# el tercero se quedó obsoleto **durante su propio CI**, porque otra migración entró a
+# `main` mientras corría. El coste no lo pagaba quien lo arreglaba — lo pagaban los PR
+# que tocan migraciones o `infra/`, que se ponían rojos en la guarda de #675 por algo que
+# no habían tocado.
+#
+# El PR que trae la migración no puede arreglarlo él mismo, y no por descuido: la versión
+# que hay que declarar es el `sha` de su **propio merge**, y sus imágenes no existen hasta
+# que `publicar-imagenes.yml` termina con ese `sha` ya en `main`. Declarar uno anterior no
+# vale —no trae la migración— y el futuro tampoco —no hay imágenes—.
+#
+# Pero al terminar `publicar-imagenes.yml` **las dos cosas se saben**: cuál es el `sha` y
+# que sus tres imágenes están publicadas. De ahí el disparo por `workflow_run`.
+#
+# ## Lo que NO hace, y es la mitad del mecanismo
+#
+#   - No declara si `publicar-imagenes.yml` no terminó en verde (AC 3 de #720): una
+#     versión sin imágenes deja al Job de migración pidiendo una etiqueta que nadie
+#     construyó, que es peor que la deriva que venía a cerrar.
+#   - No declara un `sha` que no esté en la historia de `main` — las imágenes se publican
+#     al integrar, nunca desde una rama.
+#   - No declara un candidato que **dejaría deriva igual**, que es el caso exacto de #717:
+#     si otro merge entró mientras se publicaban las imágenes, calla y lo declara la
+#     corrida de ESE commit.
+#   - No declara nada si ningún ambiente tiene deriva. Es lo que cierra el bucle **sin
+#     depender de la plataforma**: este commit toca `infra/Pulumi.*.yaml`, que está en las
+#     rutas de `publicar-imagenes.yml`, así que si algún día un `push` con el
+#     `GITHUB_TOKEN` volviera a disparar flujos, la segunda vuelta no encontraría deriva.
+#
+# Las cuatro reglas viven en `infra/herramientas/declarar-version.ts`, en una función
+# pura, y se ejercitan con sus mutaciones en
+# `infra/verificaciones/declarar-version.test.ts`. Aquí no hay lógica: un flujo con
+# `workflow_run` **sólo corre en la rama por omisión**, así que nada de lo que se escriba
+# en este archivo se puede probar desde un PR, y lo único que se afirma de él es su
+# cableado —leyendo este YAML—, como #675 hizo con `paths` y `fetch-depth`.
+#
+# ## Si no puede empujar
+#
+# Este trabajo se pone **rojo**, y no toca nada más. Es deliberado: un `exit 0` con un
+# aviso dejaría creer que el trámite es automático cuando no lo es, y la deriva volvería a
+# crecer con todo el mundo convencido de lo contrario. Un rojo aquí no bloquea el PR de
+# nadie —vive en `main`, después del merge— y dice en su resumen exactamente qué falta.
+#
+# El mecanismo es **aditivo**: mientras no funcione, todo queda como estaba, con la guarda
+# de #675 bloqueando igual y el PR de dos líneas como remedio.
+name: Declarar la versión desplegable
+
+on:
+  workflow_run:
+    workflows: ['Publicar imágenes']
+    types: [completed]
+
+# `contents: write` para integrar la línea; `actions: write` para pedirle a `infra.yml`
+# que la aplique (ver el último paso).
+permissions:
+  contents: write
+  actions: write
+
+# Nunca dos a la vez: dos corridas declarando sobre `main` se pisarían. Y sin
+# `cancel-in-progress`, porque cancelar la que ya escribió deja el trabajo a medias.
+concurrency:
+  group: declarar-version
+  cancel-in-progress: false
+
+jobs:
+  declarar:
+    name: La versión que main declara desplegar
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'push'
+    defaults:
+      run:
+        working-directory: infra
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # `main`, no el `sha` de la corrida: lo que se reescribe es la cabeza, y entre
+          # una cosa y otra puede haber entrado otro merge. El `sha` que se DECLARA sí es
+          # el de la corrida, y esa distinción es justo la que la tercera regla comprueba:
+          # si main se movió y trae una migración más, no se declara nada.
+          ref: main
+          # Sin historial no se puede contar ninguna de las dos revisiones (#675).
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: infra/yarn.lock
+
+      - name: Instalar dependencias
+        run: yarn install --frozen-lockfile
+
+      - name: Decidir y escribir
+        run: |
+          salida=$(yarn --silent vite-node herramientas/declarar.ts -- \
+            '${{ github.event.workflow_run.head_sha }}')
+          echo "$salida"
+          echo "$salida" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Integrar en main si algo cambió
+        id: integrar
+        run: |
+          if [ -z "$(git status --porcelain -- Pulumi.stg.yaml Pulumi.prod.yaml)" ]; then
+            echo "Nada que integrar." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Pulumi.stg.yaml Pulumi.prod.yaml
+          git commit -m 'deriva: declarar ${{ github.event.workflow_run.head_sha }} (#720)'
+
+          # Y si no se puede, ROJO. Un aviso silencioso aquí dejaría creer que esto
+          # funciona, y la deriva volvería a crecer con todos convencidos de lo
+          # contrario. El remedio queda escrito en el resumen del trabajo.
+          if ! git push origin HEAD:main; then
+            {
+              echo '## No se pudo integrar la línea'
+              echo
+              echo 'El `push` a `main` fue rechazado. Mientras eso no se resuelva el'
+              echo 'trámite sigue siendo manual: subir `sgtm:applicationBootstrapVersion`'
+              echo 'en `infra/Pulumi.stg.yaml` y en `infra/Pulumi.prod.yaml` a'
+              echo '`${{ github.event.workflow_run.head_sha }}`.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo 'declarado=si' >> "$GITHUB_OUTPUT"
+
+      # Un `push` hecho con el `GITHUB_TOKEN` no dispara flujos, así que el commit de
+      # arriba **no** ejecuta `aplicar-stg` por sí solo. Sin este paso la versión quedaría
+      # declarada y sin aplicar hasta el siguiente push que tocara las rutas de
+      # `infra.yml`: un retraso permanente de un merge, que es medio defecto de #675
+      # reintroducido por la puerta de atrás. Por eso `infra.yml` acepta
+      # `workflow_dispatch` desde #720, y aquí se le pide correr.
+      - name: Pedirle a infra.yml que lo aplique
+        if: steps.integrar.outputs.declarado == 'si'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run infra.yml --ref main

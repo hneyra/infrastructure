@@ -1,0 +1,9 @@
+# Sectores de ejemplo — Catacaos (ubigeo 200104), la piloto de D-01.
+# ESTRUCTURA, no valores. Los codigos son numericos y de dos digitos porque el codigo
+# de sector es uno de los tramos del codigo de referencia catastral (ver fichas.csv).
+# Formato de ImportarSectores: codigo,nombre,zona — zona admite quedar vacia.
+codigo,nombre,zona
+01,Cercado de Catacaos,Urbana
+02,Narihuala,Urbana
+03,La Campina,Urbana
+04,Simbila,Rustica

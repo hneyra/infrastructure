@@ -1,0 +1,19 @@
+# Catalogo vial de ejemplo — Catacaos (ubigeo 200104), la piloto de D-01.
+# ESTRUCTURA, no valores: nombres de via de dominio publico. Ninguna cifra normativa.
+# Formato de ImportarVias: codigo,tipo,nombre,ubigeo — ubigeo admite quedar vacio.
+codigo,tipo,nombre,ubigeo
+V-0001,AVENIDA,Cayetano Heredia,200104
+V-0002,AVENIDA,Progreso,200104
+V-0003,CALLE,Comercio,200104
+V-0004,CALLE,San Francisco,200104
+V-0005,CALLE,Junin,200104
+V-0006,CALLE,Piura,200104
+V-0007,CALLE,Ayacucho,200104
+V-0008,CALLE,Grau,200104
+V-0009,CALLE,Bolognesi,200104
+V-0010,CALLE,Tacna,200104
+V-0011,JIRON,Lima,200104
+V-0012,JIRON,Cusco,200104
+V-0013,PASAJE,Los Ceramistas,200104
+V-0014,PROLONGACION,San Jacinto,200104
+V-0015,CARRETERA,Catacaos - La Legua,200104

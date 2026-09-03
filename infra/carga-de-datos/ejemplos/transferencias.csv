@@ -1,0 +1,52 @@
+# Transferencias de DEMOSTRACION — actos INVENTADOS sobre predios y vehiculos ficticios.
+# Solo se cargan contra una municipalidad con municipalidad.es_demostracion = true:
+# CargarTransferenciasDeDemostracion se niega a correr contra cualquier otra.
+#
+# Se carga DESPUES de fichas.csv y de vehiculos.csv: cada fila nombra el predio por su
+# codigo de referencia catastral y el vehiculo por su placa, y la fila que nombre algo que
+# no existe se rechaza.
+#
+# ES EL UNICO MODO DE SEMBRAR UNA COPROPIEDAD. `fichas.csv` inscribe el predio con UN
+# titular, y una segunda fila del mismo predio se rechazaria —ya tiene ficha vigente—.
+# La cuota compartida no se declara: se PRODUCE, con una transferencia parcial, que es
+# como ocurre en la realidad. RegistrarTransferencia cierra la titularidad del
+# transferente y abre dos: la del adquiriente por el porcentaje transferido y la del
+# transferente por el remanente.
+#
+# LAS FILAS SE PROCESAN EN ORDEN, y dos de ellas son una cadena sobre el mismo predio
+# (Calle Ayacucho 512): C-000013 lo vende entero a C-000009 en febrero y C-000009 lo
+# revende a C-000010 en junio. Es lo que da algo que mirar al historico de transferencias
+# y a la titularidad resuelta A UNA FECHA (regla 9): preguntar por marzo tiene que
+# devolver a C-000009, no al ultimo dueno.
+#
+# `codTransferente` va VACIO en las filas VEHICULO, y no es un descuido:
+# RegistrarTransferencia.transferirVehiculo toma como transferente a quien figura hoy
+# como titular y no a un dato que llegue en la peticion. Un archivo que dijera otra cosa
+# firmaria una transferencia entre dos personas que no la hicieron.
+#
+# EL VALOR DE TRANSFERENCIA ES UN DATO DECLARADO, no una cifra normativa: es lo que dice
+# la escritura. Que de el salga o no un impuesto de alcabala es otra cuestion, y esa si
+# depende de D-02a: `afectaAlcabala` solo MARCA la transferencia, no liquida nada.
+#
+# `tipoTransferencia` NO ES TEXTO LIBRE desde #542: es uno de los nueve nombres de
+# `TipoTransferencia`, y la fila que traiga otro se rechaza nombrando el valor. Este mismo
+# archivo escribia `COMPRAVENTA` hasta entonces, que es exactamente la forma en que el
+# vocabulario libre se rompe: la misma compraventa escrita de dos maneras no la encuentra
+# ninguna consulta que pregunte por una sola.
+#
+# Los nueve, y NO son los rotulos del manual —que llevan tilde, guion o espacio—:
+#   COMPRA_VENTA  DONACION  PERMUTA  ANTICIPO_DE_LEGITIMA  ADJUDICACION
+#   DACION_EN_PAGO  SUCESION  REMATE  HERENCIA
+# El cotejo rotulo a rotulo esta en el javadoc de `TipoTransferencia`.
+#
+# Formato de ImportarTransferencias:
+#   objeto,codigoPredial,placa,codTransferente,codAdquiriente,tipoTransferencia,
+#   fechaTransferencia,valorTransferencia,porcentajeTransferido,afectaAlcabala,documentoOrigen
+objeto,codigoPredial,placa,codTransferente,codAdquiriente,tipoTransferencia,fechaTransferencia,valorTransferencia,porcentajeTransferido,afectaAlcabala,documentoOrigen
+PREDIO,20010401003001000000000,,C-000013,C-000009,COMPRA_VENTA,2026-02-10,96000.00,100.00,true,ESC-DEMO-0001
+PREDIO,20010401004001000000000,,C-000014,C-000010,COMPRA_VENTA,2026-03-18,54000.00,40.00,true,ESC-DEMO-0002
+PREDIO,20010403003001000000000,,C-000015,C-000009,COMPRA_VENTA,2026-04-02,120000.00,50.00,true,ESC-DEMO-0003
+PREDIO,20010401003001000000000,,C-000009,C-000010,COMPRA_VENTA,2026-06-05,101000.00,100.00,true,ESC-DEMO-0004
+PREDIO,20010404001001000000000,,C-000008,C-000004,ANTICIPO_DE_LEGITIMA,2026-05-20,0.00,25.00,false,PN-DEMO-0005
+VEHICULO,,ZTR-101,,C-000009,COMPRA_VENTA,2026-03-30,14500.00,100.00,true,CT-DEMO-0006
+VEHICULO,,ZKS-916,,C-000011,COMPRA_VENTA,2026-07-14,6200.00,100.00,true,CT-DEMO-0007

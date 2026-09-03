@@ -1,0 +1,14 @@
+{
+  "ubigeo": "200101",
+  "municipalidadId": 1,
+  "grupo": "200101 - Municipalidad Provincial de Sullana",
+  "usuarios": [
+    {
+      "cuenta": "jperez",
+      "nombre": "Jorge",
+      "apellido": "Perez",
+      "correo": "jperez@sullana.gob.pe",
+      "administrador": true
+    }
+  ]
+}

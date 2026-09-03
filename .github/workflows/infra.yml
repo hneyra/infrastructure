@@ -1,0 +1,1335 @@
+# Verificación y despliegue de la infraestructura.
+#
+# Once trabajos, en el orden de ADR-0011 §6:
+#
+#   1. `verificar` — el mismo `yarn verificar` que hay que pasar antes de un PR: lint,
+#      tipos y pruebas. **No necesita nada de fuera**: ni Pulumi, ni token, ni clúster.
+#      Ahí viven las invariantes de `config.ts`, la auditoría de los manifiestos y los
+#      criterios de aceptación de la fase B, así que quitar un valor obligatorio, subir
+#      el plazo de archivado del WAL o dejar una sonda con el `timeoutSeconds` por
+#      omisión se pone rojo aquí, en un PR de cualquiera. Desde #675 vive aquí también
+#      la **deriva de migraciones**: que la versión que cada ambiente declara traiga las
+#      migraciones que `origin/main` declara. Necesita `fetch-depth: 0`.
+#   1b. `motor` — levanta un PostgreSQL con **los guiones de inicialización que el
+#      manifiesto monta** y ejecuta contra él `verificarAislamiento` (issue #149). Es la
+#      única forma de afirmar que el aislamiento sigue en pie: leerlo del manifiesto no
+#      lo demuestra. Necesita Docker; no necesita clúster.
+#   1c. `manifiestos` — `kubectl apply --dry-run=server` de los manifiestos contra un
+#      clúster desechable (`kind`). Valida el esquema de Kubernetes de verdad: un campo
+#      mal escrito que los tipos no atrapen, lo atrapa el API server.
+#   1b-bis. `simulacro` — restaura un respaldo **de verdad** (issue #155, RNF-079):
+#      archivado continuo de WAL, respaldo base cifrado, pérdida total del directorio de
+#      datos, PITR a un instante marcado, y comprobación de que las cifras cuadran y de
+#      que lo restaurado admite escrituras. Y comprueba que el propio simulacro puede
+#      fallar: sin `recovery_target_time` tiene que ponerse rojo.
+#   1d. `secretos` — `secretos/bootstrap-secretos.sh` contra otro clúster desechable
+#      (issue #154, INF-06): que un despliegue desde cero genere lo que falta sin que
+#      nadie teclee una clave, que volver a correrlo no cambie nada, y que ninguna clave
+#      del inventario comparta valor con otra — comprobado contra el cluster, no leído
+#      del código que las genera.
+#   1e. `observabilidad-alertas` — apaga la base de datos contra un clúster real (issue
+#      #156) y comprueba DOS cosas: que sin receptor configurado la regla se evalúa y
+#      nadie se entera, y que con un receptor configurado la misma alerta se entrega de
+#      verdad. «Una regla que no notifica a nadie no es una alerta, es un gráfico».
+#   1f. `observabilidad-tableros` — cada panel de `resumen-operativo.json`, consultado
+#      contra un Prometheus real con exportadores reales. Falla nombrando el panel si
+#      alguno vuelve «No data» — la regresión que el issue #156 pide poder atrapar.
+#   2. `previsualizar-stg` / `previsualizar-prod` — `pulumi preview` de cada stack en
+#      cada PR, publicado como comentario. **Dos jobs, no uno**: stg y prod son dos VPS
+#      con IP distinta, así que cada uno abre su propio túnel con el *environment* que le
+#      corresponde (`stg` y `prod-preview`, una copia sin protección de los secretos de
+#      `prod` para que este preview de solo lectura no quede detrás de la aprobación que
+#      sí exige `aplicar-prod`). Desde que `infra/componentes/` tiene recursos, el plan
+#      se calcula comparando con lo que hay en el nodo, y para eso hay que poder llegar
+#      a él.
+#   3. `aplicar-stg` — genera los secretos que falten contra el clúster real
+#      (`bootstrap-secretos.sh`, INF-06) y solo entonces `pulumi up` de `stg`,
+#      automático al integrar a `main`.
+#   4. `aplicar-prod` — `pulumi up` de `prod`, **detrás del *environment* protegido
+#      `prod`**. GitHub no deja avanzar el trabajo sin que alguien con acceso a ese
+#      *environment* lo apruebe, y registra quién — es lo que hace cierta la letra de
+#      ADR-0011 §6: «prod, con aprobación manual explícita; nunca automático».
+#   5. `deteccion-de-deriva` — a diario, `pulumi preview --expect-no-changes` contra
+#      `prod`. Si el clúster se apartó del estado declarado —alguien corrió un
+#      `kubectl apply` a mano, la lección de `../iaac`—, el trabajo se pone rojo. Y
+#      desde #675, **también `verificar-el-ambiente.sh --ambiente prod`**: el `preview`
+#      compara el clúster con lo declarado y sale verde con la base varias migraciones
+#      por detrás, porque el Job de migración lleva la versión en el nombre y no hay
+#      diferencia que ver. La base sólo la mide ese guion, y hasta #675 corría
+#      únicamente dentro de `aplicar-prod`, un trabajo que llevaba desde el 2026-08-29
+#      sin ejecutarse.
+#
+# Los tres últimos necesitan **el túnel SSH al API de k3s** (INF-01 §1.4): el servidor
+# no se publica a internet, así que el proveedor de Kubernetes solo lo alcanza a través
+# de un `ssh -L 6443:localhost:6443` abierto antes de cada `preview` o `up`. Es la misma
+# cicatriz de `../iaac`: con la IP del VPS en el kubeconfig en vez de `localhost`, el
+# proveedor sale por fuera del túnel — y `config.ts`, ya en `main`, se pone rojo antes de
+# que ese kubeconfig llegue a usarse.
+#
+# **Todos se omiten con un aviso, no con un rojo, mientras el VPS y sus secretos no
+# existan.** Ninguno de los cuatro secretos —`PULUMI_ACCESS_TOKEN`, `SSH_PRIVATE_KEY`,
+# `VPS_USER`, `VPS_HOST`— se puede fabricar desde este repositorio: salen de un VPS real,
+# que es aprovisionamiento fuera del alcance de un PR. Un rojo permanente por algo que
+# nadie en el PR puede arreglar enseña a ignorar el flujo; el resumen del trabajo dice
+# qué falta y `infra/README.md` trae los pasos exactos.
+name: Infraestructura
+
+on:
+  pull_request:
+    paths: &rutas
+      - 'infra/**'
+      - '.github/workflows/infra.yml'
+      # Los manifiestos MONTAN estos dos archivos en vez de copiarlos (issue #149), así
+      # que un cambio ahí cambia lo que se despliega aunque `infra/` no se toque.
+      - 'backend/sgtm-esquema/src/main/resources/db/roles/**'
+      # Las migraciones, desde #675. Faltaban, y es lo que dejaba crecer la deriva EN
+      # SILENCIO: una migracion nueva no tocaba ninguna de estas rutas, asi que este
+      # flujo **no corria** al integrarla —ni `verificar`, que es donde vive la guarda de
+      # `deriva-de-migraciones.test.ts`, ni `aplicar-stg`, que es quien despliega—. El
+      # 2026-09-02 el hueco medido eran trece migraciones (`V58`…`V71`): `stg` corria 48
+      # de las 61 que `main` declaraba, y ninguna corrida se habia puesto roja por ello.
+      - 'backend/sgtm-esquema/src/main/resources/db/migration/**'
+      - 'despliegue/inicializacion-del-motor/**'
+      # `aplicar-stg` y `aplicar-prod` lo ejecutan antes de `pulumi up`: `crear-roles.sql`
+      # solo corre con el volumen vacio, asi que una extension anadida despues no llega
+      # sola y la migracion que la usa se cae (ADR-0021).
+      - 'despliegue/crear-extensiones.sh'
+      - 'despliegue/identidad/realm-sgtm.json'
+      # Lo demas que `Identidad.ts` monta o deriva: el realm del ciudadano, el guion de
+      # identidades y las dos fuentes versionadas de personas. Faltaban, y es la leccion
+      # de #192 §2 otra vez: un archivo que las pruebas LEEN y el filtro no nombra cambia
+      # sin que corra quien lo mira —verde rancio, no verde—.
+      - 'despliegue/identidad/realm-sgtm-ciudadano.json'
+      - 'despliegue/identidad/reconciliar-identidades.sh'
+      - 'despliegue/identidad/municipalidades/**'
+      - 'despliegue/identidad/ciudadanos/**'
+      # Y el enumerado del dominio contra el que se contrasta la tabla de formas de
+      # documento (#415): un tipo nuevo ahi tiene que poner roja la tabla de `infra/`.
+      - 'backend/sgtm-dominio-compartido/src/main/java/pe/gob/sgtm/dominio/TipoDocumento.java'
+      - 'frontend/nginx.conf'
+  push:
+    branches: [main]
+    paths: *rutas
+  schedule:
+    # 07:00 UTC — madrugada en Perú (UTC-5). El horario exacto no importa mientras sea
+    # fuera de la ventana de atención; lo que importa es que corra todos los días.
+    - cron: '0 7 * * *'
+  # A petición, desde #720. Lo pide `declarar-version.yml` después de integrar la línea
+  # de `applicationBootstrapVersion`: un `push` hecho con el `GITHUB_TOKEN` **no** dispara
+  # flujos, así que sin esta puerta la versión quedaría declarada y sin aplicar hasta el
+  # siguiente push que tocara las rutas de arriba — un retraso permanente de un merge,
+  # que es medio defecto de #675 reintroducido por la puerta de atrás.
+  #
+  # No es una puerta trasera al despliegue: `aplicar-prod` sigue detrás del *environment*
+  # protegido, y `aplicar-stg` sigue exigiendo las cuatro credenciales. Lo que cambia es
+  # quién puede pedir la corrida, no qué comprueba antes de aplicar.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  verificar:
+    name: Lint, tipos y pruebas
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    defaults:
+      run:
+        working-directory: infra
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Historial completo, desde #675: `deriva-de-migraciones.test.ts` cuenta las
+          # migraciones que trae el `sha` que `applicationBootstrapVersion` declara y las
+          # que declara `origin/main`, y las dos se cuentan en el arbol de git de ESE
+          # commit —nunca en el de trabajo, que seria otra version—. Con el checkout
+          # superficial ninguno de los dos esta, y la prueba **no concluye** en vez de
+          # dar un numero plausible y equivocado: es la misma cautela que
+          # `verificar-el-ambiente.sh` escribio primero.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: infra/yarn.lock
+
+      - name: Instalar dependencias
+        run: yarn install --frozen-lockfile
+
+      - name: yarn verificar
+        run: yarn verificar
+
+  motor:
+    name: El motor, levantado y con el aislamiento verificado
+    runs-on: ubuntu-latest
+    needs: verificar
+    if: github.event_name != 'schedule'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: infra/yarn.lock
+
+      - name: Instalar dependencias
+        working-directory: infra
+        run: yarn install --frozen-lockfile
+
+      # La misma versión que declara `backend/gradle.properties` y que instala
+      # `backend.yml`: la prueba de aislamiento es del backend, y aquí solo cambia
+      # contra qué motor corre.
+      - name: Instalar JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Levanta el motor con los guiones que el manifiesto monta, comprueba los cuatro
+      # roles contra el proceso en marcha y ejecuta `verificarAislamiento` contra esa
+      # instancia. **Es el criterio de aceptación de #149**, y no se puede sustituir por
+      # leer el manifiesto: un manifiesto correcto no demuestra que sgtm_app no vea las
+      # filas de la otra municipalidad.
+      - name: verificar-el-motor.sh --con-aislamiento
+        run: infra/verificaciones/motor/verificar-el-motor.sh --ambiente stg --con-aislamiento
+
+      # `verificar-rotacion.sh` existia desde #154 y **no lo corria nadie** —INF-06 lo
+      # decia con todas las letras: «corrido a mano (no esta en CI)»—. Una verificacion
+      # escrita que nunca se ejecuta no protege nada; es la misma leccion que
+      # `verificar-cuadros.mjs` dejo en #188. Entra aqui porque necesita exactamente lo
+      # que este trabajo ya tiene: un motor levantado con los guiones del manifiesto.
+      #
+      # Los DOS roles del inventario con `LOGIN` y clave que rotar (issue #435). El de
+      # carga no se habia ejercitado nunca, y es el unico que publica cifras normativas.
+      - name: La rotacion, contra un motor real, para los dos roles que rotan
+        run: |
+          set -euo pipefail
+          infra/secretos/verificar-rotacion.sh --ambiente stg --rol sgtm_app
+          infra/secretos/verificar-rotacion.sh --ambiente stg --rol rol_carga_parametros
+
+  raiz-sellada:
+    name: La raiz sellada arranca, y su /tmp no es decorativo
+    runs-on: ubuntu-latest
+    needs: verificar
+    if: github.event_name != 'schedule'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: infra/yarn.lock
+
+      - name: Instalar dependencias
+        working-directory: infra
+        run: yarn install --frozen-lockfile
+
+      # Solo Docker, sin clúster: es el trabajo más barato de los que ejercitan algo de
+      # verdad. `componentes.test.ts` ya comprueba que el manifiesto DICE
+      # `readOnlyRootFilesystem` y monta `/tmp`; que el contenedor ARRANQUE con eso
+      # puesto es otra afirmación, y de las que este PR ya vio fallar dos veces
+      # —`capabilities.drop` sobre el entrypoint de PostgreSQL, `runAsNonRoot` sobre seis
+      # imágenes con `USER` no numérico—: las dos aparecieron contra un clúster real y
+      # ninguna en `yarn verificar`.
+      #
+      # Lleva dentro su propia demostración de fallo (caso B): con la raíz sellada y sin
+      # `/tmp`, el contenedor tiene que morir. Si terminara en 0, el caso A no probaría
+      # nada.
+      - name: verificar-raiz-sellada.sh
+        run: infra/verificaciones/raiz-sellada/verificar-raiz-sellada.sh --ambiente stg
+
+  simulacro:
+    name: El respaldo, restaurado de verdad
+    runs-on: ubuntu-latest
+    needs: verificar
+    if: github.event_name != 'schedule'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: infra/yarn.lock
+
+      - name: Instalar dependencias
+        working-directory: infra
+        run: yarn install --frozen-lockfile
+
+      # RNF-079: un respaldo que no se ha restaurado no cuenta como respaldo. Este
+      # trabajo recorre el ciclo entero contra un PostgreSQL real —archivado continuo,
+      # respaldo base cifrado con el rol que NO puede hacer DDL, pérdida total del
+      # directorio de datos, PITR a un instante marcado, y comprobación de que las
+      # cifras cuadran y lo restaurado admite escrituras—.
+      #
+      # No usa Docker a propósito: el PITR exige destruir el directorio de datos y
+      # arrancar otro proceso sobre lo restaurado, y contra un contenedor de la imagen
+      # oficial eso no se puede sin reimplementar medio entrypoint. El runner trae
+      # PostgreSQL instalado, y `SGTM_MOTOR_MODO=local` es lo que el guion pide.
+      # PostGIS lo instala `crear-roles.sql` desde ADR-0021, y el PostgreSQL que trae
+      # el runner no lo incluye: sin este paso el simulacro muere en su primer guion
+      # con «extension "postgis" is not available», que no se parece a su causa. El
+      # motor del manifiesto SI la trae —es `postgis/postgis`—; el de aqui es el nativo
+      # del runner, y hay que completarlo a mano.
+      # `apt-get update` antes del install NO es ceremonia (#676): el indice de paquetes
+      # que la imagen del runner trae precocinado apunta a versiones EXACTAS, y el espejo
+      # retira la anterior en cuanto publica una revision nueva. Desde ese dia el install
+      # falla siempre —«404 Not Found» al bajar una dependencia— y muere antes de instalar
+      # nada. No es un parpadeo que se arregle reintentando: se arregla refrescando el indice.
+      - name: PostGIS en el motor local del runner
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-16-postgis-3
+
+      - name: simulacro-de-restauracion.sh
+        run: infra/respaldo/simulacro-de-restauracion.sh --ambiente stg
+
+      # Y que el simulacro puede fallar, que es lo que lo hace valer algo: sin
+      # `recovery_target_time` el WAL se reproduce entero, la escritura posterior al
+      # instante marcado sobrevive, y la comprobación tiene que ponerse roja. Si esto
+      # pasara en verde, el simulacro no estaría verificando el PITR.
+      - name: Y se demuestra que puede fallar (sin recovery_target_time)
+        run: |
+          sed -i "s|^recovery_target_time = .*|# quitado a proposito|" \
+              infra/respaldo/simulacro-de-restauracion.sh
+          if infra/respaldo/simulacro-de-restauracion.sh --ambiente stg; then
+              echo "::error::El simulacro paso SIN recovery_target_time. No esta verificando el PITR."
+              exit 1
+          fi
+          echo "Correcto: sin el objetivo de recuperacion, el simulacro se pone rojo."
+
+  manifiestos:
+    name: Los manifiestos, validados por un API server de verdad
+    runs-on: ubuntu-latest
+    needs: verificar
+    if: github.event_name != 'schedule'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: infra/yarn.lock
+
+      - name: Instalar dependencias
+        working-directory: infra
+        run: yarn install --frozen-lockfile
+
+      # `kind` sin desplegar nada: el clúster existe solo para que su API server valide
+      # el esquema. Es el mismo truco que usa `publicar-imagenes.yml` para demostrar el
+      # mecanismo de liberación, y por el mismo motivo — un clúster desechable dentro
+      # del propio runner cuesta segundos.
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: validacion-de-manifiestos
+
+      # Se aplican **de verdad** contra el clúster desechable, no con
+      # `--dry-run=server`, y la diferencia importa: en dry-run el `Namespace` del
+      # ambiente no llega a existir y todo lo que va dentro fallaría por eso; y la
+      # `PriorityClass` que cada pod nombra tampoco, con lo que el API server rechazaría
+      # los pods por una causa que no es la que se quiere comprobar. Aplicando de
+      # verdad, cada objeto se valida contra el esquema real y contra lo que ya existe.
+      #
+      # Los pods no llegan a arrancar —no hay Secrets, ni imágenes que descargar, ni
+      # volumen— y da igual: lo que se comprueba aquí es que el API server acepta cada
+      # objeto. Que el sistema funcione es otra cosa, y está en `motor` y en el VPS.
+      #
+      # Los recursos de Traefik quedan fuera porque sus CRD no están en kind, y con
+      # ellos el ingreso entero: `traefik.io/v1alpha1` lo cubren los tipos de
+      # `tipos.ts`, la auditoría y `conformidad-con-kubernetes.test.ts`. Se dice aquí
+      # para que nadie lo lea como «esto valida todo».
+      - name: Los dos ambientes, aplicados contra el clúster desechable
+        working-directory: infra
+        run: |
+          set -euo pipefail
+          for ambiente in stg prod; do
+            echo "::group::$ambiente"
+            yarn --silent manifiestos --ambiente "$ambiente" \
+              | node -e '
+                  const entrada = JSON.parse(require("fs").readFileSync(0, "utf8"));
+                  const deTraefik = ["IngressRoute", "Middleware", "TLSOption", "HelmChartConfig"];
+                  entrada.items = entrada.items.filter((i) => !deTraefik.includes(i.kind));
+                  process.stdout.write(JSON.stringify(entrada));
+                ' \
+              | kubectl apply --filename -
+            echo "::endgroup::"
+          done
+
+  capacidad:
+    name: capacidad.ts predice lo que el planificador hace
+    runs-on: ubuntu-latest
+    needs: verificar
+    if: github.event_name != 'schedule'
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: infra/yarn.lock
+
+      - name: Instalar dependencias
+        working-directory: infra
+        run: yarn install --frozen-lockfile
+
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: capacidad
+
+      # `capacidad.test.ts` comprueba la aritmética; esto comprueba que la aritmética
+      # describe a Kubernetes. Un modelo que se equivoque HACIA ARRIBA —decir «cabe»
+      # cuando no— devuelve el colgado del issue #252 con la guarda en verde, que es
+      # el peor de los estados posibles. Lleva dentro su propia demostración: un pod
+      # que pide más CPU de la que el nodo tiene se queda `Pending` por «Insufficient
+      # cpu», y sin eso el caso principal podría estar pasando por otro motivo.
+      - name: verificar-contra-el-planificador.sh
+        run: infra/verificaciones/capacidad/verificar-contra-el-planificador.sh
+
+  secretos:
+    name: Los secretos se generan solos, y ninguno se repite
+    runs-on: ubuntu-latest
+    needs: verificar
+    if: github.event_name != 'schedule'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: infra/yarn.lock
+
+      - name: Instalar dependencias
+        working-directory: infra
+        run: yarn install --frozen-lockfile
+
+      # El mismo truco que `manifiestos`: un clúster desechable solo para tener un API
+      # de Kubernetes de verdad al que hablarle. `bootstrap-secretos.sh` no necesita
+      # PostgreSQL corriendo — solo crea y lee objetos `Secret`.
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: secretos
+
+      - name: Un despliegue desde cero genera lo que falta, sin que nadie teclee una clave
+        working-directory: infra
+        run: |
+          set -euo pipefail
+          ./secretos/bootstrap-secretos.sh --ambiente stg
+          ./secretos/bootstrap-secretos.sh --ambiente prod
+
+      - name: Ninguna clave se repite, ni dentro de un ambiente ni entre los dos
+        working-directory: infra
+        run: |
+          ./secretos/verificar-claves-distintas.sh \
+              --ambiente stg  --namespace sgtm-stg \
+              --ambiente prod --namespace sgtm-prod
+
+      # Correrlo otra vez tiene que ser un no-op: nada nuevo, y los valores que ya
+      # existian se quedan exactamente iguales. Se compara por huella (sha256 corto),
+      # nunca por el valor.
+      #
+      # **Se comparan TODAS las entradas del inventario, no una.** Hasta el issue #435
+      # esto miraba solo `clave-app`, de modo que una entrada nueva —`postgres-carga`
+      # entro con #387— podia regenerarse en cada corrida sin que nada lo dijera, y el
+      # sintoma seria una credencial rotada sin que nadie lo pidiera **en el unico rol
+      # que publica cifras normativas**. La lista sale de `yarn secretos`, asi que la
+      # siguiente entrada entra sola.
+      - name: Volver a correrlo no cambia nada, en NINGUNA clave del inventario
+        working-directory: infra
+        run: |
+          set -euo pipefail
+          huellas_de() {
+            yarn --silent secretos --ambiente "$1" | node -e '
+              const datos = JSON.parse(require("fs").readFileSync(0, "utf8"));
+              process.stdout.write(datos.map((e) => e.secreto + " " + e.clave).join("\n"));
+            ' | while read -r secreto clave; do
+              [ -n "$secreto" ] || continue
+              valor=$(kubectl -n "sgtm-$1" get secret "$secreto" -o jsonpath="{.data.$clave}")
+              echo "$secreto/$clave $(printf '%s' "$valor" | base64 --decode | sha256sum | cut -c1-12)"
+            done
+          }
+          huellas_de stg > /tmp/antes.txt
+          echo "Inventario medido:"; cat /tmp/antes.txt
+
+          ./secretos/bootstrap-secretos.sh --ambiente stg
+
+          huellas_de stg > /tmp/despues.txt
+          if ! diff -u /tmp/antes.txt /tmp/despues.txt; then
+            echo "::error::bootstrap-secretos.sh cambio una clave que ya existia. Eso" \
+                 "rotaria credenciales en cada pulumi up, sin que nadie lo pidiera."
+            exit 1
+          fi
+          echo "Ninguna de las $(wc -l < /tmp/antes.txt) huellas cambio."
+
+      # La demostracion del issue: "volviendo a poner la misma clave para sgtm_owner y
+      # sgtm_app... esa es la que hay que escribir: claves distintas, comprobado". Se
+      # fuerza aqui, contra el cluster real, y se exige que la comprobacion de arriba
+      # lo detecte.
+      #
+      # **Se fuerza sobre `postgres-carga`, y no sobre `postgres-app`** (issue #435): es
+      # el rol que publica cifras normativas de ambito nacional, el ultimo que entro al
+      # inventario, y el que la demostracion anterior no tocaba. El mecanismo es el
+      # mismo —`verificar-claves-distintas.sh` recorre el inventario entero—, asi que
+      # cambiar la victima no debilita nada y cubre la entrada nueva.
+      - name: 'Demostracion: dos claves iguales se detectan'
+        working-directory: infra
+        run: |
+          set -euo pipefail
+          valor_de_owner=$(kubectl -n sgtm-stg get secret sgtm-stg-postgres-owner \
+              -o jsonpath='{.data.clave-owner}')
+          kubectl -n sgtm-stg patch secret sgtm-stg-postgres-carga --type=merge \
+              -p "{\"data\":{\"clave-carga\":\"$valor_de_owner\"}}"
+
+          if ./secretos/verificar-claves-distintas.sh --ambiente stg --namespace sgtm-stg; then
+            echo "::error::verificar-claves-distintas.sh NO detecto que sgtm_owner y" \
+                 "rol_carga_parametros comparten clave. La comprobacion no protege nada."
+            exit 1
+          fi
+          echo "Correcto: la comprobacion detecto las dos claves iguales."
+
+  observabilidad-alertas:
+    name: Una alerta que le llegue a alguien
+    runs-on: ubuntu-latest
+    needs: verificar
+    if: github.event_name != 'schedule'
+    # Sin esto, el limite por omision de GitHub es 360 minutos: un colgado real -no una
+    # corrida lenta, una que nunca termina- se queda consumiendo cuota hasta que alguien
+    # lo nota y cancela a mano, como paso el 2026-08-23 (mas de 40 minutos, muy por
+    # encima del peor caso de los `--timeout` internos del guion, ~25). 15 es holgado
+    # sobre los "hasta ~8 minutos" que el guion documenta, y un tope firme, no un
+    # sustituto de sus esperas internas -esas se quedan como estan, cada una razonada
+    # en su propio comentario-.
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: infra/yarn.lock
+
+      - name: Instalar dependencias
+        working-directory: infra
+        run: yarn install --frozen-lockfile
+
+      # El motor, Prometheus y Alertmanager corren de verdad: hace falta un clúster
+      # con Pods reales, no solo un API server (a diferencia de `manifiestos`).
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: observabilidad-alertas
+
+      # «Una regla que no notifica a nadie no es una alerta, es un grafico» (issue
+      # #156): apaga la base, comprueba que la regla se evalua SIN que nadie se
+      # entere, cablea un receptor, y comprueba que la MISMA alerta activa se
+      # entrega. Hasta ~8 minutos: el `for: 2m` de la regla es real, no acortado
+      # para CI.
+      - name: verificar-alertas.sh
+        run: infra/observabilidad/verificar-alertas.sh
+
+  observabilidad-tableros:
+    name: Los tableros muestran datos de verdad
+    runs-on: ubuntu-latest
+    needs: verificar
+    if: github.event_name != 'schedule'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: infra/yarn.lock
+
+      - name: Instalar dependencias
+        working-directory: infra
+        run: yarn install --frozen-lockfile
+
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: observabilidad-tableros
+
+      # Cada panel de resumen-operativo.json, consultado contra un Prometheus real
+      # con exportadores reales -y uno sintetico para la JVM, sin imagen publicable
+      # aqui-. Falla nombrando el panel si alguno vuelve "No data".
+      - name: verificar-tableros.sh
+        run: infra/observabilidad/verificar-tableros.sh
+
+  red:
+    name: Denegacion por omision, contra un CNI que la aplica de verdad
+    runs-on: ubuntu-latest
+    needs: verificar
+    if: github.event_name != 'schedule'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: infra/yarn.lock
+
+      - name: Instalar dependencias
+        working-directory: infra
+        run: yarn install --frozen-lockfile
+
+      # `kindnet`, el CNI por omision de `kind`, no aplica `NetworkPolicy` -por
+      # eso ningun otro clúster de este archivo prueba una politica de red de
+      # verdad-. `config` lo desactiva; `verificar-red.sh` instala Calico en su
+      # lugar, el unico paso adicional que hace falta.
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: red
+          config: infra/red/kind-sin-cni.yaml
+
+      # Los dos criterios de aceptacion del issue #157 -la interfaz no llega a
+      # PostgreSQL, la aplicacion no llega a un destino de internet fuera de la
+      # lista- mas la demostracion que el propio issue pide: quitando la
+      # politica de PostgreSQL, la MISMA conexion pasa a conectar.
+      - name: verificar-red.sh
+        run: infra/red/verificar-red.sh
+
+  # stg y prod son dos VPS con IP distinta, así que un solo túnel no puede llegar a los
+  # dos. Antes esto era un solo job reutilizando un túnel para ambos `preview` — bastaba
+  # mientras los dos ambientes vivían en el mismo nodo. Ahora son dos jobs, cada uno con
+  # su propio `environment` para que `secrets.VPS_HOST` (y compañía) resuelva al VPS que
+  # le corresponde: `stg` para el nodo de stg, y `prod-preview` —una copia sin protección
+  # de los mismos valores del `environment` `prod`— para que el preview de prod siga
+  # corriendo solo en cada PR, sin pedir la aprobación que sí exige `aplicar-prod`.
+  previsualizar-stg:
+    name: pulumi preview de stg
+    runs-on: ubuntu-latest
+    needs: verificar
+    # Un PR desde una bifurcación no ve los secretos del repositorio ni del environment.
+    # Sin token no hay estado que consultar, y este trabajo no tiene nada que hacer.
+    if: github.event_name == 'pull_request'
+    environment: stg
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: infra/yarn.lock
+
+      - name: Instalar dependencias
+        working-directory: infra
+        run: yarn install --frozen-lockfile
+
+      # Desde que `componentes/` tiene recursos, el plan se calcula contra lo que hay
+      # en el nodo: `preview` necesita las cuatro credenciales, no solo el token. Las
+      # tres primeras versiones de este archivo decían lo contrario, y era cierto
+      # entonces —con la carpeta vacía no había nada que consultar—.
+      - name: ¿Hay credenciales del clúster?
+        id: token
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          if [ -n "$PULUMI_ACCESS_TOKEN" ] && [ -n "$SSH_PRIVATE_KEY" ] \
+             && [ -n "$VPS_USER" ] && [ -n "$VPS_HOST" ]; then
+            echo "hay=si" >> "$GITHUB_OUTPUT"
+          else
+            echo "hay=no" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Sin \`pulumi preview\` de stg"
+              echo
+              echo "Falta alguna de las cuatro credenciales del *environment* \`stg\`, o"
+              echo "el PR viene de una bifurcación y no las ve."
+              echo
+              echo "Lo que sí corrió, y es lo que cubre este cambio mientras no haya VPS:"
+              echo
+              echo "- \`yarn verificar\` — invariantes de \`config.ts\`, auditoría de los"
+              echo "  manifiestos y los criterios de aceptación de la fase B."
+              echo "- \`motor\` — el PostgreSQL del manifiesto, levantado, con"
+              echo "  \`verificarAislamiento\` contra esa instancia."
+              echo "- \`manifiestos\` — los dos ambientes aceptados por un API server."
+              echo
+              echo "Para habilitar el preview: crear los dos stacks y poner los cuatro"
+              echo "secretos. Los pasos están en \`infra/README.md\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # El túnel, por la misma razón que en `aplicar-*`: el API de k3s no responde desde
+      # internet (INF-01 §1.4), y ahora `preview` sí necesita llegar a él.
+      - name: Abrir el túnel SSH al API de k3s
+        if: steps.token.outputs.hay == 'si'
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          install -m 600 /dev/null ~/.ssh/despliegue
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/despliegue
+          # stg corre en k3d (Kubernetes en un contenedor) en vez de k3s directo sobre el
+          # host: la API queda publicada en el puerto 6445 del VPS, no en el 6443 de un
+          # k3s nativo (que es lo que usa prod). El lado local del túnel sigue siendo
+          # 6443, que es lo que el kubeconfig de stg declara.
+          ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=~/.ssh/known_hosts \
+              -i ~/.ssh/despliegue -f -N -L 6443:localhost:6445 "$VPS_USER@$VPS_HOST"
+
+      # Los tres bootstrap secrets de infraestructura (ADR-0011 §3) se inyectan aquí,
+      # frescos en cada corrida, y nunca tocan el checkout: `stacks.test.ts` exige que
+      # `Pulumi.<ambiente>.yaml` nunca los versione, ni siquiera cifrados. `pulumi config
+      # set` los escribe en la copia efímera de este runner, que muere con el job.
+      - name: Configurar los secretos de infraestructura del stack (ADR-0011 §3)
+        if: steps.token.outputs.hay == 'si'
+        working-directory: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          KUBECONFIG_VALUE: ${{ secrets.KUBECONFIG }}
+          BACKUP_ACCESS_KEY_ID_VALUE: ${{ secrets.BACKUP_ACCESS_KEY_ID }}
+          BACKUP_SECRET_ACCESS_KEY_VALUE: ${{ secrets.BACKUP_SECRET_ACCESS_KEY }}
+          REGISTRY_PULL_TOKEN_VALUE: ${{ secrets.REGISTRY_PULL_TOKEN }}
+        run: |
+          pulumi config set --secret --stack stg kubeconfig -- "$KUBECONFIG_VALUE"
+          pulumi config set --secret --stack stg backupAccessKeyId -- "$BACKUP_ACCESS_KEY_ID_VALUE"
+          pulumi config set --secret --stack stg backupSecretAccessKey -- "$BACKUP_SECRET_ACCESS_KEY_VALUE"
+          pulumi config set --secret --stack stg registryPullToken -- "$REGISTRY_PULL_TOKEN_VALUE"
+
+      - uses: pulumi/actions@v6
+        if: steps.token.outputs.hay == 'si'
+        with:
+          command: preview
+          stack-name: stg
+          work-dir: infra
+          comment-on-pr: true
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+
+  previsualizar-prod:
+    name: pulumi preview de prod
+    runs-on: ubuntu-latest
+    needs: verificar
+    if: github.event_name == 'pull_request'
+    # Sin protección: es una copia de los secretos del *environment* `prod`, que existe
+    # solo para que este preview de solo lectura no quede detrás de la aprobación que
+    # `aplicar-prod` sí exige. El `up` real nunca usa este *environment*.
+    environment: prod-preview
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: infra/yarn.lock
+
+      - name: Instalar dependencias
+        working-directory: infra
+        run: yarn install --frozen-lockfile
+
+      - name: ¿Hay credenciales del clúster?
+        id: token
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          if [ -n "$PULUMI_ACCESS_TOKEN" ] && [ -n "$SSH_PRIVATE_KEY" ] \
+             && [ -n "$VPS_USER" ] && [ -n "$VPS_HOST" ]; then
+            echo "hay=si" >> "$GITHUB_OUTPUT"
+          else
+            echo "hay=no" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Sin \`pulumi preview\` de prod"
+              echo
+              echo "Falta alguna de las cuatro credenciales del *environment*"
+              echo "\`prod-preview\`, o el PR viene de una bifurcación y no las ve."
+              echo
+              echo "Lo que sí corrió, y es lo que cubre este cambio mientras no haya VPS:"
+              echo
+              echo "- \`yarn verificar\` — invariantes de \`config.ts\`, auditoría de los"
+              echo "  manifiestos y los criterios de aceptación de la fase B."
+              echo "- \`motor\` — el PostgreSQL del manifiesto, levantado, con"
+              echo "  \`verificarAislamiento\` contra esa instancia."
+              echo "- \`manifiestos\` — los dos ambientes aceptados por un API server."
+              echo
+              echo "Para habilitar el preview: crear los dos stacks y poner los cuatro"
+              echo "secretos. Los pasos están en \`infra/README.md\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Abrir el túnel SSH al API de k3s
+        if: steps.token.outputs.hay == 'si'
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          install -m 600 /dev/null ~/.ssh/despliegue
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/despliegue
+          ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=~/.ssh/known_hosts \
+              -i ~/.ssh/despliegue -f -N -L 6443:localhost:6443 "$VPS_USER@$VPS_HOST"
+
+      - name: Configurar los secretos de infraestructura del stack (ADR-0011 §3)
+        if: steps.token.outputs.hay == 'si'
+        working-directory: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          KUBECONFIG_VALUE: ${{ secrets.KUBECONFIG }}
+          BACKUP_ACCESS_KEY_ID_VALUE: ${{ secrets.BACKUP_ACCESS_KEY_ID }}
+          BACKUP_SECRET_ACCESS_KEY_VALUE: ${{ secrets.BACKUP_SECRET_ACCESS_KEY }}
+          REGISTRY_PULL_TOKEN_VALUE: ${{ secrets.REGISTRY_PULL_TOKEN }}
+        run: |
+          pulumi config set --secret --stack prod kubeconfig -- "$KUBECONFIG_VALUE"
+          pulumi config set --secret --stack prod backupAccessKeyId -- "$BACKUP_ACCESS_KEY_ID_VALUE"
+          pulumi config set --secret --stack prod backupSecretAccessKey -- "$BACKUP_SECRET_ACCESS_KEY_VALUE"
+          pulumi config set --secret --stack prod registryPullToken -- "$REGISTRY_PULL_TOKEN_VALUE"
+
+      - uses: pulumi/actions@v6
+        if: steps.token.outputs.hay == 'si'
+        with:
+          command: preview
+          stack-name: prod
+          work-dir: infra
+          comment-on-pr: true
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+
+  aplicar-stg:
+    name: pulumi up en stg
+    runs-on: ubuntu-latest
+    needs: verificar
+    # `workflow_dispatch` desde #720: es como `declarar-version.yml` pide que se aplique
+    # la versión que acaba de integrar, porque su propio `push` no dispara nada.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # Un `pulumi up` sano de stg tarda 15-25 s. Este tope no existe para corridas
+    # lentas: existe para las que NO terminan (issue #252). Un pod que el planificador
+    # no puede ubicar se queda `Pending` para siempre, y el `ConfigGroup` lo espera sin
+    # error ni registro; sin tope, el limite real es el de la plataforma —360 min— y
+    # entretanto el grupo de concurrencia de abajo retiene toda integracion posterior.
+    # Es la misma leccion que `observabilidad-alertas` ya aprendio el 2026-08-23.
+    timeout-minutes: 15
+    # stg y prod son DOS VPS con IP distinta. Sin este `environment`, `secrets.VPS_HOST`
+    # y compañía resolverían a los secretos de nivel-repositorio —que son los de prod—
+    # y este trabajo abriría el túnel al nodo equivocado: `pulumi up --stack stg`
+    # escribiendo los recursos de stg contra el clúster de producción.
+    environment: stg
+    # `pulumi up` tiene su propio bloqueo de concurrencia en Pulumi Cloud (ADR-0011 §3);
+    # esto evita además que dos integraciones seguidas abran dos túneles a la vez sobre
+    # el mismo nodo.
+    concurrency:
+      group: infra-aplicar-stg
+      cancel-in-progress: false
+    outputs:
+      hay-credenciales: ${{ steps.credenciales.outputs.hay }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Historial completo: `verificar-el-ambiente.sh` compara las migraciones que
+          # tiene la base con las que trae el `sha` que `Pulumi.stg.yaml` declara, y para
+          # contarlas necesita ese commit en el clon. Con el checkout superficial no esta,
+          # y el guion **no concluye** en vez de contar las del arbol de trabajo — que
+          # seria otra version, y un numero plausible y equivocado.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: infra/yarn.lock
+
+      - name: Instalar dependencias
+        working-directory: infra
+        run: yarn install --frozen-lockfile
+
+      - name: ¿Hay credenciales del clúster?
+        id: credenciales
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          if [ -n "$PULUMI_ACCESS_TOKEN" ] && [ -n "$SSH_PRIVATE_KEY" ] \
+             && [ -n "$VPS_USER" ] && [ -n "$VPS_HOST" ]; then
+            echo "hay=si" >> "$GITHUB_OUTPUT"
+          else
+            echo "hay=no" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Sin \`pulumi up\` en stg"
+              echo
+              echo "Falta uno o más de \`PULUMI_ACCESS_TOKEN\`, \`SSH_PRIVATE_KEY\`,"
+              echo "\`VPS_USER\` o \`VPS_HOST\`. Sin ellos no hay VPS al que llegar:"
+              echo "esto corre en cuanto exista y sus secretos estén puestos."
+              echo "Los pasos están en \`infra/README.md\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Abrir el túnel SSH al API de k3s
+        if: steps.credenciales.outputs.hay == 'si'
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          install -m 600 /dev/null ~/.ssh/despliegue
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/despliegue
+          # TOFU (confiar la primera vez): no hay huella fijada de antemano, así que se
+          # acepta la que presente el host en esta conexión y se recuerda para el resto
+          # del trabajo. Fijar la huella real del VPS es trabajo de endurecimiento
+          # (issue #157), no de este issue.
+          ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=~/.ssh/known_hosts \
+              -i ~/.ssh/despliegue -f -N -L 6443:localhost:6445 "$VPS_USER@$VPS_HOST"
+
+      # `bootstrap-secretos.sh` habla con el API por `kubectl` suelto, no por el
+      # proveedor de Pulumi: sin esto, `kubectl` no encuentra ningun kubeconfig y cae al
+      # `http://localhost:8080` heredado, que nadie escucha —el tunel de arriba sirve
+      # TLS en 6443—. Es el mismo `secrets.KUBECONFIG` que el paso de abajo le pasa a
+      # Pulumi; aqui se escribe ademas a un archivo para que `kubectl` lo use por su
+      # cuenta (issue: bootstrap-secretos.sh fallaba con "connection refused" en la
+      # primera corrida real de este trabajo, 2026-08-24, PR #236).
+      - name: Escribir el kubeconfig para kubectl (el mismo que usa pulumi up)
+        if: steps.credenciales.outputs.hay == 'si'
+        env:
+          KUBECONFIG_VALUE: ${{ secrets.KUBECONFIG }}
+        run: |
+          install -m 700 -d ~/.kube
+          install -m 600 /dev/null ~/.kube/config-ci
+          echo "$KUBECONFIG_VALUE" > ~/.kube/config-ci
+          echo "KUBECONFIG=$HOME/.kube/config-ci" >> "$GITHUB_ENV"
+
+      # `capacidad.ts` decide si el stack cabe comparándolo con lo que
+      # `Pulumi.stg.yaml` DICE del nodo. Aquí se comprueba que ese dato no sea
+      # optimista, contra el nodo real: declarar más de lo que hay deja pasar
+      # exactamente el despliegue que no cabe (issue #252).
+      - name: Lo declarado cabe en el nodo real
+        if: steps.credenciales.outputs.hay == 'si'
+        working-directory: infra
+        run: ./vps/comprobar-lo-asignable.sh --ambiente stg
+
+      # Y el stack cabe en lo declarado. Este es el paso que impide el colgado del
+      # issue #252: `pulumi up` no llega a empezar si los pods no caben, porque si
+      # empieza espera indefinidamente a que queden `Ready` y nunca lo estaran.
+      # `index.ts` solo AVISA cuando la brecha esta declarada -lanzar alli rompe
+      # tambien `pulumi preview`, que corre en cada PR-; el bloqueo duro vive aqui.
+      - name: 'El stack cabe en su nodo (issue #252)'
+        if: steps.credenciales.outputs.hay == 'si'
+        working-directory: infra
+        run: yarn --silent capacidad --ambiente stg --estricto
+
+      # ANTES de `pulumi up`: los Deployment y Job que va a crear referencian estos
+      # Secret por nombre, y sin ellos los pods se quedan en Pending. Idempotente —
+      # correrlo en cada integración no cambia nada una vez que existen— y nunca pasa
+      # por Pulumi (INF-06, issue #154): las claves no entran a su estado.
+      - name: Generar los secretos que falten (INF-06)
+        if: steps.credenciales.outputs.hay == 'si'
+        working-directory: infra
+        run: ./secretos/bootstrap-secretos.sh --ambiente stg
+
+      # ANTES de `pulumi up`, y por el mismo motivo que el paso de los secretos: el Job
+      # de migracion que `up` va a crear corre DENTRO de este mismo paso, y `V61` empieza
+      # con `ADD COLUMN geometria geography(...)`. Sin la extension, el Job falla con
+      # «type "geography" does not exist» y no lo puede arreglar el migrador: `postgis`
+      # no es *trusted*, asi que crearla exige superusuario y `sgtm_owner` a proposito no
+      # lo es (ADR-0021).
+      #
+      # `crear-roles.sql` la crea bien, pero corre UNA sola vez, desde
+      # `/docker-entrypoint-initdb.d`, con el volumen vacio: en un clúster que ya existe
+      # no vuelve a ejecutarse nunca. Es el mismo hueco que #435 encontro con el `LOGIN`
+      # de `rol_carga_parametros`, y CI no lo ve porque CI siempre parte de un volumen
+      # vacio.
+      #
+      # **Y estaba costando el despliegue entero.** Desde el 2026-08-30, `aplicar-stg`
+      # salia rojo en «MAL extension postgis: NO esta», y como `aplicar-prod` tiene
+      # `needs: aplicar-stg`, produccion llevaba desde el 2026-08-29 sin desplegarse.
+      #
+      # El guion es idempotente y solo anade. La condicion es para el primer despliegue:
+      # sin motor todavia no hay a quien pedirselo, y ahi si lo hara `crear-roles.sql`.
+      - name: Las extensiones que crear-roles.sql declara, en un motor que ya existe (ADR-0021)
+        if: steps.credenciales.outputs.hay == 'si'
+        run: |
+          if kubectl -n sgtm-stg get deployment sgtm-stg-postgres >/dev/null 2>&1; then
+            despliegue/crear-extensiones.sh --ambiente stg
+          else
+            echo "Todavia no hay motor en sgtm-stg: el volumen nace vacio y las crea"
+            echo "crear-roles.sql desde /docker-entrypoint-initdb.d, que es el camino"
+            echo "que CI ejercita en cada PR."
+          fi
+
+      - name: Configurar los secretos de infraestructura del stack (ADR-0011 §3)
+        if: steps.credenciales.outputs.hay == 'si'
+        working-directory: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          KUBECONFIG_VALUE: ${{ secrets.KUBECONFIG }}
+          BACKUP_ACCESS_KEY_ID_VALUE: ${{ secrets.BACKUP_ACCESS_KEY_ID }}
+          BACKUP_SECRET_ACCESS_KEY_VALUE: ${{ secrets.BACKUP_SECRET_ACCESS_KEY }}
+          REGISTRY_PULL_TOKEN_VALUE: ${{ secrets.REGISTRY_PULL_TOKEN }}
+        run: |
+          pulumi config set --secret --stack stg kubeconfig -- "$KUBECONFIG_VALUE"
+          pulumi config set --secret --stack stg backupAccessKeyId -- "$BACKUP_ACCESS_KEY_ID_VALUE"
+          pulumi config set --secret --stack stg backupSecretAccessKey -- "$BACKUP_SECRET_ACCESS_KEY_VALUE"
+          pulumi config set --secret --stack stg registryPullToken -- "$REGISTRY_PULL_TOKEN_VALUE"
+
+      - uses: pulumi/actions@v6
+        if: steps.credenciales.outputs.hay == 'si'
+        with:
+          command: up
+          stack-name: stg
+          work-dir: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+
+      # El ambiente que acaba de aplicarse, comprobado CONTRA SI MISMO (#434).
+      #
+      # `pulumi up` en verde dice que los recursos existen, no que el sistema sirva. La
+      # trampa concreta que este paso caza: subir `applicationBootstrapVersion` crea un
+      # Job de migracion nuevo, y si ese Job no corre —o corre y falla— el `Deployment`
+      # queda `Ready` igual, sobre una base que va por detras del esquema que su version
+      # declara. El sintoma de eso no es un error: es una carga batch que termina en
+      # verde y no escribe ninguna fila (PR #244).
+      #
+      # Va DESPUES del `pulumi up`, con el tunel y el kubeconfig que ese trabajo ya
+      # abrio, porque no hay otra forma: es la unica comprobacion del repositorio que
+      # necesita el ambiente real y no un cluster efimero.
+      #
+      # **Y entra aqui porque si no, no lo corre nadie** — que es el defecto que este
+      # mismo issue #435 encontro en `verificar-rotacion.sh`, escrito en #154 y sin
+      # ejecutar desde entonces. Una verificacion que nunca se ejecuta no protege nada.
+      - name: El ambiente aplicado se comprueba a si mismo (#434)
+        if: steps.credenciales.outputs.hay == 'si'
+        run: infra/verificaciones/ambiente/verificar-el-ambiente.sh --ambiente stg
+
+      - name: Qué quedó a medias, si algo falló
+        if: failure() && steps.credenciales.outputs.hay == 'si'
+        run: .github/diagnostico-del-namespace.sh sgtm-stg
+
+  aplicar-prod:
+    name: pulumi up en prod (con aprobación)
+    runs-on: ubuntu-latest
+    needs: aplicar-stg
+    # Sin las cuatro credenciales no hay nada que este trabajo pueda hacer, y no tiene
+    # sentido pedirle a un revisor que apruebe una espera que termina en un paso omitido.
+    # El *environment* protegido —y con él la aprobación— solo entra en juego cuando de
+    # verdad hay algo que aplicar.
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      needs.aplicar-stg.outputs.hay-credenciales == 'si'
+    # GitHub bloquea este trabajo hasta que alguien con acceso al *environment* `prod`
+    # lo aprueba, y registra quién. **El *environment* se crea a mano, una vez, en
+    # Settings → Environments → New environment → «prod» → Required reviewers**: no hay
+    # API para eso en este flujo, y quién aprueba es una decisión de las personas del
+    # proyecto, no de este archivo. Sin ese *environment* configurado, GitHub trata la
+    # palabra clave como un nombre libre y el trabajo corre sin aprobación — por eso el
+    # criterio de aceptación de este issue no está satisfecho solo con este YAML.
+    environment: prod
+    concurrency:
+      group: infra-aplicar-prod
+      cancel-in-progress: false
+    # Ver el mismo tope en `aplicar-stg`. Aquí es donde se pagó: los días 25 y 26 de
+    # agosto de 2026 este trabajo se quedó colgado en `pulumi up` cuatro veces, una de
+    # ellas casi seis horas, esperando `Deployment` que nunca podrían quedar `Ready`
+    # porque sus pods no cabían en el nodo (issue #252). Con `capacidad.ts` eso ya no
+    # llega a `pulumi up` —falla antes, en segundos—, pero el tope se queda: es la red
+    # que no depende de haber previsto la causa.
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Historial completo: `verificar-el-ambiente.sh` compara las migraciones que
+          # tiene la base con las que trae el `sha` que `Pulumi.prod.yaml` declara, y para
+          # contarlas necesita ese commit en el clon. Con el checkout superficial no esta,
+          # y el guion **no concluye** en vez de contar las del arbol de trabajo — que
+          # seria otra version, y un numero plausible y equivocado.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: infra/yarn.lock
+
+      - name: Instalar dependencias
+        working-directory: infra
+        run: yarn install --frozen-lockfile
+
+      # Sin la comprobación de "¿hay credenciales?": el `if` del trabajo ya exige que
+      # `aplicar-stg` haya visto las cuatro de PULUMI_ACCESS_TOKEN/SSH_PRIVATE_KEY/
+      # VPS_USER/VPS_HOST (el token es de repositorio; los otros tres, del *environment*
+      # `stg` en ese job). Repetirla aquí no verificaría las de `prod` —viven en un
+      # *environment* distinto—, así que solo repetiría código sin cambiar nada.
+      - name: Abrir el túnel SSH al API de k3s
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          install -m 600 /dev/null ~/.ssh/despliegue
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/despliegue
+          ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=~/.ssh/known_hosts \
+              -i ~/.ssh/despliegue -f -N -L 6443:localhost:6443 "$VPS_USER@$VPS_HOST"
+
+      # Ver el mismo paso en aplicar-stg: sin esto, kubectl no tiene kubeconfig y
+      # bootstrap-secretos.sh falla contra localhost:8080.
+      - name: Escribir el kubeconfig para kubectl (el mismo que usa pulumi up)
+        env:
+          KUBECONFIG_VALUE: ${{ secrets.KUBECONFIG }}
+        run: |
+          install -m 700 -d ~/.kube
+          install -m 600 /dev/null ~/.kube/config-ci
+          echo "$KUBECONFIG_VALUE" > ~/.kube/config-ci
+          echo "KUBECONFIG=$HOME/.kube/config-ci" >> "$GITHUB_ENV"
+
+      # Ver el mismo paso en `aplicar-stg` (issue #252).
+      - name: Lo declarado cabe en el nodo real
+        working-directory: infra
+        run: ./vps/comprobar-lo-asignable.sh --ambiente prod
+
+      # Y el stack cabe en lo declarado. Este es el paso que impide el colgado del
+      # issue #252: `pulumi up` no llega a empezar si los pods no caben, porque si
+      # empieza espera indefinidamente a que queden `Ready` y nunca lo estaran.
+      # `index.ts` solo AVISA cuando la brecha esta declarada -lanzar alli rompe
+      # tambien `pulumi preview`, que corre en cada PR-; el bloqueo duro vive aqui.
+      - name: 'El stack cabe en su nodo (issue #252)'
+        working-directory: infra
+        run: yarn --silent capacidad --ambiente prod --estricto
+
+      - name: Generar los secretos que falten (INF-06)
+        working-directory: infra
+        run: ./secretos/bootstrap-secretos.sh --ambiente prod
+
+      # El mismo paso que `aplicar-stg`, y por el mismo motivo (ADR-0021): el Job de
+      # migracion que `pulumi up` crea corre dentro de ese mismo paso, y `V61` no puede
+      # crear `postgis` por su cuenta —no es *trusted* y `sgtm_owner` no es superusuario—.
+      # `crear-roles.sql` solo corre con el volumen vacio, y el de `prod` es de antes de
+      # que la extension se declarara (2026-08-30), asi que aqui no llega sola.
+      - name: Las extensiones que crear-roles.sql declara, en un motor que ya existe (ADR-0021)
+        run: |
+          if kubectl -n sgtm-prod get deployment sgtm-prod-postgres >/dev/null 2>&1; then
+            despliegue/crear-extensiones.sh --ambiente prod
+          else
+            echo "Todavia no hay motor en sgtm-prod: el volumen nace vacio y las crea"
+            echo "crear-roles.sql desde /docker-entrypoint-initdb.d."
+          fi
+
+      - name: Configurar los secretos de infraestructura del stack (ADR-0011 §3)
+        working-directory: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          KUBECONFIG_VALUE: ${{ secrets.KUBECONFIG }}
+          BACKUP_ACCESS_KEY_ID_VALUE: ${{ secrets.BACKUP_ACCESS_KEY_ID }}
+          BACKUP_SECRET_ACCESS_KEY_VALUE: ${{ secrets.BACKUP_SECRET_ACCESS_KEY }}
+          REGISTRY_PULL_TOKEN_VALUE: ${{ secrets.REGISTRY_PULL_TOKEN }}
+        run: |
+          pulumi config set --secret --stack prod kubeconfig -- "$KUBECONFIG_VALUE"
+          pulumi config set --secret --stack prod backupAccessKeyId -- "$BACKUP_ACCESS_KEY_ID_VALUE"
+          pulumi config set --secret --stack prod backupSecretAccessKey -- "$BACKUP_SECRET_ACCESS_KEY_VALUE"
+          pulumi config set --secret --stack prod registryPullToken -- "$REGISTRY_PULL_TOKEN_VALUE"
+
+      - uses: pulumi/actions@v6
+        with:
+          command: up
+          stack-name: prod
+          work-dir: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+
+      # El ambiente que acaba de aplicarse, comprobado CONTRA SI MISMO (#434).
+      #
+      # `pulumi up` en verde dice que los recursos existen, no que el sistema sirva. La
+      # trampa concreta que este paso caza: subir `applicationBootstrapVersion` crea un
+      # Job de migracion nuevo, y si ese Job no corre —o corre y falla— el `Deployment`
+      # queda `Ready` igual, sobre una base que va por detras del esquema que su version
+      # declara. El sintoma de eso no es un error: es una carga batch que termina en
+      # verde y no escribe ninguna fila (PR #244).
+      #
+      # Sin `if` de credenciales: el propio trabajo ya exige que las haya.
+      #
+      # Va DESPUES del `pulumi up`, con el tunel y el kubeconfig que ese trabajo ya
+      # abrio, porque no hay otra forma: es la unica comprobacion del repositorio que
+      # necesita el ambiente real y no un cluster efimero.
+      #
+      # **Y entra aqui porque si no, no lo corre nadie** — que es el defecto que este
+      # mismo issue #435 encontro en `verificar-rotacion.sh`, escrito en #154 y sin
+      # ejecutar desde entonces. Una verificacion que nunca se ejecuta no protege nada.
+      - name: El ambiente aplicado se comprueba a si mismo (#434)
+        run: infra/verificaciones/ambiente/verificar-el-ambiente.sh --ambiente prod
+
+      - name: Qué quedó a medias, si algo falló
+        if: failure()
+        run: .github/diagnostico-del-namespace.sh sgtm-prod
+
+  deteccion-de-deriva:
+    name: Detección de deriva en prod
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    # El mismo tope que los dos trabajos de despliegue, y por el mismo motivo (issue
+    # #252, y el `observabilidad-alertas` que corrió 40 minutos el 2026-08-23). Desde
+    # #675 este trabajo hace además un `port-forward` contra el clúster, que es
+    # exactamente la clase de paso que no termina: sin tope, el límite real serían los
+    # 360 minutos de la plataforma, todas las noches.
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Historial completo: el paso «prod, comprobado contra si mismo» de abajo
+          # cuenta las migraciones que trae el `sha` declarado, y sin el commit en el clon
+          # el guion **no concluye** en vez de contar las del arbol de trabajo (#434).
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: infra/yarn.lock
+
+      - name: Instalar dependencias
+        working-directory: infra
+        run: yarn install --frozen-lockfile
+
+      - name: ¿Hay credenciales del clúster?
+        id: credenciales
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          # KUBECONFIG entra en la cuenta desde 2026-08-26. Sin el, el `preview` de
+          # abajo no arrancaba —«Missing required configuration variable
+          # sgtm:kubeconfig»— y este trabajo salia rojo TODAS las noches por falta de
+          # una credencial, no por deriva. Una alarma que suena siempre deja de ser una
+          # alarma: si falta, esto se salta y lo dice, como hacen los demas trabajos.
+          KUBECONFIG_VALUE: ${{ secrets.KUBECONFIG }}
+        run: |
+          if [ -n "$PULUMI_ACCESS_TOKEN" ] && [ -n "$SSH_PRIVATE_KEY" ] \
+             && [ -n "$VPS_USER" ] && [ -n "$VPS_HOST" ] && [ -n "$KUBECONFIG_VALUE" ]; then
+            echo "hay=si" >> "$GITHUB_OUTPUT"
+          else
+            echo "hay=no" >> "$GITHUB_OUTPUT"
+            echo "### Sin detección de deriva: no hay credenciales del clúster todavía" \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Abrir el túnel SSH al API de k3s
+        if: steps.credenciales.outputs.hay == 'si'
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          install -m 600 /dev/null ~/.ssh/despliegue
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/despliegue
+          ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=~/.ssh/known_hosts \
+              -i ~/.ssh/despliegue -f -N -L 6443:localhost:6443 "$VPS_USER@$VPS_HOST"
+
+      # `verificar-el-ambiente.sh` habla con el API por `kubectl` suelto, no por el
+      # proveedor de Pulumi: sin esto, `kubectl` no encuentra ningun kubeconfig y cae al
+      # `http://localhost:8080` heredado, que nadie escucha. Es el mismo
+      # `secrets.KUBECONFIG` que el paso de mas abajo le pasa a Pulumi.
+      - name: Escribir el kubeconfig para kubectl
+        if: steps.credenciales.outputs.hay == 'si'
+        env:
+          KUBECONFIG_VALUE: ${{ secrets.KUBECONFIG }}
+        run: |
+          install -m 700 -d ~/.kube
+          install -m 600 /dev/null ~/.kube/config-ci
+          echo "$KUBECONFIG_VALUE" > ~/.kube/config-ci
+          echo "KUBECONFIG=$HOME/.kube/config-ci" >> "$GITHUB_ENV"
+
+      - name: Instalar el CLI de Pulumi
+        if: steps.credenciales.outputs.hay == 'si'
+        run: |
+          curl -fsSL https://get.pulumi.com | sh
+          echo "$HOME/.pulumi/bin" >> "$GITHUB_PATH"
+
+      # El mismo paso que `aplicar-prod`, y por el mismo motivo (ADR-0011 §3): los
+      # secretos de infraestructura NO se versionan, ni siquiera cifrados, asi que cada
+      # corrida los inyecta frescos en la copia efimera del checkout. `preview` los
+      # necesita igual que `up` —`index.ts` lee `kubeconfig` para construir el
+      # proveedor—, y sin ellos esto no llegaba a comparar nada: fallaba antes, en la
+      # lectura de la configuracion.
+      - name: Configurar los secretos de infraestructura del stack (ADR-0011 §3)
+        if: steps.credenciales.outputs.hay == 'si'
+        working-directory: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          KUBECONFIG_VALUE: ${{ secrets.KUBECONFIG }}
+          BACKUP_ACCESS_KEY_ID_VALUE: ${{ secrets.BACKUP_ACCESS_KEY_ID }}
+          BACKUP_SECRET_ACCESS_KEY_VALUE: ${{ secrets.BACKUP_SECRET_ACCESS_KEY }}
+          REGISTRY_PULL_TOKEN_VALUE: ${{ secrets.REGISTRY_PULL_TOKEN }}
+        run: |
+          pulumi config set --secret --stack prod kubeconfig -- "$KUBECONFIG_VALUE"
+          pulumi config set --secret --stack prod backupAccessKeyId -- "$BACKUP_ACCESS_KEY_ID_VALUE"
+          pulumi config set --secret --stack prod backupSecretAccessKey -- "$BACKUP_SECRET_ACCESS_KEY_VALUE"
+          pulumi config set --secret --stack prod registryPullToken -- "$REGISTRY_PULL_TOKEN_VALUE"
+
+      # `--expect-no-changes` es la comprobación: sale en rojo si el plan no está vacío,
+      # que es exactamente lo que pasa cuando alguien corrió un `kubectl apply` a mano
+      # sobre lo que Pulumi cree que gestiona en solitario.
+      #
+      # ⚠ El aviso hoy es «el trabajo programado se puso rojo», no una notificación a una
+      # persona: no hay todavía un destino de alertas (issue #156). Es el mismo aviso que
+      # ya recibe cualquiera que mire Actions o que GitHub notifica por omisión a quien
+      # tiene las notificaciones de ejecuciones fallidas activadas; conectarlo a un canal
+      # de verdad es ese issue, no este.
+      - name: pulumi preview --expect-no-changes contra prod
+        if: steps.credenciales.outputs.hay == 'si'
+        working-directory: infra
+        run: pulumi preview --stack prod --expect-no-changes --diff --non-interactive
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+
+      # **Prod, comprobado contra si mismo TODOS LOS DIAS, no solo cuando alguien
+      # despliega** (issue #675).
+      #
+      # `pulumi preview --expect-no-changes` de arriba compara el clúster con el estado
+      # DECLARADO, y por eso sale en verde con la base varias migraciones por detras: el
+      # Job de migracion lleva la version en el nombre, existe desde el ultimo despliegue
+      # y nadie lo ha tocado, asi que no hay ninguna diferencia que ver. Lo que mide la
+      # base es este guion, y hasta hoy solo corria dentro de `aplicar-prod` — un trabajo
+      # que **no se ejecuta desde el 2026-08-29**, porque tiene `needs: aplicar-stg` y
+      # `aplicar-stg` estaba rojo. Resultado medido: `verificar-el-ambiente.sh --ambiente
+      # prod` no se habia ejecutado NUNCA, porque su paso se anadio despues del ultimo
+      # `up` de produccion que salio en verde.
+      #
+      # Sin token: los dos ultimos peldanos de la escalera de identidad y la deuda con su
+      # fecha quedan sin comprobar, y el propio guion lo dice. Lo que si mide sin token es
+      # lo que este issue necesita: cuantas migraciones tiene la base frente a las que
+      # trae la version declarada.
+      #
+      # `!cancelled()` y no el `if` de siempre: este paso va DESPUES del `preview`, y un
+      # `preview` rojo —deriva de verdad— no puede llevarse por delante la unica medida
+      # diaria del esquema. Son dos comprobaciones distintas y cada una tiene que poder
+      # decir lo suyo.
+      - name: prod, comprobado contra si mismo (#434, #675)
+        if: ${{ !cancelled() && steps.credenciales.outputs.hay == 'si' }}
+        run: infra/verificaciones/ambiente/verificar-el-ambiente.sh --ambiente prod
+
+      - name: Qué quedó a medias, si algo falló
+        if: failure() && steps.credenciales.outputs.hay == 'si'
+        run: .github/diagnostico-del-namespace.sh sgtm-prod

@@ -1,0 +1,7 @@
+node_modules/
+.idea/
+.DS_Store
+# El estado y los secretos de Pulumi nunca se versionan (ADR-0011 §3, INF-06).
+.pulumi/
+*.local.*
+infra/.local/

@@ -1,0 +1,172 @@
+# Stack de producción: el VPS que atiende a la municipalidad (INF-01 §1).
+#
+# Aquí solo hay valores en claro. Los secretos de arranque de la infraestructura
+# —kubeconfig y credenciales del almacenamiento de respaldo— NO se versionan en este
+# archivo, ni siquiera cifrados (`stacks.test.ts`: "ningun stack versiona un secreto en
+# claro"): `pulumi config set --secret` escribe en la copia efímera del checkout, nunca
+# en git. Los de la aplicación —incluida la clave del administrador de Keycloak— no
+# están en Pulumi en absoluto (ADR-0011 §3, issue #154): los genera
+# `secretos/bootstrap-secretos.sh`.
+#
+# CI los inyecta frescos en cada corrida desde los secretos `KUBECONFIG`/
+# `BACKUP_ACCESS_KEY_ID`/`BACKUP_SECRET_ACCESS_KEY` del *environment* `prod` de GitHub
+# (`.github/workflows/infra.yml`, paso "Configurar los secretos de infraestructura del
+# stack"). Localmente, antes de `preview`/`up`, hay que correr:
+#
+#   pulumi config set --secret kubeconfig "$(cat k3s.yaml)" --stack prod
+#   pulumi config set --secret backupAccessKeyId <valor> --stack prod
+#   pulumi config set --secret backupSecretAccessKey <valor> --stack prod
+#
+# y NUNCA `git add` el resultado — es exactamente lo que la prueba detecta si se cuela.
+#
+# El `server` del kubeconfig tiene que ser `https://localhost:6443`: CI llega por un
+# túnel SSH y `config.ts` se pone rojo si apunta al VPS (INF-01 §1.4).
+config:
+  # Lo ASIGNABLE del nodo, medido — no su capacidad (`capacidad.ts`).
+  #
+  # La memoria es la medida sobre `vmd120205` el 2026-08-23 (INF-10 §4): «memoria
+  # 8 126 500 Ki → asignable 6 029 348 Ki». Son los ~6 GB que este nodo reparte, y no
+  # cambian: la reserva de memoria del issue #157 —2 Gi— modela lo que el sistema
+  # operativo, containerd y el API server usan de verdad, así que sigue en pie.
+  #
+  # La CPU es **2, lo que el nodo dice hoy**, y esto ya se equivocó una vez en la
+  # dirección contraria: el 2026-08-26 se declaró "3" —lo que el nodo dará una vez
+  # aplicada la reserva corregida del issue #252— y `aplicar-prod` se detuvo en el paso
+  # «Lo declarado cabe en el nodo real», que existe justo para eso. Adelantarse al nodo
+  # no despliega nada; solo cambia el paso en el que falla.
+  #
+  # Que siga en "2" es correcto **también después** de corregir la reserva. Declarar por
+  # DEBAJO de lo real está admitido y solo aprieta la comprobación (`comprobar-lo-
+  # asignable.sh`: solo se rechaza declarar de MÁS). Así que esta línea no hay que
+  # tocarla el día de la ventana de mantenimiento; subirla a "3" es opcional, y lo que
+  # gana es margen, no la posibilidad de desplegar.
+  #
+  # Para que quepa en 2 se bajó el `request` de CPU de los dos Jobs de arranque
+  # (`RECURSOS.arranque`, 250m → 100m): eran los 500m del pico que sobraban. Lo
+  # permanente (1 540m) siempre cupo; el pico ahora son 1 760m contra 1 800m.
+  #
+  # La reserva del nodo sigue estando mal en `vmd120205` —reserva 2 de sus 4 núcleos por
+  # la duplicación de #252— y corregirla sigue mereciendo la pena: devuelve ~1 000m de
+  # margen. Pero ya no bloquea el despliegue. INF-10 §4 tiene el procedimiento.
+  #
+  # Volver a medirlo después de tocar el nodo o la reserva:
+  #   kubectl get node -o jsonpath='{.items[0].status.allocatable.cpu}{"/"}{.items[0].status.allocatable.memory}'
+  sgtm:nodeAllocatableCpu: "2"
+  sgtm:nodeAllocatableMemory: 6029348Ki
+  sgtm:domain: vmd120205.contaboserver.net
+  sgtm:acmeEmail: operaciones@example.pe
+  # Versiones fijadas. Una etiqueta móvil convierte cualquier reinicio del VPS en una
+  # actualización no planificada, y en un solo nodo eso pasa en cada mantenimiento.
+  sgtm:postgresImage: postgis/postgis:16-3.4-alpine
+  sgtm:postgresStorageSize: 100Gi
+  sgtm:keycloakImage: quay.io/keycloak/keycloak:26.0
+  sgtm:keycloakRealm: sgtm
+  # SIN relay SMTP, a propósito (ADR-0012, Opción B). Esta marcha blanca no tiene un
+  # relay de correo decidido (D-05), así que NO se declara `keycloakSmtpHost`: el realm
+  # va sin `smtpServer`, el Job de reconciliación crea el usuario sin clave y con
+  # UPDATE_PASSWORD pendiente, y un operador se la fija con el runbook «Recuperar el
+  # acceso de un usuario». Cuando haya relay, se añaden aquí `keycloakSmtpHost` /
+  # `keycloakSmtpPort` / `keycloakSmtpFrom` (en claro) y —si pide auth— el `Secret`
+  # `sgtm-prod-smtp` (`usuario`/`clave`), que NO genera `bootstrap-secretos.sh`
+  # (INF-06 §1.2). No hace falta relanzar el alta: reenviar el enlace a cada usuario.
+  # Sin etiqueta, a propósito: la pone el flujo de liberación (ADR-0011 §5, issue #148).
+  sgtm:applicationImageRepository: ghcr.io/hneyra
+  # El usuario con que el nodo se autentica contra ghcr.io para traer sgtm-aplicacion,
+  # sgtm-migrador y sgtm-interfaz —los tres privados—. No es secreto; lo que sí lo es
+  # es `registryPullToken` (un PAT con `read:packages`), que CI inyecta igual que
+  # `backupAccessKeyId` (issue #257).
+  sgtm:registryUsername: hneyra
+  # Una réplica, como `stg`. Dos no caben en los ~6 GB que este nodo reparte: el pico
+  # del arranque —los Deployment más los Jobs de migración e implantación, que conviven
+  # con ellos durante el `pulumi up`— pedía 6 368Mi contra 5 728Mi disponibles. Con una
+  # réplica son 5 344Mi, y quedan 384Mi de margen. Lo permanente son 4 256Mi: el nodo
+  # queda usado al 74 % de lo que reparte, que es aprovecharlo sin apurarlo.
+  #
+  # Lo que se cede es la continuidad durante un despliegue, no la disponibilidad: sobre
+  # un nodo único las dos réplicas caían juntas de todos modos (INF-01 §1). Se vuelve a
+  # "2" cuando el nodo crezca a lo que INF-01 §2 dimensiona.
+  sgtm:webReplicas: "1"
+  # La versión con la que Pulumi CREA los despliegues. El campo `image` de los tres
+  # `Deployment` queda ignorado después (ADR-0011 §5), así que subir esta línea **no**
+  # reemplaza la imagen de un `Deployment` que ya corre: eso lo hace el flujo de
+  # liberación con `kubectl set image`.
+  #
+  # **Pero no es inerte sobre un clúster en marcha, y creerlo cuesta caro.** Los dos
+  # Jobs de arranque llevan la versión EN EL NOMBRE (`sufijoDeVersion()`,
+  # `componentes/Migracion.ts`), así que un valor nuevo no modifica un Job: crea otro.
+  # Subir esta línea es, literalmente, «corre el migrador de esa versión contra esta
+  # base y vuelve a implantar la municipalidad». Comprobado sin desplegar:
+  #
+  #   yarn --silent manifiestos --ambiente prod | grep migracion
+  #   # con 0eee58e: Job/sgtm-prod-migracion-0eee58e43e04
+  #   # con 5fc02f3: Job/sgtm-prod-migracion-5fc02f3a4493
+  #
+  # Por eso el orden del runbook de liberación —primero el Job de migración, después la
+  # imagen— no es una recomendación: es lo que esta línea dispara sola.
+  #
+  # **Y por eso queda desactualizarla.** El síntoma de dejarla vieja no es un error: es
+  # una carga que termina en verde y no escribe nada, porque la clase batch que se
+  # invoca no existe en esa imagen y Spring arranca con el contexto vacío y sale con
+  # código 0 (PR #244, medido en `stg` con `cargar-catalogo-vial.sh`). Medido aquí el
+  # 2026-08-29, antes de subirla: el clúster de `prod` corría `0eee58e` (2026-08-27) y
+  # su base tenía **27 migraciones aplicadas** donde `main` declara **48** —de `V28`
+  # (notificación y pase a coactiva) a `V57` (depreciación por uso)—, así que ni las
+  # tres tablas de valuación nacionales de `V55` ni la columna de uso de `V57` existían
+  # en producción, y `publicar-cuadros.sh` no tenía dónde escribir.
+  #
+  # Se sube al último `sha` de `main` con `publicar-imagenes.yml` en verde —el flujo
+  # publica las tres imágenes etiquetadas por commit, nunca `latest`—, confirmado con:
+  #
+  #   gh run list --workflow publicar-imagenes.yml --limit 5 \
+  #     --json headSha,conclusion,createdAt
+  #
+  # `5fc02f3` (2026-08-29T20:51Z, `success` en los tres jobs de imagen) trae los runners
+  # batch de catálogo vial y arancel —ya estaban en `1ec6bd6`, su ancestro— y además
+  # `V28`…`V57`, `PublicarCuadros` y `PublicarParametros`.
+  #
+  # **Y volvió a quedarse atrás, exactamente igual (issue #675).** Entre el 2026-08-29 y
+  # el 2026-09-02 entraron trece migraciones —`V58`…`V71`— y esta línea no se movió: la
+  # versión declarada trae **48** y `main` declara **61**. `pulumi preview
+  # --expect-no-changes` salía en verde todas las noches, porque compara el clúster con
+  # lo declarado y no hay ninguna diferencia que ver: el Job lleva la versión en el
+  # nombre, existe desde el último despliegue y nadie lo tocó.
+  #
+  # Aquí duele más que en `stg` por un motivo distinto: `aplicar-prod` tiene
+  # `needs: aplicar-stg`, y `aplicar-stg` estaba rojo desde el 2026-08-30 por la
+  # extensión `postgis` que falta, así que **prod no se despliega desde el 2026-08-29** y
+  # el paso «El ambiente aplicado se comprueba a sí mismo», que se añadió al día
+  # siguiente, **no se ha ejecutado nunca contra producción**. Por eso ese guion pasa a
+  # correr también en `deteccion-de-deriva`, que sí corre a diario.
+  #
+  # Lo llevaba una persona hasta el 2026-09-02, y ese dia se midio lo que costaba:
+  # **cuatro** PR de dos lineas en hora y media (#705, #715, #717, #719), y el tercero
+  # obsoleto durante su propio CI porque otra migracion entro mientras corria.
+  sgtm:applicationBootstrapVersion: c755de2149344b8033736958ee8ae6f643c90281
+  # La municipalidad que se implanta. D-01 —municipalidad piloto— se decidió el
+  # 2026-08-24: Municipalidad Distrital de Catacaos (`decisiones-abiertas.md`), en
+  # reemplazo de la Municipalidad Distrital de Chala que se había decidido un día antes.
+  # El validador funcional de reglas tributarias, la otra mitad de D-01, sigue sin
+  # nombrarse. El administrador NO lleva contraseña: la credencial vive en Keycloak y
+  # esta cuenta tiene que ser la misma que exista allí.
+  sgtm:ubigeo: "200105"
+  sgtm:municipalidad: Municipalidad Distrital de Catacaos
+  sgtm:tipoDeMunicipalidad: DISTRITAL
+  sgtm:administrador: administrador
+  sgtm:nombreDelAdministrador: Administrador del sistema
+  # Decidido a mano, que es lo que exige el issue #150. Vale `true` mientras D-02a esté
+  # abierta: toda cifra que el sistema calcule hoy sale de tramos y alícuotas que nadie
+  # ha firmado, y una instalación que emite documentos con esas cifras tiene que decir
+  # lo que es. Ponerlo en `false` es el acto deliberado que cierra la marcha blanca, y
+  # solo corresponde cuando D-02a esté cerrada.
+  sgtm:esDemostracion: "true"
+  # El RPO de RNF-076, escrito. El destino está FUERA del VPS (INF-01 §1.3).
+  # AWS S3 (issue #158, decision de 2026-08-24). us-east-1: es donde vive el bucket.
+  sgtm:backupEndpoint: https://s3.us-east-1.amazonaws.com
+  sgtm:backupRegion: us-east-1
+  sgtm:backupBucket: sgtm-prod-respaldos
+  sgtm:walArchiveTimeoutSeconds: "300"
+  # A donde Alertmanager avisa (issue #156). Obligatorio en prod: `config.ts` se pone
+  # rojo sin él —«una regla que no notifica a nadie no es una alerta»—. ⚠ PROVISIONAL:
+  # el receptor real —Slack, correo, PagerDuty— se decide con el patrocinador; este
+  # valor solo fija que la variable exista.
+  sgtm:alertWebhookUrl: https://hooks.example.pe/sgtm-alertas

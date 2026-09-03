@@ -1,0 +1,31 @@
+# Padron vehicular de DEMOSTRACION — vehiculos INVENTADOS. Ninguno existe, y ninguna
+# placa corresponde a un vehiculo real: todas empiezan por Z, que el parque peruano no
+# asigna a placas de servicio particular en la serie de tres letras.
+# Solo se cargan contra una municipalidad con municipalidad.es_demostracion = true:
+# CargarVehiculosDeDemostracion se niega a correr contra cualquier otra.
+#
+# Se carga DESPUES de contribuyentes.csv: cada fila nombra a su propietario por codigo,
+# y la fila que nombre a alguien que no existe se rechaza.
+#
+# NINGUNA CIFRA. El padron vehicular es registro puro: no lleva base imponible ni valor
+# referencial. La tabla de valores referenciales es un cuadro normativo NACIONAL (D-13,
+# ADR-0017) y se publica con `publicar-cuadros.sh`, no se siembra aqui —un valor
+# referencial inventado se distingue de uno real solo por quien lo puso—.
+#
+# La AFECTACION al impuesto al patrimonio vehicular no es una columna: se deduce del anio
+# de inscripcion (Vehiculo.afectoEn, tres ejercicios desde el siguiente al de inscripcion).
+# Por eso los anios estan repartidos a proposito: ZTR-101 y ZQU-880 quedan FUERA de los
+# tres ejercicios en 2026, y los demas dentro.
+#
+# Formato de ImportarVehiculos:
+#   placa,codigoContribuyente,marca,modelo,categoria,anioFabricacion,anioInscripcion
+# categoria admite quedar vacia; si falta el anio de inscripcion se toma el de fabricacion.
+placa,codigoContribuyente,marca,modelo,categoria,anioFabricacion,anioInscripcion
+ZLG-701,C-000007,VOLVO,FH 440,CAMION,2019,2019
+ZLG-702,C-000007,HYUNDAI,HD 78,CAMION,2022,2023
+ZLG-703,C-000007,TOYOTA,HIACE,MINIBUS,2024,2025
+ZMR-455,C-000011,NISSAN,SENTRA,AUTOMOVIL,2021,2022
+ZTR-101,C-000001,SUZUKI,ALTO,AUTOMOVIL,2011,2012
+ZQU-880,C-000014,TOYOTA,HILUX,CAMIONETA,2015,2016
+ZPB-330,C-000014,BAJAJ,RE 4S,MOTOTAXI,2024,2024
+ZKS-916,C-000013,HONDA,CG 125,MOTOCICLETA,2023,2024
