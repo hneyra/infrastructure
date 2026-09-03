@@ -89,7 +89,19 @@ diff /tmp/a.json /tmp/b.json
 
 Byte a byte iguales. Si alguno dejara de serlo, lo que se perdió está en la lista de §2.
 
-## 4. `yarn verificar`: 310 de 317, y los siete que fallan
+**Esa medida es de la mudanza, y P1B la superó a propósito.** Desde que `infrastructure` compone
+los cuatro descriptores (ADR-0031 §2), el diff ya no puede ser vacío: añade los cuatro sistemas.
+Lo que se mide desde entonces es que sea **adición pura**, y lo es —remedido el 2026-09-03—:
+
+| Ambiente | Líneas suprimidas o cambiadas de la plataforma | Líneas añadidas | De dónde |
+|---|---|---|---|
+| `stg` | **0** | 1 613 | `kamayuk-{rentas,catastro,normativa,caja}-stg` |
+| `prod` | **0** | 1 613 | `kamayuk-{rentas,catastro,normativa,caja}-prod` |
+
+Ni una línea de la plataforma se movió al añadir los cuatro. Es la propiedad que hace revisable
+la composición: un descriptor no puede cambiar lo que no es suyo, y el diff lo enseña.
+
+## 4. `yarn verificar`: 337 de 344, y los siete que fallan
 
 **No está en verde, y los siete tienen causa medida.** Ninguno es un arreglo pendiente «a ojo»:
 
@@ -150,27 +162,71 @@ running /docker-entrypoint-initdb.d/20-asignar-claves.sh
 | Los cuatro roles | `sgtm_owner`, `sgtm_app`, `rol_carga_parametros` y `sgtm_readonly`, todos con `super=false bypassrls=false`; `sgtm_readonly` **sin login** |
 | Keycloak con **los dos realms** | `Realm 'sgtm' imported`, `Realm 'sgtm-ciudadano' imported` |
 | Y que son **dos emisores**, no dos clientes de uno | `/realms/sgtm` y `/realms/sgtm-ciudadano` responden con `public_key` propia |
+| El **enrutado por prefijo** de ADR-0030 §2 | `/catastro/predios` → `catastro-web`, `/rentas/contribuyentes` → `rentas-web`, `/normativa/conjuntos` → **404** porque nadie lo reclama |
 
-**`verificaciones/motor/verificar-el-motor.sh` NO se pudo ejecutar aquí, y hay que decir por
-qué.** No es un efecto de este trabajo:
+### 5.1 `verificar-el-motor.sh`, ejecutado — por el camino de Docker
 
-- Necesita **`psql` en la máquina local** y esta no lo tiene: falla con `FALLO: falta «psql»`.
-- Levanta el motor con Docker y luego se conecta por **TCP a `localhost:PUERTO`**. El Docker de
-  esta máquina es un **túnel al demonio de un VPS**: los contenedores arrancan allí y sus puertos
-  publicados quedan allí, así que esa conexión no existe.
+**Se ejecutó, entero y por el camino fiel**, el 2026-09-03. Lo que antes lo impedía no era el
+guion sino esta máquina: no tiene `psql`, y su Docker es un **túnel al demonio de un VPS**, así
+que el motor arranca allí y su puerto publicado se queda allí. Se resolvió llevando el
+verificador **al lado del demonio**: un contenedor Debian con `psql`, `pg_isready`, Node, yarn y
+el cliente de Docker, con `--network host`, el socket del VPS montado y un directorio de trabajo
+en **la misma ruta a los dos lados** (`TMPDIR=/tmp/kamayuk-trabajo`) para que el *bind mount* de
+la inicialización resuelva.
 
-Lo que sí se midió es que **su entrada no ha cambiado**: ese guion no corre contra ningún
-compose —extrae la inicialización **del ConfigMap del manifiesto** (`lib-motor-local.sh:55`)— y
-ese ConfigMap es byte a byte el de P1A, con sus cinco guiones (`sha256` del contenido:
-`33da2503e306f3166d6289c2…`). Sigue verificando el clúster, no la plataforma local.
+Con eso el guion elige **`modo: docker`** —el fiel, con la imagen que declara el manifiesto— y no
+el repliegue a instancia local:
 
-**Y de ahí sale un hueco que conviene ver escrito**: el ConfigMap del clúster lleva cinco guiones
-y **no lleva `05-crear-bases.sh`**. Es correcto hoy —ningún sistema tiene base propia en el
-clúster todavía, porque no hay descriptores— pero significa que el compose de la plataforma y el
-clúster **ya divergen en un punto**, que es exactamente la trampa que ADR-0011 anotó. Lo que la
-vigila hoy es `verificaciones/plataforma-compose.test.ts`, que lee los dos composes y compara; lo
-que **no** hay es una verificación que levante la plataforma en CI, como `despliegue.yml` hace
-con el compose entero.
+```
+· Imagen declarada en el manifiesto: postgis/postgis:16-3.4-alpine
+· Motor: contenedor con postgis/postgis:16-3.4-alpine
+…
+El motor del manifiesto de «stg» cumple lo que el issue #149 exige (modo: docker).
+El motor del manifiesto de «prod» cumple lo que el issue #149 exige (modo: docker).
+```
+
+Las ocho comprobaciones del issue #149 pasan en los dos ambientes, **incluida la 5** —Keycloak con
+base propia y sin poder conectarse a la del padrón—, que es justamente la que el compose local no
+ejercita porque allí Keycloak corre en `start-dev`; el reparto es correcto y ahora está medido.
+
+**Y muerde.** La mutación registrada para esta verificación —quitar de
+`infra/componentes/inicializacion/30-base-de-keycloak.sh` el `GRANT CONNECT` que devuelve a los
+cuatro roles lo que ese mismo guion revoca de `PUBLIC`— la deja en rojo con el mensaje exacto:
+
+```
+FALLO: sgtm_owner no puede conectarse a la base del padron: 30-base-de-keycloak.sh revoca
+       el CONNECT de PUBLIC y tiene que volver a concederselo a los cuatro roles
+```
+
+Restaurado por copia y comparado con `cmp`: idéntico byte a byte.
+
+### 5.2 Dos defectos del compose que sólo se vieron levantándolo
+
+Los dos son míos, de P1B, y los dos pasaban las diez pruebas de
+`verificaciones/plataforma-compose.test.ts` **en verde**:
+
+1. **La sonda del ingreso pedía un endpoint que nadie servía.** `traefik healthcheck --ping`
+   contra una configuración estática sin `--ping`: el contenedor se quedaba `unhealthy`
+   permanentemente. No falla con un error — cuelga cualquier `depends_on: service_healthy` y
+   hace caducar un `up --wait` sin decir cuál de los cuatro servicios falta.
+2. **Traefik no descubría ni un servicio.** Hasta v3.5 pide la API de Docker en la versión
+   `1.24`, fijada en su código y no configurable por entorno (`DOCKER_API_VERSION` no la mueve:
+   medido), y **Docker 29 elevó el mínimo a `1.44`**. El proveedor fallaba en bucle y Traefik
+   contestaba **404 a todo**, que es indistinguible de «todavía no hay ningún sistema levantado»
+   — y con la sonda ya arreglada, `healthy`. Medido contra Docker 29.1.3: `v3.1` y `v3.5` en
+   bucle de error, `v3.6` limpio. Se sube la imagen a `v3.6`; no hace falta ninguna pieza más.
+
+El segundo era el que más costaba, porque el enrutado por prefijo es la promesa central de
+ADR-0030 §2 y estaba **entera sin funcionar**. Con los dos arreglos, el enrutado se ejercitó de
+verdad con dos contenedores etiquetados como el README de `despliegue/` documenta.
+
+Las dos guardas nuevas están en `plataforma-compose.test.ts` **con su muestra que las viola**, y
+se midieron además mutando el archivo real: quitar `--ping=true` pone roja una y sólo una, bajar
+la imagen a `v3.1` pone roja la otra y sólo la otra.
+
+**Lo que sigue sin haber** es una verificación que levante la plataforma **en CI**, como
+`despliegue.yml` hace con el compose entero. Estos dos defectos los encontró una persona
+levantándolo a mano; el tercero no lo va a encontrar nadie.
 
 ## 6. Lo que esta mudanza NO hace
 

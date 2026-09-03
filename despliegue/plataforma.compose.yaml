@@ -103,12 +103,24 @@ services:
     # quien responde, sin mirar mas. En el cluster esto lo hace el Traefik que k3s
     # ya trae; aqui se levanta uno para que la ruta sea la misma en las dos partes
     # y nadie descubra en `stg` que su prefijo no era el que creia.
-    image: traefik:v3.1
+    # v3.6 y no v3.1: hasta v3.5 Traefik pide la API de Docker en la version
+    # 1.24, fijada en su codigo, y **Docker 29 elevo el minimo a 1.44**. Con una
+    # imagen anterior el proveedor falla en bucle, no descubre ni un servicio y
+    # Traefik contesta 404 a todo — indistinguible de «todavia no hay ningun
+    # sistema levantado», y sano segun su propia sonda. Medido contra Docker
+    # 29.1.3: v3.1 y v3.5 en bucle de error, v3.6 sin ninguno.
+    image: traefik:v3.6
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
       - --api.dashboard=false
+      # `--ping` NO es opcional: sin el, `traefik healthcheck --ping` pide
+      # `/ping` al entrypoint interno, nadie lo sirve y el contenedor se queda
+      # `unhealthy` PARA SIEMPRE. El sintoma no es un error: es un
+      # `depends_on: service_healthy` que no vuelve nunca, y un `up --wait`
+      # que caduca sin decir cual de los cuatro servicios falta.
+      - --ping=true
     ports:
       - "${SGTM_PUERTO_INGRESO:-8080}:80"
     volumes:

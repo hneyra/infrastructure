@@ -14,11 +14,56 @@ import { raizDelRepositorio } from "../componentes/fuentes";
  * sistemas se multiplica—.
  */
 
+interface Servicio {
+  image?: string;
+  command?: string[];
+  volumes?: string[];
+  environment?: Record<string, string>;
+  ports?: string[];
+  healthcheck?: { test?: string[] };
+}
+
 interface Compose {
   name?: string;
-  services: Record<string, { image?: string; volumes?: string[]; environment?: Record<string, string>; ports?: string[] }>;
+  services: Record<string, Servicio>;
   volumes?: Record<string, unknown>;
   networks?: Record<string, { name?: string }>;
+}
+
+/**
+ * Una sonda que pide `/ping` exige que la configuracion estatica lo sirva.
+ *
+ * Sin `--ping`, `traefik healthcheck --ping` se estrella contra un endpoint que nadie
+ * levanta y el contenedor se queda `unhealthy` **para siempre**. El sintoma no es un
+ * error: es un `depends_on: service_healthy` que no vuelve nunca y un `up --wait` que
+ * caduca sin decir cual de los cuatro servicios falta. Medido levantandolo.
+ */
+export function sondasSinSuEndpoint(compose: Compose): string[] {
+  return Object.entries(compose.services)
+    .filter(([, s]) => (s.healthcheck?.test ?? []).some((t) => t.includes("--ping")))
+    .filter(([, s]) => !(s.command ?? []).some((c) => c.startsWith("--ping")))
+    .map(([nombre]) => nombre);
+}
+
+/**
+ * Hasta v3.5, Traefik pide la API de Docker en la version 1.24 —fijada en su codigo, no
+ * configurable por entorno— y **Docker 29 elevo el minimo a 1.44**. Con una imagen
+ * anterior el proveedor falla en bucle, no descubre ni un servicio y Traefik contesta 404
+ * a todo: indistinguible de «todavia no hay ningun sistema levantado», y sano segun su
+ * propia sonda. Medido contra Docker 29.1.3: v3.1 y v3.5 en bucle, v3.6 limpio.
+ */
+export const TRAEFIK_MINIMO = [3, 6];
+
+export function traefikDemasiadoViejo(compose: Compose): string[] {
+  return Object.entries(compose.services)
+    .filter(([, s]) => (s.image ?? "").startsWith("traefik:"))
+    .filter(([, s]) => {
+      const m = /^traefik:v(\d+)\.(\d+)/.exec(s.image ?? "");
+      if (!m) return true; // `latest` o una etiqueta sin version: no se puede afirmar
+      const [mayor, menor] = [Number(m[1]), Number(m[2])];
+      return mayor < TRAEFIK_MINIMO[0]! || (mayor === TRAEFIK_MINIMO[0]! && menor < TRAEFIK_MINIMO[1]!);
+    })
+    .map(([nombre]) => nombre);
 }
 
 const RAIZ = raizDelRepositorio();
@@ -115,3 +160,40 @@ describe("el compose entero NO se retira: es el perfil `todo`", () => {
     expect(ENTERO.services["base"]?.environment?.["POSTGRES_DB"]).toBe("sgtm");
   });
 });
+
+describe("lo que el archivo no decia y solo se vio levantandolo", () => {
+  // Las dos guardas de abajo nacieron de ejecutar el compose, no de leerlo: las diez
+  // pruebas de este archivo pasaban en VERDE con los dos defectos dentro.
+
+  it("ninguna sonda pide un endpoint que su servicio no sirve", () => {
+    expect(sondasSinSuEndpoint(PLATAFORMA)).toEqual([]);
+  });
+
+  it("y la guarda muerde: el ingreso SIN `--ping` sale nombrado", () => {
+    const roto = estructuradoClonar(PLATAFORMA);
+    roto.services["ingreso"]!.command = (roto.services["ingreso"]!.command ?? []).filter(
+      (c) => !c.startsWith("--ping"),
+    );
+    expect(sondasSinSuEndpoint(roto)).toEqual(["ingreso"]);
+  });
+
+  it("el ingreso habla una API de Docker que el demonio de hoy admite", () => {
+    expect(traefikDemasiadoViejo(PLATAFORMA)).toEqual([]);
+  });
+
+  it("y la guarda muerde: v3.1 y v3.5 salen nombradas, v3.6 no", () => {
+    for (const vieja of ["traefik:v3.1", "traefik:v3.5", "traefik:v2.11"]) {
+      const roto = estructuradoClonar(PLATAFORMA);
+      roto.services["ingreso"]!.image = vieja;
+      expect(traefikDemasiadoViejo(roto)).toEqual(["ingreso"]);
+    }
+    const buena = estructuradoClonar(PLATAFORMA);
+    buena.services["ingreso"]!.image = "traefik:v3.6";
+    expect(traefikDemasiadoViejo(buena)).toEqual([]);
+  });
+});
+
+/** Copia honda, para que una muestra rota no contamine a la siguiente. */
+function estructuradoClonar(c: Compose): Compose {
+  return JSON.parse(JSON.stringify(c)) as Compose;
+}
