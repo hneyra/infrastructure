@@ -5,3 +5,9 @@ node_modules/
 .pulumi/
 *.local.*
 infra/.local/
+
+# Gradle de las librerias comunes de backend (P3)
+.gradle/
+build/
+librerias-backend/**/build/
+librerias-backend/.gradle/

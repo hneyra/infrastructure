@@ -1,0 +1,75 @@
+# Las barreras que comparten los cinco repositorios, verificadas aqui, que es donde viven.
+#
+# Lo que corre es su propio build: compilar la libreria y comprobar el formato. La demostracion de
+# que las reglas MUERDEN no corre aqui, y conviene decir por que: `ReglasDeArquitecturaMuerdenTest`
+# necesita una ConfiguracionDeLasVerificaciones, y la declara cada repositorio que la consume. Se
+# ejecuta —entera, con sus muestras— en los cinco: es el paso «Arquitectura, escaner de fuentes y
+# frontera de sistema» de cada uno.
+#
+# Que esto pase no significa que las barreras muerdan. Significa que compilan y estan formateadas.
+
+name: Librerias de backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "librerias-backend/**"
+      - ".github/workflows/librerias-backend.yml"
+  pull_request:
+    paths:
+      - "librerias-backend/**"
+      - ".github/workflows/librerias-backend.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: librerias-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    name: comun-verificaciones
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: librerias-backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: La version de Java declarada es la que instala CI
+        run: |
+          declarada=$(sed -n 's/^kamayuk\.java\.version=//p' gradle.properties)
+          if [ "$declarada" != "25" ]; then
+            echo "::error file=librerias-backend/gradle.properties::gradle.properties declara Java $declarada y este workflow instala Java 25."
+            exit 1
+          fi
+
+      - name: Instalar JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Preparar Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Descargar la distribucion de Gradle, con reintentos
+        run: |
+          for intento in 1 2 3 4; do
+            if ./gradlew --version; then exit 0; fi
+            echo "Intento $intento fallido; se reintenta en $((intento * 10))s"
+            sleep $((intento * 10))
+          done
+          exit 1
+
+      - name: Formato
+        run: ./gradlew spotlessCheck --no-daemon
+
+      - name: Compilacion
+        run: ./gradlew build --no-daemon
