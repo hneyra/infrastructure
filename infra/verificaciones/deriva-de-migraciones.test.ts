@@ -4,15 +4,22 @@ import { describe, expect, it } from "vitest";
 import { raizDelRepositorio } from "../componentes/fuentes";
 import { ENVIRONMENTS } from "../config";
 import {
+  clonDe,
   derivaDeMigraciones,
   loQueFalta,
+  migracionesDe,
   REVISION_DE_REFERENCIA,
+  SISTEMAS,
+  sistemaLlamado,
+  sistemasDesplegados,
   loQueNoEncaja,
+  unicoSistemaDesplegado,
   type DerivaDeMigraciones,
 } from "./deriva-de-migraciones";
 
 /**
- * La deriva de migraciones deja de poder crecer en silencio (issue #675).
+ * La deriva de migraciones deja de poder crecer en silencio (issue #675), **ahora que
+ * el esquema vive en otro repositorio** (P6).
  *
  * Lo que este archivo mide **no** es lo que mide `verificar-el-ambiente.sh`. Aquel
  * compara la base con la version que el ambiente declara, y por eso el 2026-09-01 dijo
@@ -25,8 +32,18 @@ import {
  * Los dos ambientes van juntos a proposito. `aplicar-prod` tiene `needs: aplicar-stg`
  * (`infra.yml`), asi que `stg` es la puerta por la que pasa toda version que llegue a
  * produccion: dejar uno de los dos atras convierte el ensayo en un ensayo de otra cosa.
+ *
+ * ## Lo que cambio con el corte, y por que estaba en rojo
+ *
+ * Estas pruebas llevaban seis en rojo desde la mudanza, con el mensaje
+ * «`c755de21…` no esta en este clon». **La guarda tenia razon** —se negaba a inventar un
+ * numero— y lo que estaba mal era su premisa: resolvia el `sha` en ESTE repositorio,
+ * porque en `sgtm` el `Pulumi.<ambiente>.yaml`, el `sha` y las migraciones compartian
+ * `git log`. Ya no. Medido: `c755de21…` es un commit de `sgtm`, esta en su `origin/main`
+ * y trae **las mismas 68** migraciones que `sgtm origin/main` declara — o sea que **no
+ * habia deriva**, y el rojo no era de deriva.
  */
-describe("los ambientes declaran la version que trae las migraciones de main", () => {
+describe("los ambientes declaran la version que trae las migraciones de su sistema", () => {
   it.each(ENVIRONMENTS)("Pulumi.%s.yaml", (ambiente) => {
     const deriva = derivaDeMigraciones(ambiente);
     expect(loQueFalta(deriva), loQueFalta(deriva)).toBe("");
@@ -65,6 +82,77 @@ describe("los ambientes declaran la version que trae las migraciones de main", (
     const deriva = derivaDeMigraciones(ambiente);
     expect(loQueNoEncaja(deriva), loQueNoEncaja(deriva)).toBe("");
   });
+
+  /**
+   * Y la medicion se hace contra el repositorio del sistema que se despliega, **no
+   * contra este**.
+   *
+   * Es la mitad del reencuadre de P6 puesta donde puede fallar: si alguien devuelve
+   * `MIGRACIONES` a una ruta de `infrastructure`, esta prueba se pone roja diciendo que
+   * la deriva se esta midiendo contra la copia historica que nadie aplica.
+   */
+  it.each(ENVIRONMENTS)("y la mide contra el clon de su sistema, no contra este", (ambiente) => {
+    const deriva = derivaDeMigraciones(ambiente);
+    expect(deriva.sistema).toBe("sgtm");
+    expect(clonDe(sistemaLlamado(deriva.sistema))).not.toBe(raizDelRepositorio());
+  });
+});
+
+/**
+ * Que sistemas migra este despliegue, **leido de los manifiestos**.
+ *
+ * Aqui esta la puerta por la que el corte tiene que pasar: mientras el despliegue
+ * construya un solo `*-migrador`, una sola `applicationBootstrapVersion` puede fechar su
+ * `git log` y todo cuadra. En cuanto construya el segundo, esa linea deja de poder
+ * decir de que version es cada esquema — y esta comprobacion se pone roja **antes** de
+ * que nadie mida una deriva contra el repositorio equivocado, que es el modo de fallo
+ * que #675 encontro y que ocho meses en verde no delataron.
+ */
+describe("el censo de sistemas desplegados cuadra con lo que se declara", () => {
+  it.each(ENVIRONMENTS)("%s construye exactamente un migrador", (ambiente) => {
+    expect(sistemasDesplegados(ambiente)).toEqual(["sgtm"]);
+    expect(unicoSistemaDesplegado(ambiente)).toBe("sgtm");
+  });
+
+  /**
+   * Y el sistema que SI se despliega trae migraciones en su clon.
+   *
+   * El contraste, y aqui vale doble: sin el, `derivaDeMigraciones` pasaria en verde
+   * tambien devolviendo cero para las dos revisiones, que es el modo de fallo de toda
+   * comparacion entre dos lecturas del mismo sitio. Lo que se cuenta es el arbol de git
+   * de `origin/main` **de `sgtm`**, no el de trabajo.
+   *
+   * En CI esto necesita el segundo `actions/checkout` del trabajo `verificar`; sin el,
+   * `clonDe` lanza diciendo que falta el clon y como traerlo, que es lo que se quiere.
+   */
+  it("el sistema desplegado declara migraciones en su propio clon", () => {
+    const sistema = sistemaLlamado(unicoSistemaDesplegado("prod"));
+    expect(migracionesDe(REVISION_DE_REFERENCIA, sistema).length).toBeGreaterThan(0);
+  });
+
+  /**
+   * De los cuatro del corte **no se afirma nada que necesite su clon**, y es deliberado.
+   *
+   * `infrastructure` se verifica en CI con un solo repositorio mas el de `sgtm`; exigir
+   * ademas los cuatro convertiria esta comprobacion en la unica del repositorio que
+   * necesita seis checkouts, y una comprobacion cara de satisfacer se acaba
+   * desactivando. Sus entradas de {@link SISTEMAS} son documentacion **hasta que se
+   * desplieguen**, y quien las valida es `clonDe` el dia que una entre: si el modulo se
+   * renombro o el clon no esta, lanza nombrando la ruta, en el momento en que importa.
+   *
+   * Lo que si se afirma aqui es que ninguna se despliega todavia, que es lo que hace
+   * legitimo no comprobarlas.
+   */
+  it("y ninguno de los cuatro se despliega todavia", () => {
+    const desplegados = new Set(sistemasDesplegados("prod"));
+    const delCorte = SISTEMAS.filter((sistema) => sistema.nombre !== "sgtm").map((s) => s.nombre);
+
+    // Cuando esto se ponga rojo, lo que hay que hacer NO es actualizarlo: es dar a
+    // `config.ts` una version por sistema y pasarla a `manifiestosDeMigracion`. La
+    // alternativa —declarar cuatro migradores con una sola version— deja tres esquemas
+    // cuya deriva no la mide nadie.
+    expect(delCorte.filter((nombre) => desplegados.has(nombre))).toEqual([]);
+  });
 });
 
 /**
@@ -79,6 +167,7 @@ describe("los ambientes declaran la version que trae las migraciones de main", (
 describe("cuando hay deriva, el rojo nombra las dos cifras", () => {
   const inventada: DerivaDeMigraciones = {
     ambiente: "stg",
+    sistema: "sgtm",
     version: "5fc02f3a44931d69ac3012e55b17f02dc616eac8",
     traeLaVersion: 48,
     declaraLaReferencia: 61,
@@ -91,6 +180,13 @@ describe("cuando hay deriva, el rojo nombra las dos cifras", () => {
     expect(mensaje).toContain("48 migraciones");
     expect(mensaje).toContain(`${REVISION_DE_REFERENCIA} declara 61`);
     expect(mensaje).toContain("le faltan 2");
+  });
+
+  it("y nombra de que sistema es la version", () => {
+    // Sin esto, el rojo de una instalacion con cuatro migradores no diria cual de los
+    // cuatro esquemas es el que se quedo atras.
+    expect(loQueFalta(inventada)).toContain("«sgtm»");
+    expect(loQueNoEncaja({ ...inventada, enLaHistoria: false })).toContain("«sgtm»");
   });
 
   it("nombra las migraciones que faltan y el Job que nunca se creo", () => {
@@ -121,6 +217,11 @@ describe("cuando hay deriva, el rojo nombra las dos cifras", () => {
   it("y calla cuando el sha si esta en la historia", () => {
     expect(loQueNoEncaja(inventada)).toBe("");
   });
+
+  /** Un sistema que se despliega y no esta declarado no se puede medir, y lo dice. */
+  it("y un sistema sin declarar dice cuales hay", () => {
+    expect(() => sistemaLlamado("inventado")).toThrowError(/sgtm, rentas, catastro/);
+  });
 });
 
 /**
@@ -135,6 +236,14 @@ describe("cuando hay deriva, el rojo nombra las dos cifras", () => {
  * Es la misma leccion que #192 §2 y que el propio `infra.yml` ya tiene escrita para los
  * archivos de identidad: un archivo que las pruebas LEEN y el filtro no nombra cambia sin
  * que corra quien lo mira — verde rancio, no verde.
+ *
+ * **Y el corte se lleva esta mitad, medido.** Un filtro `paths` solo puede nombrar rutas
+ * de SU repositorio, y las migraciones que se despliegan ya no estan aqui: una migracion
+ * de `sgtm` —o manana de `rentas`— no puede disparar el flujo de `infrastructure`. Las
+ * entradas que siguen abajo vigilan la copia historica de `backend/sgtm-esquema/`, que
+ * **nadie modifica**, asi que hoy no pueden dispararse. Se conservan porque el dia que
+ * esa copia se retire su ausencia tiene que ser deliberada, y el hueco esta declarado en
+ * `P6-contratos-y-observabilidad.md`.
  */
 describe("el flujo corre cuando llega una migracion", () => {
   const flujo = readFileSync(join(raizDelRepositorio(), ".github/workflows/infra.yml"), "utf8");
@@ -153,9 +262,27 @@ describe("el flujo corre cuando llega una migracion", () => {
    * ninguno esta en el clon.
    */
   it("y `verificar` hace checkout con el historial completo", () => {
+    expect(trabajoDeVerificar()).toContain("fetch-depth: 0");
+  });
+
+  /**
+   * Y trae el clon del sistema que se despliega, que desde el corte **no es este**.
+   *
+   * Sin este paso, `clonDe` lanza en CI y las cinco pruebas de deriva se ponen rojas por
+   * un motivo que no es el que miden. Es el mismo reparto que `settings.gradle.kts` de
+   * los cuatro backends: el clon hermano se exige, y su ausencia se dice con el comando
+   * que la arregla en vez de saltarse la comprobacion.
+   */
+  it("y trae el clon del sistema desplegado", () => {
+    const verificar = trabajoDeVerificar();
+    expect(verificar).toContain("repository: hneyra/sgtm");
+    expect(verificar).toContain("path: ../sgtm");
+  });
+
+  function trabajoDeVerificar(): string {
     const jobs = flujo.split(/^ {2}[a-z-]+:$/m);
     const verificar = jobs.find((bloque) => bloque.includes("name: Lint, tipos y pruebas"));
     expect(verificar, "no se encontro el trabajo «Lint, tipos y pruebas»").toBeDefined();
-    expect(verificar).toContain("fetch-depth: 0");
-  });
+    return verificar as string;
+  }
 });

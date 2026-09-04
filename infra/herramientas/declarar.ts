@@ -3,6 +3,8 @@ import {
   estaEnLaHistoriaDe,
   loQueLeFaltaA,
   REVISION_DE_REFERENCIA,
+  sistemaLlamado,
+  unicoSistemaDesplegado,
 } from "../verificaciones/deriva-de-migraciones";
 import { AMBIENTES, aplicar, decidir } from "./declarar-version";
 
@@ -28,10 +30,16 @@ if (candidato === undefined || candidato === "") {
   process.exit(2);
 }
 
+// De QUE repositorio es el `sha` candidato: el del sistema cuyo migrador construye el
+// despliegue. Se resuelve y no se supone —hasta P6 se suponia «este», y por eso la
+// guarda de #675 llevaba seis pruebas en rojo desde la mudanza—; y si algun dia hay mas
+// de un migrador, `unicoSistemaDesplegado` lanza en vez de elegir uno.
+const sistema = sistemaLlamado(unicoSistemaDesplegado(AMBIENTES[0]));
+
 const decision = decidir({
   candidato,
-  candidatoEnLaHistoria: estaEnLaHistoriaDe(candidato, REVISION_DE_REFERENCIA),
-  faltanEnElCandidato: loQueLeFaltaA(candidato),
+  candidatoEnLaHistoria: estaEnLaHistoriaDe(candidato, REVISION_DE_REFERENCIA, sistema),
+  faltanEnElCandidato: loQueLeFaltaA(candidato, REVISION_DE_REFERENCIA, sistema),
   derivas: AMBIENTES.map((ambiente) => derivaDeMigraciones(ambiente)),
 });
 

@@ -34,6 +34,7 @@ import { leerStack } from "./stacks";
 function deriva(ambiente: Environment, faltan: string[]): DerivaDeMigraciones {
   return {
     ambiente,
+    sistema: "sgtm",
     version: "5fc02f3a44931d69ac3012e55b17f02dc616eac8",
     traeLaVersion: 61 - faltan.length,
     declaraLaReferencia: 61,

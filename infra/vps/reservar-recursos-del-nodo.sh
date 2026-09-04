@@ -144,11 +144,21 @@ if [ -f "$CONFIG" ] && grep -q '^kubelet-arg:' "$CONFIG"; then
     cp -p "$CONFIG" "$RESPALDO"
 
     # `sed` sobre las dos lineas de la lista, no sobre el bloque entero: lo demas
-    # que haya en `kubelet-arg` -si alguien añadio algo- se queda como esta.
-    sed -i \
+    # que haya en `kubelet-arg` -si alguien anadio algo- se queda como esta.
+    #
+    # A un temporal y `mv`, NO `sed -i -e`: `-i` sin sufijo es sintaxis **GNU**, y el
+    # `sed` de macOS -BSD- lee el `-e` que va detras como la extension del respaldo y
+    # falla con «sed: -e: No such file or directory». El guion se ejecuta contra un nodo
+    # Linux, asi que el defecto no llegaba a produccion; lo que dejaba en rojo es la
+    # prueba que lo EJECUTA (`reserva-del-nodo.test.ts`) en la maquina de quien
+    # desarrolla, y una prueba que solo pasa en un sistema operativo deja de mirarse.
+    TEMPORAL="$(mktemp)"
+    sed \
         -e "s|^  - \"system-reserved=.*\"$|$SYSTEM_ESPERADO|" \
         -e "s|^  - \"kube-reserved=.*\"$|$KUBE_ESPERADO|" \
-        "$CONFIG"
+        "$CONFIG" > "$TEMPORAL"
+    cat "$TEMPORAL" > "$CONFIG"
+    rm -f "$TEMPORAL"
 
     if ! grep -qF "$SYSTEM_ESPERADO" "$CONFIG" || ! grep -qF "$KUBE_ESPERADO" "$CONFIG"; then
         echo "FALLO: la sustitucion no dejo las dos lineas esperadas. Se restaura." >&2
