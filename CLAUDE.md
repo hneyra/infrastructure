@@ -15,7 +15,7 @@ modifica**.
 
 | Pieza | Estado |
 |---|---|
-| `infra/` — Pulumi en TypeScript | **Existe**, y `yarn verificar` corre **sin Pulumi, sin token y sin clúster**. Hoy da **337 verdes y 7 rojas**, por dos defectos heredados de la mudanza que están medidos y declarados en [DEV-02 §2](docs/D0-desarrollo/pruebas.md) |
+| `infra/` — Pulumi en TypeScript | **Existe**, y `yarn verificar` corre **sin Pulumi, sin token y sin clúster**. Hoy da **366 verdes y 0 rojas**: los dos defectos heredados de la mudanza se cerraron en P6 —la deriva medía contra el repositorio equivocado, y el `sed` del guion de reserva era sintaxis GNU— y [DEV-02 §2](docs/D0-desarrollo/pruebas.md) conserva su registro |
 | `despliegue/plataforma.compose.yaml` | **Existe y levanta**: PostgreSQL con **las cuatro bases**, Keycloak con **sus dos realms**, Mailpit y Traefik |
 | `despliegue/compose.yaml` | El perfil `todo`, heredado del monolito. **Sigue tal cual** y es el que usa CI |
 | `librerias-backend/comun-verificaciones` | **Existe.** 18 reglas de ArchUnit, tres escáneres de fuentes y **40 clases de muestra**, consumidas por los cinco backends |

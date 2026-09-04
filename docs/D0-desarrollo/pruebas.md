@@ -20,7 +20,11 @@ introdujo la separación de documentación, y **ninguno se arregla aquí sin tom
 escriben en vez de esconderse: un README que dijera «`yarn verificar` en verde» sería falso, y una
 instrucción falsa cuesta más que una que falta.
 
-### 2.1 `deriva-de-migraciones.test.ts` — 6 rojas
+> **Cerrados los dos en P6** (2026-09-04). Se conserva el diagnostico porque explica por que se
+> pusieron rojos, que es lo que costo entender; lo que ya no es cierto es el estado. `yarn
+> verificar` da hoy **366 de 366**. Ver `docs/00-gobierno/P6-contratos-y-observabilidad.md` §6.
+
+### 2.1 `deriva-de-migraciones.test.ts` — 6 rojas (cerrado en P6)
 
 ```
 «c755de2149344b8033736958ee8ae6f643c90281» no esta en este clon, asi que no se puede
@@ -39,7 +43,14 @@ La guarda **está haciendo su trabajo**: se niega a inventar un número. Lo que 
 baseline (ADR-0032): son cuatro historias de migraciones en cuatro repositorios, y una sola
 línea de configuración por ambiente.
 
-### 2.2 `reserva-del-nodo.test.ts` — 1 roja, y sólo en macOS
+**P6 lo decidió así**: la versión es una revisión del repositorio que construye la imagen del
+migrador que ese ambiente corre, y ese repositorio no tiene por qué ser este. Hoy es `sgtm` —el
+despliegue sigue siendo del monolito— y ahí `c755de21…` trae exactamente las 68 migraciones que
+`sgtm origin/main` declara: **no había deriva**. `sistemasDesplegados` deriva de los manifiestos
+cuántos migradores se construyen, y el día que sean dos, la comprobación se pone roja antes de
+que nadie mida contra el repositorio equivocado.
+
+### 2.2 `reserva-del-nodo.test.ts` — 1 roja, y sólo en macOS (cerrado en P6)
 
 ```
 · La reserva existente es de este guion pero con otras cifras: se corrige.
@@ -50,7 +61,8 @@ sed: -e: No such file or directory
 sintaxis **GNU**. El `sed` de macOS es BSD y lee el `-e` como la extensión del respaldo. El guion
 se ejecuta contra un nodo Linux y CI corre en `ubuntu-latest`, así que **el rojo es del entorno de
 quien desarrolla en macOS, no del guion en producción**. La corrección portable es escribir a un
-temporal y mover, no `sed -i`.
+temporal y volcarlo con `cat >` —que conserva permisos y propietario del archivo original, cosa
+que `mv` no hace—, y es lo que P6 aplicó.
 
 Reproducirlo sin vitest, para no creérselo:
 
