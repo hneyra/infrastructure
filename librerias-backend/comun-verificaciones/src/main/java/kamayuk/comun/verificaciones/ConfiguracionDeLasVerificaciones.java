@@ -46,6 +46,23 @@ public interface ConfiguracionDeLasVerificaciones {
     String sistema();
 
     /**
+     * La raiz bajo la que este sistema publica su API, sin barra final: {@code /api/v1} en el
+     * monolito, {@code /rentas/api/v1} despues del corte (ADR-0030).
+     *
+     * <p>La necesita la regla del centinela del ciudadano, que comprueba que un controlador con
+     * {@code RequiereAcceso.CIUDADANO} cuelgue del portal. Esa comprobacion es una comparacion de
+     * cadenas contra el camino que el controlador declara, asi que tiene que saber cual es la raiz
+     * de ESTE sistema: con la raiz equivocada la regla no encuentra el portal de nadie y acusa al
+     * unico controlador que si esta bien puesto.
+     *
+     * <p>Tiene valor por omision, y a proposito: los repositorios que todavia sirven bajo {@code
+     * /api/v1} no tienen que declarar nada, y el que cambia de raiz lo declara en un solo sitio.
+     */
+    default String raizDeLaApi() {
+        return "/api/v1";
+    }
+
+    /**
      * Los objetos de valor del dominio compartido que envuelven un decimal, sin el paquete raiz
      * delante: {@code ".dominio.Dinero"}.
      *

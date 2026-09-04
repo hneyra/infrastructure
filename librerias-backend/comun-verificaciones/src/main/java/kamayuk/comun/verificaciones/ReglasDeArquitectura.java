@@ -1286,8 +1286,15 @@ public final class ReglasDeArquitectura {
         /** El valor de {@code RequiereAcceso.CIUDADANO}, copiado a proposito. */
         private static final String CENTINELA = "__ciudadano__";
 
-        /** La raiz que sirve la cadena del ciudadano, igual que {@code SeguridadWeb}. */
-        private static final String RAIZ_DEL_PORTAL = "/api/v1/portal";
+        /**
+         * La raiz que sirve la cadena del ciudadano, igual que {@code SeguridadWeb}.
+         *
+         * <p>Sale de la configuracion del repositorio y no de un literal: tras el corte cada
+         * sistema sirve bajo su propia raiz (ADR-0030), y una raiz escrita a mano aqui dejaria de
+         * casar con la de quien consume la regla — que no la relaja, la vuelve un falso positivo
+         * sobre el unico controlador que si cuelga del portal.
+         */
+        private static final String RAIZ_DEL_PORTAL = CONFIG.raizDeLaApi() + "/portal";
 
         ConElCentinelaDelCiudadanoSoloEnElPortal() {
             super("usar el centinela CIUDADANO solo en controladores que cuelgan del portal");
