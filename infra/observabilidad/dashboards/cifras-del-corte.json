@@ -1,0 +1,292 @@
+{
+  "title": "Kamayuk — Las seis cifras del corte",
+  "uid": "kamayuk-cifras-del-corte",
+  "editable": true,
+  "timezone": "utc",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": [
+    "kamayuk",
+    "corte",
+    "P6"
+  ],
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "Las seis cifras del corte (P6). En verde y en cero: las dos sin emisor lo dicen",
+      "description": "",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": []
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Retraso maximo del outbox",
+      "description": "caja · alerta por encima de 600 · avisa a: Jefe de Rentas (operacion diaria de caja)",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "sin datos — revisar el exportador",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 601
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "kamayuk_outbox_retraso_segundos"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Predios sin valuacion del ejercicio",
+      "description": "rentas · sin fuente — ni `predio_ref` ni `valuacion_predio` tienen escritor en produccion: `INSERT INTO` sobre las dos aparece solo en pruebas y fixtures, y `catastro` no emite ningun evento. Lo cierra: el ingestor de eventos (P5C hueco 3, P5E hueco 4)",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "sin fuente — ni `predio_ref` ni `valuacion_predio` tienen escritor en produccion: `INSERT INTO` sobre las dos aparece solo en pruebas y fixtures, y `catastro` no emite ningun evento. Lo cierra: el ingestor de eventos (P5C hueco 3, P5E hueco 4)",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "kamayuk_valuacion_faltante_predios"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Sectores con huella discrepante (24 h)",
+      "description": "rentas · sin fuente — el mecanismo existe desde P6 y la proyeccion contra la que compara no la alimenta nadie: hoy la comparacion diria «todos los sectores faltan en la proyeccion», que es cierto y no es lo que esta cifra quiere decir. Lo cierra: el ingestor de eventos, igual que la anterior",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "sin fuente — el mecanismo existe desde P6 y la proyeccion contra la que compara no la alimenta nadie: hoy la comparacion diria «todos los sectores faltan en la proyeccion», que es cierto y no es lo que esta cifra quiere decir. Lo cierra: el ingestor de eventos, igual que la anterior",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "kamayuk_antientropia_sectores_discrepantes"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Eventos en la cola de muertos",
+      "description": "caja · alerta por encima de 0 · avisa a: Jefe de Rentas (operacion diaria de caja)",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "sin datos — revisar el exportador",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "kamayuk_outbox_muertos"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Turnos cerrados con diferencia",
+      "description": "caja · alerta por encima de 0 · avisa a: Tesorero (arqueo y cierre)",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "sin datos — revisar el exportador",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "kamayuk_cierres_con_diferencia"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Determinaciones con conjunto distinto al de su corrida",
+      "description": "rentas · alerta por encima de 0 · avisa a: Responsable de Normativa (parametros y conjuntos sellados)",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "sin datos — revisar el exportador",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "kamayuk_determinaciones_de_otro_conjunto"
+        }
+      ]
+    }
+  ]
+}

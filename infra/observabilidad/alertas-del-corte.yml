@@ -1,0 +1,142 @@
+# ARCHIVO GENERADO — no editar a mano. Lo produce `observabilidad/reglas-del-corte.ts`
+# del catalogo de `cifras-del-corte.ts`, y `cifras-del-corte.test.ts` exige que el
+# comprometido sea el que ese generador produce. Se regenera con `yarn observabilidad-del-corte`.
+#
+# Dos reglas por cifra, y la segunda no sobra: `absent()` avisa de que la serie NO EXISTE,
+# que no es lo mismo que valer cero. Es la leccion de #156 con `pg_up` — cuando el emisor
+# cae, la serie deja de existir en vez de pasar a cero, y una regla que solo mirara el
+# valor nunca llegaria a `firing`.
+groups:
+  - name: kamayuk-corte
+    rules:
+      - alert: RetrasoDelOutbox
+        expr: kamayuk_outbox_retraso_segundos > 600
+        for: 5m
+        labels:
+          severidad: advertencia
+          responsable: "Jefe de Rentas (operacion diaria de caja)"
+        annotations:
+          resumen: "Retraso maximo del outbox por encima de 600"
+          descripcion: "Lo escribe: BuzonDeSalidaJdbc inserta el evento en la MISMA transaccion del cobro; EntregarEventos lo marca ENTREGADO o MUERTO."
+          runbook: "docs/B0-operacion/runbooks/el-buzon-de-pagos-no-se-vacia.md"
+
+      - alert: RetrasoDelOutboxSinSerie
+        expr: absent(kamayuk_outbox_retraso_segundos)
+        for: 1h
+        labels:
+          severidad: advertencia
+          responsable: "Jefe de Rentas (operacion diaria de caja)"
+        annotations:
+          resumen: "«Retraso maximo del outbox» lleva una hora sin publicarse"
+          descripcion: "La serie no existe, que NO es lo mismo que valer cero: el tablero dibujaria «sin datos» y una regla que solo mirara el valor no se disparara nunca. O el emisor no esta, o dejo de estarlo."
+          runbook: "docs/B0-operacion/runbooks/el-buzon-de-pagos-no-se-vacia.md"
+
+      - alert: ValuacionQueFalta
+        expr: kamayuk_valuacion_faltante_predios > 0
+        for: 5m
+        labels:
+          severidad: critica
+          responsable: "Responsable de Catastro (padron y valuacion)"
+        annotations:
+          resumen: "Predios sin valuacion del ejercicio por encima de 0"
+          descripcion: "SIN EMISOR HOY: ni `predio_ref` ni `valuacion_predio` tienen escritor en produccion: `INSERT INTO` sobre las dos aparece solo en pruebas y fixtures, y `catastro` no emite ningun evento. Lo cierra: el ingestor de eventos (P5C hueco 3, P5E hueco 4). Mientras tanto esta regla no puede dispararse, y su gemela de ausencia si."
+          runbook: "docs/B0-operacion/runbooks/la-valuacion-del-ejercicio-no-llego.md"
+
+      - alert: ValuacionQueFaltaSinSerie
+        expr: absent(kamayuk_valuacion_faltante_predios)
+        for: 1h
+        labels:
+          severidad: advertencia
+          responsable: "Responsable de Catastro (padron y valuacion)"
+        annotations:
+          resumen: "«Predios sin valuacion del ejercicio» lleva una hora sin publicarse"
+          descripcion: "La serie no existe, que NO es lo mismo que valer cero: el tablero dibujaria «sin datos» y una regla que solo mirara el valor no se disparara nunca. O el emisor no esta, o dejo de estarlo."
+          runbook: "docs/B0-operacion/runbooks/la-valuacion-del-ejercicio-no-llego.md"
+
+      - alert: HuellasDiscrepantes
+        expr: kamayuk_antientropia_sectores_discrepantes > 0
+        for: 5m
+        labels:
+          severidad: critica
+          responsable: "Responsable de Catastro (padron y valuacion)"
+        annotations:
+          resumen: "Sectores con huella discrepante (24 h) por encima de 0"
+          descripcion: "SIN EMISOR HOY: el mecanismo existe desde P6 y la proyeccion contra la que compara no la alimenta nadie: hoy la comparacion diria «todos los sectores faltan en la proyeccion», que es cierto y no es lo que esta cifra quiere decir. Lo cierra: el ingestor de eventos, igual que la anterior. Mientras tanto esta regla no puede dispararse, y su gemela de ausencia si."
+          runbook: "docs/B0-operacion/runbooks/la-proyeccion-de-catastro-no-cuadra.md"
+
+      - alert: HuellasDiscrepantesSinSerie
+        expr: absent(kamayuk_antientropia_sectores_discrepantes)
+        for: 1h
+        labels:
+          severidad: advertencia
+          responsable: "Responsable de Catastro (padron y valuacion)"
+        annotations:
+          resumen: "«Sectores con huella discrepante (24 h)» lleva una hora sin publicarse"
+          descripcion: "La serie no existe, que NO es lo mismo que valer cero: el tablero dibujaria «sin datos» y una regla que solo mirara el valor no se disparara nunca. O el emisor no esta, o dejo de estarlo."
+          runbook: "docs/B0-operacion/runbooks/la-proyeccion-de-catastro-no-cuadra.md"
+
+      - alert: EventosMuertos
+        expr: kamayuk_outbox_muertos > 0
+        for: 5m
+        labels:
+          severidad: critica
+          responsable: "Jefe de Rentas (operacion diaria de caja)"
+        annotations:
+          resumen: "Eventos en la cola de muertos por encima de 0"
+          descripcion: "Lo escribe: EntregarEventos marca MUERTO tras `kamayuk.caja.entrega.intentos` (8 por omision); solo sale de ahi por `ExplicarPagoSinEntregar`, nunca borrandose."
+          runbook: "docs/B0-operacion/runbooks/el-buzon-de-pagos-no-se-vacia.md"
+
+      - alert: EventosMuertosSinSerie
+        expr: absent(kamayuk_outbox_muertos)
+        for: 1h
+        labels:
+          severidad: advertencia
+          responsable: "Jefe de Rentas (operacion diaria de caja)"
+        annotations:
+          resumen: "«Eventos en la cola de muertos» lleva una hora sin publicarse"
+          descripcion: "La serie no existe, que NO es lo mismo que valer cero: el tablero dibujaria «sin datos» y una regla que solo mirara el valor no se disparara nunca. O el emisor no esta, o dejo de estarlo."
+          runbook: "docs/B0-operacion/runbooks/el-buzon-de-pagos-no-se-vacia.md"
+
+      - alert: TurnosConDiferencia
+        expr: kamayuk_cierres_con_diferencia > 0
+        for: 5m
+        labels:
+          severidad: critica
+          responsable: "Tesorero (arqueo y cierre)"
+        annotations:
+          resumen: "Turnos cerrados con diferencia por encima de 0"
+          descripcion: "Lo escribe: el cierre de turno la escribe, y `cierre_turno_diferencia_ck` la ata a `total_declarado - neto`. Es la unica columna de importe del esquema que admite negativo."
+          runbook: "docs/B0-operacion/runbooks/un-turno-cerro-con-diferencia.md"
+
+      - alert: TurnosConDiferenciaSinSerie
+        expr: absent(kamayuk_cierres_con_diferencia)
+        for: 1h
+        labels:
+          severidad: advertencia
+          responsable: "Tesorero (arqueo y cierre)"
+        annotations:
+          resumen: "«Turnos cerrados con diferencia» lleva una hora sin publicarse"
+          descripcion: "La serie no existe, que NO es lo mismo que valer cero: el tablero dibujaria «sin datos» y una regla que solo mirara el valor no se disparara nunca. O el emisor no esta, o dejo de estarlo."
+          runbook: "docs/B0-operacion/runbooks/un-turno-cerro-con-diferencia.md"
+
+      - alert: DeterminacionesDeOtroConjunto
+        expr: kamayuk_determinaciones_de_otro_conjunto > 0
+        for: 5m
+        labels:
+          severidad: critica
+          responsable: "Responsable de Normativa (parametros y conjuntos sellados)"
+        annotations:
+          resumen: "Determinaciones con conjunto distinto al de su corrida por encima de 0"
+          descripcion: "Lo escribe: `CorridaDeEmisionRepositoryJdbc` escribe la corrida y `determinacion` la escribe el calculo. NO hay clave foranea entre `determinacion.conjunto_id` y el conjunto sellado: `V2__baja_de_parametros` la retiro al irse `conjunto_parametros` a `normativa`, y esta cifra es lo unico que queda mirando esa union."
+          runbook: "docs/B0-operacion/runbooks/una-emision-uso-otro-conjunto.md"
+
+      - alert: DeterminacionesDeOtroConjuntoSinSerie
+        expr: absent(kamayuk_determinaciones_de_otro_conjunto)
+        for: 1h
+        labels:
+          severidad: advertencia
+          responsable: "Responsable de Normativa (parametros y conjuntos sellados)"
+        annotations:
+          resumen: "«Determinaciones con conjunto distinto al de su corrida» lleva una hora sin publicarse"
+          descripcion: "La serie no existe, que NO es lo mismo que valer cero: el tablero dibujaria «sin datos» y una regla que solo mirara el valor no se disparara nunca. O el emisor no esta, o dejo de estarlo."
+          runbook: "docs/B0-operacion/runbooks/una-emision-uso-otro-conjunto.md"
