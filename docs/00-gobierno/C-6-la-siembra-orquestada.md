@@ -255,6 +255,22 @@ sobre la misma base:
 | paso 3 **otra vez** (lo que hace `--desde N`) | `0 nuevas, 15 rechazadas` — **la misma línea que el caso malo** | **verde**, `15 de 15`, exit 0 |
 | paso 1, que nunca se corrió | — | **rojo**, `0 de 15: FALTAN 15` |
 
+Y un cuarto contraste que **no hubo que provocar**: correr los `verificarAislamiento` de los tres
+backends contra el mismo clúster reasigna las claves de los roles (`BaseDeDatosDePrueba` hace
+`ALTER ROLE … PASSWORD` con una clave derivada del `system_identifier`, y son roles **del clúster**
+— el mecanismo que #698 documenta). La comprobación siguiente salió así:
+
+```
+X  1/10 catastro.via  no se pudo contar: psql:error:…FATAL: password authentication failed for user "sgtm_app"
+…
+SIEMBRA INCOMPLETA: 11 comprobacion(es) en rojo.
+```
+
+**Once en rojo, y ninguna diciendo que la siembra esté mal.** Un contador que no puede contar no
+informa un cero: informa que no pudo. Es la misma regla que el código de salida 3 aplica a un
+`--url-<sistema>` que falta —«no se ha comprobado» no es «está bien»—, porque un cero inventado en un
+recuento de siembra es indistinguible de una tabla vacía.
+
 ### 5.4 Las guardas nuevas, y su rotura
 
 `infra/verificaciones/siembra-de-la-demostracion.test.ts`, 11 pruebas en `yarn verificar` —sin motor,
