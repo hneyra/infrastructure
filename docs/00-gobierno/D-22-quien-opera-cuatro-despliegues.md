@@ -115,7 +115,7 @@ que no llegue.
 
 | Corrección | ¿Depende de D-22? |
 |---|---|
-| C-1 los nueve desajustes de frontera | **No.** Son datos malos hoy, en el árbol que existe |
+| C-1 los nueve desajustes de frontera | **No.** Son datos malos hoy, en el árbol que existe. *(Hecho: [`C-1-desajustes-de-frontera.md`](C-1-desajustes-de-frontera.md))* |
 | C-2 la guarda de extensiones | **No.** Vale para uno o para cinco repositorios |
 | C-3 los 36 `NOT VALID NOT VALID` | **No.** Es un defecto del generador de baselines |
 | C-4 PostgreSQL 18 | **No.** El monolito tiene el mismo problema |

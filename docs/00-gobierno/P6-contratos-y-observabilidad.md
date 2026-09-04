@@ -475,7 +475,12 @@ nadie modifica, así que hoy no pueden dispararse. Cerrarlo pide un disparo entr
    decisión con su motivo. Lo que queda abierto es que esas tres APIs no tienen descripción
    publicada.
 
-6. **Los nueve desajustes de frontera siguen vivos.** Están registrados con nombre y no pueden
+6. **Los nueve desajustes de frontera siguen vivos.** *(Cerrado por **C-1**, 2026-09-04:
+   `desajustesVivos()` queda vacío en los dos archivos. La decisión de cada uno, con quién pagó la
+   traducción y su mutación, en [`C-1-desajustes-de-frontera.md`](C-1-desajustes-de-frontera.md) —que
+   además corrige dos afirmaciones de este documento: `ConsultaController` **sí** usa su parámetro
+   de fecha, y el motivo de la anulación **no** sobrevivía en el `cuerpo` jsonb.)* Están
+   registrados con nombre y no pueden
    crecer en silencio, pero **no se arreglaron**: cuál de los dos lados paga la traducción es una
    decisión de las dos partes, y tres de los nueve no se cierran cambiando un nombre.
 
