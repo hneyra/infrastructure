@@ -57,9 +57,14 @@ describe("#742/C-2 — la extension que una migracion usa esta declarada, en los
       "sgtm|V72__vigencias_que_no_se_pisan.sql|btree_gist",
       "rentas|V1__baseline.sql|unaccent",
       "rentas|V1__baseline.sql|pg_trgm",
+      // C-4: V11 vuelve a escribir `nombre_normalizado`, con `unaccent` cualificado.
+      // Sigue necesitando la extension, y `rentas` la declara.
+      "rentas|V11__nombre_normalizado_sin_search_path.sql|unaccent",
       "catastro|V1__baseline.sql|unaccent",
       "catastro|V1__baseline.sql|postgis",
       "catastro|V1__baseline.sql|btree_gist",
+      // C-4: lo mismo en `catastro`, con su V4.
+      "catastro|V4__nombre_normalizado_sin_search_path.sql|unaccent",
       // `normativa` no depende de ninguna, y `caja` tampoco: las dos ausencias son el
       // dato, no un archivo que no se pudo leer. Lo garantizan las dos pruebas de abajo.
     ]);
@@ -121,8 +126,8 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
     expect(cuantas).toEqual({
       "infrastructure (copia del esquema del monolito)": 68,
       sgtm: 68,
-      rentas: 10,
-      catastro: 3,
+      rentas: 11,
+      catastro: 4,
       normativa: 1,
       caja: 2,
     });
