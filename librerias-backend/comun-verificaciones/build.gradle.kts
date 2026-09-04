@@ -5,10 +5,16 @@
 // clases se llamen «...TestBase» no las hace pruebas: son las clases base de las
 // que cada repositorio deriva la suya, con su configuracion.
 //
-// LO QUE NO ESTA AQUI, y conviene decirlo porque se busca: el contrato de la API
-// (`ContratoDeApiTest`, `FormasDeLaApiTest`, `RespuestasDeLaApiTest`) y el panel de
-// recaudacion. Cada sistema tiene su propio contrato, asi que compartirlos seria
-// compartir una verdad que no es la misma en los cuatro.
+// LO QUE NO ESTA AQUI, y conviene decirlo porque se busca: el contrato de la API de cada
+// sistema (`ContratoDeApiTest`, `FormasDeLaApiTest`, `RespuestasDeLaApiTest`) y el panel
+// de recaudacion. Cada sistema publica lo suyo, asi que compartirlos seria compartir una
+// verdad que no es la misma en los cuatro.
+//
+// LO QUE SI ESTA, desde P6: `contrato/`, el contrato ENTRE sistemas. Ahi la logica es la
+// contraria — lo que un consumidor espera de un proveedor tiene que significar lo mismo
+// leido desde los dos lados, y dos implementaciones de «que forma tiene este JSON»
+// acabarian discrepando justo en el caso raro. Discrepar ahi significa que el proveedor
+// cree cumplir un contrato que el consumidor lee de otra manera.
 plugins {
     `java-library`
     id("com.diffplug.spotless") version "8.9.0"
@@ -65,6 +71,12 @@ dependencies {
     api("org.springframework:spring-tx")
     api("org.springframework:spring-web")
     api("org.springframework.boot:spring-boot")
+
+    // Jackson entra por las pruebas de contrato entre repositorios (P6): el archivo que
+    // el consumidor publica lo lee el proveedor, y son dos builds distintos. Los cinco
+    // backends ya lo tienen —son aplicaciones Spring Boot web—, asi que no anade nada a
+    // su classpath; lo que anade es poder leerlo desde aqui.
+    api("com.fasterxml.jackson.core:jackson-databind")
 
     testImplementation(libs.junit.platform.launcher)
 }
