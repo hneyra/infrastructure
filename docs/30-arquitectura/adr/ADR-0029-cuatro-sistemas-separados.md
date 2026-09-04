@@ -2,11 +2,14 @@
 
 | Campo | Valor |
 |---|---|
-| Estado | Propuesto |
+| Estado | **Aceptado** |
 | Fecha | 2026-09-03 |
 | Decide | Dirección del proyecto |
 | Reemplaza | [ADR-0003](https://github.com/hneyra/rentas/blob/main/docs/30-arquitectura/adr/ADR-0003-monolito-modular.md) — monolito modular con Spring Modulith |
 | Abre | D-17 … D-24 (GOB-02) |
+
+
+> Aceptado el 2026-09-04 por la direccion del proyecto, al contestar **D-22**: el producto lo opera un equipo central, no cada municipalidad. Ver [`D-22`](../../00-gobierno/D-22-quien-opera-cuatro-despliegues.md) en `infrastructure`.
 
 ## Contexto
 

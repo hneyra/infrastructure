@@ -2,13 +2,16 @@
 
 | Campo | Valor |
 |---|---|
-| Estado | Propuesto |
+| Estado | **Aceptado** |
 | Fecha | 2026-09-03 |
 | Decide | Dirección del proyecto |
 | Reemplaza | [ADR-0009](https://github.com/hneyra/sgtm/blob/migracion-a-microservicios/docs/30-arquitectura/adr/ADR-0009-plataforma-frontend.md) en su clausula «una sola aplicación por ahora» |
 | Depende de | [ADR-0029](ADR-0029-cuatro-sistemas-separados.md) |
 | Conserva | [ADR-0013](https://github.com/hneyra/rentas/blob/main/docs/30-arquitectura/adr/ADR-0013-permisos-de-la-sesion.md) y [ADR-0020](https://github.com/hneyra/rentas/blob/main/docs/30-arquitectura/adr/ADR-0020-la-sesion-del-ciudadano.md) sin cambio |
 | Abre | D-23, D-24 |
+
+
+> Aceptado el 2026-09-04 por la direccion del proyecto, al contestar **D-22**: el producto lo opera un equipo central, no cada municipalidad. Ver [`D-22`](../../00-gobierno/D-22-quien-opera-cuatro-despliegues.md) en `infrastructure`.
 
 ## Contexto
 

@@ -23,6 +23,29 @@ ORG = "https://github.com/hneyra"
 # de la interfaz sigue viviendo donde vive su codigo (GOB-05 §4.3).
 SE_QUEDAN = {"0009", "0010"}
 
+# Los que la copia viva PUEDE tener distintos de `sgtm`, con el motivo y la fecha.
+#
+# `sgtm` es el archivo historico: quedo congelado el dia del corte y NO SE MODIFICA. La copia
+# viva sigue su ciclo, asi que una divergencia deja de ser un defecto EN CUANTO alguien la
+# declara aqui. Lo que esta lista NO admite es una divergencia sin motivo: esa sigue siendo
+# roja, que es lo que esta comprobacion existe para cazar.
+#
+# Y no admite entradas rancias: si un ADR de aqui vuelve a estar identico, la comprobacion lo
+# dice y hay que retirarlo. Una excusa que ya no excusa nada es una excusa que tapa la
+# siguiente.
+DIVERGEN_A_PROPOSITO = {
+    "0003": "2026-09-04 · Obsoleto: D-22 se contesto «lo opera un equipo central» y ADR-0029 lo reemplaza",
+    "0024": "2026-09-04 · Aceptado al contestar D-22",
+    "0025": "2026-09-04 · Aceptado al contestar D-22",
+    "0026": "2026-09-04 · Aceptado al contestar D-22",
+    "0027": "2026-09-04 · Aceptado al contestar D-22",
+    "0028": "2026-09-04 · Aceptado al contestar D-22",
+    "0029": "2026-09-04 · Aceptado al contestar D-22",
+    "0030": "2026-09-04 · Aceptado al contestar D-22",
+    "0031": "2026-09-04 · Aceptado al contestar D-22",
+    "0032": "2026-09-04 · Aceptado al contestar D-22",
+}
+
 if len(sys.argv) < 2:
     print("uso: verificar-reparto-adr.py <raiz que contiene los seis repositorios>",
           file=sys.stderr)
@@ -86,6 +109,8 @@ fallos += bool(dobles or en_sgtm_y_fuera)
 print("3. El estado no cambio al mudarlo:")
 print(f"   {'#':>4}  {'estado en sgtm':22s} {'estado en destino':22s} {'repositorio':16s} cuerpo")
 distintos = 0
+declarados = 0
+rancios: list[str] = []
 for n in sorted(originales):
     texto_o = originales[n].read_text(encoding="utf-8")
     e_o = estado_de(texto_o)
@@ -99,13 +124,30 @@ for n in sorted(originales):
     sin_enlaces = lambda t: hashlib.sha256(
         re.sub(r"\]\([^)]*\)", "]()", t).encode("utf-8")).hexdigest()[:12]
     igual = sin_enlaces(texto_o) == sin_enlaces(texto_c)
-    marca = "" if e_o == e_c else "   <-- DISTINTO"
-    if e_o != e_c or not igual:
+    difiere = e_o != e_c or not igual
+    declarado = n in DIVERGEN_A_PROPOSITO
+    if difiere and declarado:
+        declarados += 1
+        marca = "   <-- declarado: " + DIVERGEN_A_PROPOSITO[n]
+    elif difiere:
         distintos += 1
+        marca = "   <-- DISTINTO" if e_o != e_c else ""
         marca += "" if igual else "   <-- CUERPO EDITADO"
+    else:
+        marca = ""
+        if declarado:
+            rancios.append(n)
     print(f"   {n}  {e_o:22s} {e_c:22s} {repo:16s} {'identico' if igual else 'EDITADO'}{marca}")
 fallos += bool(distintos)
-print(f"\n   {len(originales)} comparados, {distintos} con estado o cuerpo distinto.\n")
+print(f"\n   {len(originales)} comparados, {distintos} con divergencia SIN DECLARAR, "
+      f"{declarados} declarada(s).\n")
+if rancios:
+    fallos += 1
+    print("   ROJO: estos estan declarados en DIVERGEN_A_PROPOSITO y ya son identicos.")
+    print("   Una excusa que ya no excusa nada tapa la siguiente. Retiralos:")
+    for n in rancios:
+        print(f"     - {n}: {DIVERGEN_A_PROPOSITO[n]}")
+    print()
 
 # 4. El indice de cada repositorio dice la verdad: lista lo que aloja, no lista lo que no
 #    aloja, y los que enlaza apuntan al repositorio que de verdad los tiene.

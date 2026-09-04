@@ -2,12 +2,15 @@
 
 | Campo | Valor |
 |---|---|
-| Estado | Propuesto |
+| Estado | **Aceptado** |
 | Fecha | 2026-09-03 |
 | Decide | Dirección del proyecto |
 | Depende de | [ADR-0029](ADR-0029-cuatro-sistemas-separados.md) |
 | Conserva | [ADR-0004](ADR-0004-almacenamiento-de-datos.md) y el migrador tal como están |
 | No toca | D-04 (GOB-02), que es otra cosa y sigue abierta |
+
+
+> Aceptado el 2026-09-04 por la direccion del proyecto, al contestar **D-22**: el producto lo opera un equipo central, no cada municipalidad. Ver [`D-22`](../../00-gobierno/D-22-quien-opera-cuatro-despliegues.md) en `infrastructure`.
 
 ## Contexto
 

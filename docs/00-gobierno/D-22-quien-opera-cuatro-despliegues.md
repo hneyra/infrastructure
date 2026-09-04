@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Estado | **Abierta**, y ya no es inocua |
+| Estado | **CONTESTADA** el 2026-09-04: la opera un equipo central |
 | Decide | Dirección del proyecto |
 | Registro canónico | [`sgtm/docs/00-gobierno/decisiones-abiertas.md`](../../../sgtm/docs/00-gobierno/decisiones-abiertas.md), fila D-22 |
 | Fecha de este documento | 2026-09-04 |
@@ -128,12 +128,39 @@ que no llegue.
 **Cuatro de las nueve correcciones no esperan a nadie.** Las otras cinco construyen sobre la
 respuesta, y son las caras.
 
-## 6. Lo que este documento pide
+## 6. La respuesta
 
-Una respuesta a una pregunta: **¿quién opera el producto en una municipalidad que lo usa?**
+**2026-09-04 — la dirección del proyecto contesta: el producto lo opera un equipo central**,
+no cada municipalidad. Es la salida §3.1.
 
-Si la respuesta es «un equipo central», que ADR-0024…0032 pasen a `Aceptado` y ADR-0003 a
-`Obsoleto`, y se sigue. Si es «cada municipalidad», que se diga, y C-5…C-9 se paran antes de
-gastar en ellas.
+Con eso, la objeción de ADR-0003 —«el equipo que mantendrá esto en una municipalidad no opera
+doce despliegues»— deja de aplicar: quien opera no es la municipalidad, y son cuatro, no doce.
 
-Y en cualquier caso, que la fila D-22 del registro pierda su «hoy no bloquea nada»: hoy bloquea.
+Lo que se hizo el mismo día, y está medido:
+
+| Acto | Dónde |
+|---|---|
+| **ADR-0024…0032 pasan a `Aceptado`**, los nueve, con la nota de por qué | los cuatro repositorios que los alojan |
+| **ADR-0003 pasa a `Obsoleto`**, reemplazado por ADR-0029 | `rentas` |
+| C-5…C-9 quedan **desbloqueadas** | ver §5 |
+
+**ADR-0003 no se equivocaba, y su nota lo dice**: cambió el hecho sobre el que se apoyaba, no
+el razonamiento. Y **lo que decidió sigue vigente dentro de cada sistema** — `rentas` es un
+monolito modular con Spring Modulith y sus límites verificados por el build. Lo que se
+reemplaza es que lo sea *todo el producto*.
+
+### Lo que esta decisión NO contesta
+
+- **D-25** sigue abierta, y conviene no confundirla con ésta: cuatro sistemas sobre un k3s de
+  un solo nodo **comparten disponibilidad**. Perder el nodo sigue siendo perder los cuatro.
+  Que se acepte ADR-0029 no significa que la separación mejore la disponibilidad, porque no lo
+  hace: eso cuesta más nodos y un motor por sistema, y es presupuesto.
+- **D-23** (`comun-dominio`), **D-17** y **D-20** siguen abiertas y bloquean lo suyo.
+
+### El registro canónico sigue diciendo otra cosa
+
+`sgtm/docs/00-gobierno/decisiones-abiertas.md` conserva D-22 como abierta con su «hoy no
+bloquea nada», y **no se corrige**: `sgtm` es el archivo histórico. Este documento es la copia
+viva. Que las dos digan cosas distintas es lo esperado desde el corte —la misma divergencia
+que `verificar-reparto-adr.py` ahora admite declarada y sigue rechazando sin declarar—, y hay
+que reconciliarlo el día que el registro de decisiones se mude.

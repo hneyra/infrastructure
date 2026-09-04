@@ -2,11 +2,14 @@
 
 | Campo | Valor |
 |---|---|
-| Estado | Propuesto |
+| Estado | **Aceptado** |
 | Fecha | 2026-09-03 |
 | Decide | Dirección del proyecto |
 | Extiende | [ADR-0002](ADR-0002-estrategia-multi-tenant.md) y [ADR-0005](ADR-0005-identidad-y-acceso.md) a la frontera entre sistemas |
 | Cierra | El riesgo número uno del proyecto, en su forma nueva |
+
+
+> Aceptado el 2026-09-04 por la direccion del proyecto, al contestar **D-22**: el producto lo opera un equipo central, no cada municipalidad. Ver [`D-22`](../../00-gobierno/D-22-quien-opera-cuatro-despliegues.md) en `infrastructure`.
 
 ## Contexto
 
