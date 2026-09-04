@@ -26,6 +26,7 @@ export function entornoPara(
   ambiente: Environment,
   dominio: string,
   etiquetaDeImagen: string,
+  operacion: { readonly responsable: string; readonly canal: string },
 ): (sistema: string) => EntornoDelDescriptor {
   return (sistema) => ({
     ambiente,
@@ -35,5 +36,6 @@ export function entornoPara(
     imagenDe: (componente) => `${REGISTRO}/kamayuk-${componente}:${etiquetaDeImagen}`,
     secretoDe: (clave) => `kamayuk-${sistema}-${ambiente}-${clave}`,
     prioridadDe: (clase) => nombreDePrioridad(ambiente, clase),
+    operacion,
   });
 }

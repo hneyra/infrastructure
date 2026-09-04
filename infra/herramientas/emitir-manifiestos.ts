@@ -65,10 +65,10 @@ export function emitir(opciones: Opciones): string {
   // Y los cuatro sistemas (ADR-0031 §2). `componerOFallar` los audita con las MISMAS reglas
   // que la plataforma y lanza antes de emitir nada: un descriptor ajeno mal formado no puede
   // entrar por ser ajeno.
-  const deLosSistemas = componerOFallar(SISTEMAS, entornoPara(ambiente, invariantes.ingress.domain, invariantes.application.bootstrapVersion), {
+  const deLosSistemas = componerOFallar(SISTEMAS, entornoPara(ambiente, invariantes.ingress.domain, invariantes.application.bootstrapVersion, invariantes.operacion), {
     secretoDeOwner: secretos(ambiente).owner,
     basesDelClustre: SISTEMAS.map((s) => s.descriptor.baseDeDatos(
-      entornoPara(ambiente, invariantes.ingress.domain, invariantes.application.bootstrapVersion)(s.descriptor.sistema)).nombre),
+      entornoPara(ambiente, invariantes.ingress.domain, invariantes.application.bootstrapVersion, invariantes.operacion)(s.descriptor.sistema)).nombre),
     manifiestosDeLaPlataforma: plataforma,
   });
 

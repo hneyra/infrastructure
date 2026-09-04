@@ -16,7 +16,7 @@ import type { Environment } from "../config";
 const i = process.argv.indexOf("--ambiente");
 const ambiente = (i >= 0 ? process.argv[i + 1] : "stg") as Environment;
 const inv = invariantesDe(ambiente);
-const grafo = grafoDeEgreso(entornoPara(ambiente, inv.ingress.domain, inv.application.bootstrapVersion));
+const grafo = grafoDeEgreso(entornoPara(ambiente, inv.ingress.domain, inv.application.bootstrapVersion, inv.operacion));
 
 console.log(`Grafo de egreso de «${ambiente}» — ${SISTEMAS.length} sistemas\n`);
 for (const sistema of Object.keys(grafo).sort()) {

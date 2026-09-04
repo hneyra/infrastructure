@@ -73,6 +73,19 @@ export interface Secretos {
    * aplicacion, que solo tiene SELECT sobre esa tabla.
    */
   carga: string;
+  /**
+   * `rol_ingestor_catastro` (P5C, C-7 §6): la unica credencial que puede escribir la
+   * proyeccion local de `catastro` dentro de la base de `rentas` —`predio_ref`, `ficha_ref`,
+   * `catastro_evento_aplicado` (`V4`) y las dos de valuacion (`V5`)—.
+   *
+   * Que esa proyeccion sea de solo lectura para la aplicacion no puede ser disciplina del
+   * repositorio: es un privilegio, la misma mecanica que `rol_carga_parametros` con los valores
+   * normativos. Y hasta C-7 el rol se creaba `NOLOGIN` y **no estaba en este inventario**, asi
+   * que nadie le generaba clave ni se la asignaba: existia, tenia los `GRANT` puestos, y no
+   * podia abrir una sesion. Es el mismo hueco que #435 encontro con `rol_carga_parametros`,
+   * un ambiente mas tarde.
+   */
+  ingestorDeCatastro: string;
 }
 
 export function secretos(environment: Environment): Secretos {
@@ -85,6 +98,7 @@ export function secretos(environment: Environment): Secretos {
     monitoreo: resourceName(environment, "postgres-monitoreo"),
     grafana: resourceName(environment, "grafana"),
     carga: resourceName(environment, "postgres-carga"),
+    ingestorDeCatastro: resourceName(environment, "postgres-ingestor-catastro"),
   };
 }
 
@@ -110,6 +124,8 @@ export const CLAVES = {
   grafana: "clave-admin",
   /** Clave de `rol_carga_parametros` (issue #387). */
   carga: "clave-carga",
+  /** Clave de `rol_ingestor_catastro` (P5C, C-7 §6). */
+  ingestorDeCatastro: "clave-ingestor",
 } as const;
 
 /**

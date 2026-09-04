@@ -54,6 +54,13 @@ config:
   sgtm:nodeAllocatableCpu: "2"
   sgtm:nodeAllocatableMemory: 6029348Ki
   sgtm:domain: vmd120205.contaboserver.net
+  # A QUIEN se le avisa cuando algo de operacion necesita una persona, y DONDE (C-7 §4).
+  # El primero que lo consume es `caja`: ADR-0026 §4 exige que un pago que no se pudo imputar
+  # avise a una persona CON NOMBRE, porque es dinero cobrado sin registrar. Su aplicacion NO
+  # ARRANCA sin las dos, y `checkInvariants` rechaza ademas el relleno —«pendiente», «TBD»—,
+  # que satisfaria esa guarda y la vaciaria de sentido.
+  sgtm:responsableDeOperacion: Equipo de operacion
+  sgtm:canalDeOperacion: operaciones@example.pe
   sgtm:acmeEmail: operaciones@example.pe
   # Versiones fijadas. Una etiqueta móvil convierte cualquier reinicio del VPS en una
   # actualización no planificada, y en un solo nodo eso pasa en cada mantenimiento.

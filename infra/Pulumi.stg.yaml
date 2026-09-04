@@ -31,6 +31,13 @@ config:
   sgtm:nodeAllocatableCpu: "4"
   sgtm:nodeAllocatableMemory: 7Gi
   sgtm:domain: sv-RFoVCw2ifaqy3G9NZ1eT.cloud.elastika.pe
+  # A QUIEN se le avisa cuando algo de operacion necesita una persona, y DONDE (C-7 §4).
+  # El primero que lo consume es `caja`: ADR-0026 §4 exige que un pago que no se pudo imputar
+  # avise a una persona CON NOMBRE, porque es dinero cobrado sin registrar. Su aplicacion NO
+  # ARRANCA sin las dos, y `checkInvariants` rechaza ademas el relleno —«pendiente», «TBD»—,
+  # que satisfaria esa guarda y la vaciaria de sentido.
+  sgtm:responsableDeOperacion: Equipo de operacion (ensayo)
+  sgtm:canalDeOperacion: operaciones@example.pe
   sgtm:acmeEmail: operaciones@example.pe
   # Certificado del entorno de pruebas de Let's Encrypt: aquí se ajusta el ingreso sin
   # gastar el límite de tasa. En prod está prohibido, porque ese certificado no lo

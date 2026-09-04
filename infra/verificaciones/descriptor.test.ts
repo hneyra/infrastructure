@@ -33,6 +33,7 @@ const ENTORNO: EntornoDelDescriptor = {
   imagenDe: (c) => `ghcr.io/hneyra/kamayuk-${c}:0eee58e43e04b1c2d3f4a5b6c7d8e9f0a1b2c3d4`,
   secretoDe: (c) => `kamayuk-stg-${c}`,
   prioridadDe: (clase) => nombreDePrioridad("stg", clase),
+  operacion: { responsable: "Jefa de Tesoreria", canal: "tesoreria@example.pe" },
 };
 
 /**

@@ -64,6 +64,25 @@ export interface EntornoDelDescriptor {
    * RECHAZA y que no llega a arrancar—.
    */
   prioridadDe(clase: "datos" | "servicio" | "lote"): string;
+  /**
+   * A quien se le avisa en este ambiente cuando algo de operacion necesita una persona.
+   *
+   * Es del **ambiente** y no del sistema, y por eso lo entrega `infrastructure`: la pregunta que
+   * contesta es «a quien se le avisa en stg» y «a quien en prod». Un descriptor no lo puede
+   * componer ni leer de `process.env` — es un dato, como los demas.
+   *
+   * El primero que lo necesita es `caja`: ADR-0026 §4 exige una alerta **a una persona con
+   * nombre** cuando hay dinero cobrado sin registrar, y su aplicacion NO ARRANCA sin las dos
+   * (`ResponsableDeLaConciliacion` lo comprueba al construirse). Hasta C-7 este tipo no tenia
+   * campo para ellas, asi que el pod de `caja` no podia levantar: el hueco estaba escrito en su
+   * descriptor y no se podia cerrar desde alli, porque cerrarlo era cambiar este archivo.
+   */
+  readonly operacion: {
+    /** Nombre de la persona o el puesto. Tiene que decir a quien. */
+    readonly responsable: string;
+    /** Donde se le avisa: un correo, un canal de mensajeria, un telefono. */
+    readonly canal: string;
+  };
 }
 
 /**

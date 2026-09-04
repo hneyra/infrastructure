@@ -238,6 +238,26 @@ export interface ImplantacionSettings {
  * destino, y una caída que nadie vio. «Una regla que no notifica a nadie no es una
  * alerta, es un gráfico» es la frase que esta interfaz existe para que no se repita.
  */
+/**
+ * Quien recibe un aviso de operacion de este ambiente, con nombre y canal.
+ *
+ * Es del AMBIENTE y no de ningun sistema, y por eso vive aqui: lo que hace falta contestar es
+ * «a quien se le avisa en stg» y «a quien en prod», no «a quien avisa la caja». El primero que
+ * lo necesita es `caja` —ADR-0026 §4 pide una alerta **a una persona con nombre** cuando hay
+ * dinero cobrado sin registrar—, y su aplicacion NO ARRANCA sin las dos (C-7, punto 4).
+ *
+ * **Las dos son obligatorias y no tienen valor por omision**, en los dos ambientes. Un
+ * «responsable: pendiente» haria arrancar la instalacion con la guarda satisfecha y sin nadie
+ * detras, que es exactamente lo que la guarda existe para impedir; y `stg` tampoco se exime,
+ * porque `stg` es donde se ensaya el procedimiento entero.
+ */
+export interface OperacionSettings {
+  /** Nombre de la persona o el puesto. No un alias de correo: tiene que decir a quien. */
+  responsable: string;
+  /** Donde se le avisa: un correo, un canal de mensajeria, un telefono. */
+  canal: string;
+}
+
 export interface ObservabilitySettings {
   /**
    * El `webhook_configs` de Alertmanager. Sin él, las reglas se evalúan igual —se ven
@@ -306,6 +326,7 @@ export interface Invariants {
   application: ApplicationSettings;
   implantacion: ImplantacionSettings;
   observability: ObservabilitySettings;
+  operacion: OperacionSettings;
 }
 
 /**
@@ -508,6 +529,19 @@ export function readInvariants(environment: Environment, reader: ConfigReader): 
       ...(reader.text("alertWebhookUrl") === undefined
         ? {}
         : { alertWebhookUrl: reader.text("alertWebhookUrl") }),
+    },
+    operacion: {
+      responsable: requireText(
+        reader,
+        "responsableDeOperacion",
+        "a QUIEN se le avisa cuando hay dinero cobrado sin registrar (ADR-0026 §4). Sin esto la"
+          + " aplicacion de `caja` no arranca, y es deliberado",
+      ),
+      canal: requireText(
+        reader,
+        "canalDeOperacion",
+        "DONDE se le avisa a esa persona: un correo, un canal de mensajeria, un telefono",
+      ),
     },
   };
 }
@@ -747,6 +781,32 @@ export function checkInvariants(s: Invariants): string[] {
         "receptor, Alertmanager enruta a `null-receiver` — las alertas se ven en su API y no " +
         "le llegan a nadie, que es exactamente el estado que este mensaje existe para impedir " +
         "en producción.",
+    );
+  }
+
+  // ── C-7 §4 — una alerta sin destinatario no es una alerta ─────────────────
+  //
+  // ADR-0026 §4 no pide «una alerta»: pide una alerta A UNA PERSONA CON NOMBRE, porque un pago
+  // que no se pudo imputar es dinero que entro por ventanilla y que el sistema de origen no sabe
+  // que entro. La aplicacion de `caja` ya se niega a arrancar sin las dos (`ResponsableDeLaConciliacion`);
+  // lo que se rechaza aqui es el relleno, que satisface esa guarda y la vacia de sentido.
+  for (const [clave, valor] of [
+    ["responsableDeOperacion", s.operacion.responsable],
+    ["canalDeOperacion", s.operacion.canal],
+  ] as const) {
+    if (/^(pendiente|por definir|tbd|todo|n\/?a|-+)$/i.test(valor.trim())) {
+      problems.push(
+        `\`${clave}\` vale «${valor}», que es un relleno. La guarda de \`caja\` solo comprueba que ` +
+          "no este vacio, asi que un relleno la satisface y deja la instalacion cobrando con la " +
+          "alerta apuntando a nadie — que es el estado que ADR-0026 §4 existe para impedir.",
+      );
+    }
+  }
+  if (!/[@:/.]|\+\d/.test(s.operacion.canal)) {
+    problems.push(
+      `\`canalDeOperacion\` vale «${s.operacion.canal}» y no se parece a ningun canal: hace falta ` +
+        "un correo, una direccion de mensajeria o un telefono. Es DONDE se avisa, no una " +
+        "descripcion de a quien.",
     );
   }
 

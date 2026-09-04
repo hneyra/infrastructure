@@ -72,8 +72,8 @@ export interface EntradaDeSecreto {
 /**
  * El inventario completo de un ambiente.
  *
- * Diez entradas, ocho `Secret` distintos —`sgtm-<amb>-keycloak` y
- * `sgtm-<amb>-postgres-respaldo` guardan dos claves cada uno— con diez valores,
+ * Once entradas, nueve `Secret` distintos —`sgtm-<amb>-keycloak` y
+ * `sgtm-<amb>-postgres-respaldo` guardan dos claves cada uno— con once valores,
  * **ninguno repetido**: es la comprobacion que pide el issue, no solo «roles
  * distintos» sino «claves distintas». La prueba en `verificaciones/secretos.
  * test.ts` lo exige contando entradas unicas por `secreto`+`clave`, y
@@ -202,6 +202,28 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       rolDePostgres: "rol_carga_parametros",
       // Sin requiereReinicioDe: nadie tiene un pod en marcha leyendo esto. Cada Job
       // es de un solo uso y lee el Secret fresco al crearse, igual que sgtm-owner.
+    },
+    {
+      rol: "postgres-ingestor-catastro",
+      secreto: nombres.ingestorDeCatastro,
+      clave: CLAVES.ingestorDeCatastro,
+      consumidor:
+        "Solo el proceso que aplica en `rentas` los eventos de `catastro` (ADR-0027): escribe " +
+        "predio_ref, ficha_ref y las dos de valuacion; nunca el Deployment de la aplicacion",
+      // Credencial privilegiada de escritura sobre la proyeccion del padron, igual que
+      // sgtm-owner y postgres-carga: trimestral, no semestral.
+      periodicidad: "trimestral",
+      rolDePostgres: "rol_ingestor_catastro",
+      // La base de `rentas`, no la del monolito: lo que escribe es la copia local que
+      // `rentas` lee. Sin este dato, comprobar «sirve esta credencial» conectando al padron
+      // del monolito daria un rojo falso, que es el matiz que #435 tuvo que aprender.
+      baseDeDatos: "rentas",
+      // HUECO DECLARADO (C-7 §6): el proceso que consume esta credencial NO EXISTE todavia.
+      // ADR-0027 declara el buzon de eventos y P5C lo dejo escrito: «no hay cola, no hay
+      // suscripcion, no hay reintento». La clave entra al inventario igualmente, y a
+      // proposito: un rol con privilegios de escritura sobre un padron y sin clave no es
+      // «seguro», es un rol que nadie puede rotar ni auditar, y el dia que el proceso
+      // aparezca su despliegue no deberia tener que tocar este archivo.
     },
   ];
 }

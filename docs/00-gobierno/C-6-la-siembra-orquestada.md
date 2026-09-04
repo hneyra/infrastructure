@@ -292,6 +292,14 @@ verlo** porque el síntoma es la ausencia de síntoma.
 
 ## 6. Lo que impide completar la siembra hoy: cinco defectos, tres de ellos nuevos
 
+> **Los huecos 1, 2 y 3 los cerró [C-7](C-7-que-arranquen.md) el 2026-09-05**, y lo que sigue abajo
+> es el registro de cómo estaban cuando esta corrección los encontró. Las cuatro aplicaciones
+> arrancan —medido ejecutándolas, y `catastro` además dentro de su imagen—, `catastro`, `caja` y
+> `normativa` tienen su `ComprobadorDeAcceso` contra su copia local (D-N5) y su
+> `ImplantarMunicipalidad`, y el arnés de beans que esta corrección tuvo que aportar desde fuera
+> **ya no hace falta**. Los huecos 4, 5 y 6 siguen abiertos.
+
+
 Ninguno es de la orquestación. Los tres primeros los encontró **ejecutar**, no razonar.
 
 ### Hueco 1 — Ninguna de las cuatro aplicaciones arranca: falta el `ObjectMapper`

@@ -31,6 +31,9 @@ function baseline(environment: Environment = "prod"): Invariants {
     // Un nodo holgado: esta prueba mira las invariantes de `config.ts`, y que el stack
     // quepa en su nodo es cosa de `capacidad.ts` y de `capacidad.test.ts`.
     node: { allocatableCpu: "8", allocatableMemory: "16Gi" },
+    // A quien se le avisa en este ambiente (C-7 §4). La guarda de `checkInvariants` no mira
+    // que este puesto —`requireText` ya lo exige al leer— sino que no sea un relleno.
+    operacion: { responsable: "Jefa de Tesoreria", canal: "tesoreria@example.pe" },
     ingress: {
       domain: isStg ? "stg.sgtm.example.pe" : "sgtm.example.pe",
       acmeEmail: "operaciones@example.pe",
@@ -356,6 +359,10 @@ const VALORES_MINIMOS = {
   ubigeo: "200101",
   municipalidad: "Municipalidad Provincial de Sullana",
   administrador: "administrador",
+  // A quien se le avisa, y donde (C-7 §4). Van en los minimos porque son obligatorios en los
+  // dos ambientes: `caja` no arranca sin ellos, y `stg` es donde se ensaya el procedimiento.
+  responsableDeOperacion: "Jefa de Tesoreria",
+  canalDeOperacion: "tesoreria@example.pe",
 };
 
 /**
