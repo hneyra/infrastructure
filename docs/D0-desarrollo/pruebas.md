@@ -4,13 +4,30 @@
 
 | Tarea | Qué mide | Necesita |
 |---|---|---|
-| `yarn verificar` | El descriptor: lint, tipos (**dos** `tsconfig`) y pruebas | nada |
+| `yarn verificar` | El descriptor: lint, tipos (**dos** `tsconfig`) y pruebas | **los cinco clones hermanos** (§1.1) |
 | `yarn capacidad --ambiente prod` | Si el stack cabe en el nodo, sin desplegar | nada |
 | `cd librerias-backend && ./gradlew build` | Las barreras que consumen los cinco backends | nada |
 | `node docs/00-gobierno/verificar-las-muestras-del-registro.mjs` | Que la guarda de #711 muerde y no muerde de más | nada |
 
 Ninguna de esas necesita Pulumi, ni token, ni clúster. **Y ninguna de esas es suficiente**, que es
 lo propio de este repositorio: ver §4.
+
+### 1.1 Lo único que `yarn verificar` necesita fuera de este clon
+
+`sgtm`, `rentas`, `catastro`, `normativa` y `caja`, **como directorios hermanos** de
+`infrastructure` — la misma convención que `settings.gradle.kts` de los cuatro backends asume
+para `librerias-backend`. Los usan dos comprobaciones que miden algo que no vive aquí:
+
+- `deriva-de-migraciones.test.ts` cuenta las migraciones que trae el `sha` que
+  `applicationBootstrapVersion` declara, en el árbol de git del repositorio que construye ese
+  migrador (#675, P6);
+- `extensiones-de-las-migraciones.test.ts` comprueba, **en los cinco esquemas**, que la extensión
+  que una migración necesita esté declarada en su `crear-roles.sql`
+  ([C-2](../00-gobierno/C-2-guarda-de-extensiones.md)).
+
+Si falta un clon, **la comprobación no concluye**: dice cuál falta y el `git clone` que lo trae,
+en vez de mirar los que sí están y pasar en verde. Es deliberado, y es exactamente lo que #742 no
+hacía: su guarda miraba un repositorio de cinco y nunca se puso roja por ello.
 
 ## 2. `yarn verificar` NO está en verde hoy, y por qué
 
@@ -22,7 +39,9 @@ instrucción falsa cuesta más que una que falta.
 
 > **Cerrados los dos en P6** (2026-09-04). Se conserva el diagnostico porque explica por que se
 > pusieron rojos, que es lo que costo entender; lo que ya no es cierto es el estado. `yarn
-> verificar` da hoy **366 de 366**. Ver `docs/00-gobierno/P6-contratos-y-observabilidad.md` §6.
+> verificar` da hoy **374 de 374** — 366 tras P6, y 8 más que C-2 añadió al extender la guarda
+> de extensiones a los cinco esquemas. Ver `docs/00-gobierno/P6-contratos-y-observabilidad.md` §6
+> y `docs/00-gobierno/C-2-guarda-de-extensiones.md`.
 
 ### 2.1 `deriva-de-migraciones.test.ts` — 6 rojas (cerrado en P6)
 

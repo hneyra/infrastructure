@@ -165,6 +165,37 @@ jobs:
           path: ../sgtm
           fetch-depth: 0
 
+      # Los CUATRO sistemas del corte, desde C-2. `extensiones-de-las-migraciones.ts`
+      # comprueba, en cada uno, que la extension que su baseline necesita este declarada
+      # en su `crear-roles.sql`, y para eso tiene que leer los dos archivos — que viven en
+      # su repositorio y no en este. Sin estos checkouts la prueba **no concluye**: dice
+      # que falta el clon y como traerlo, en vez de mirar uno solo y pasar en verde, que
+      # es exactamente el estado en que #742 dejo la guarda y que costo dos aplicaciones
+      # de baseline rotas durante el corte (`rentas` con `geography`, `caja` con
+      # `unaccent`).
+      #
+      # `fetch-depth: 1` a proposito, al reves que los dos de arriba: aqui no se cuenta
+      # nada en el arbol de git de otro commit; se leen los archivos del arbol de trabajo.
+      - uses: actions/checkout@v4
+        with:
+          repository: hneyra/rentas
+          path: ../rentas
+
+      - uses: actions/checkout@v4
+        with:
+          repository: hneyra/catastro
+          path: ../catastro
+
+      - uses: actions/checkout@v4
+        with:
+          repository: hneyra/normativa
+          path: ../normativa
+
+      - uses: actions/checkout@v4
+        with:
+          repository: hneyra/caja
+          path: ../caja
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
