@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { load } from "js-yaml";
 import { describe, expect, it } from "vitest";
 import { raizDeInfra, raizDelRepositorio } from "../componentes/fuentes";
 import {
@@ -79,6 +80,28 @@ describe("lo que necesita los descriptores se DERIVA", () => {
     expect(clonados.filter((c) => c !== "sgtm").sort()).toEqual(
       hermanosQueImportaElDescriptor(raizDeInfra()),
     );
+  });
+
+  /**
+   * Y el manifiesto de la accion no lleva ninguna expresion fuera de `runs`.
+   *
+   * GitHub evalua `${{ … }}` **tambien dentro de una `description`**, y ahi el contexto
+   * `secrets` no existe: la primera version de esta accion transcribia el repliegue
+   * `secrets.GH_CLONE_KEY || github.token` en la descripcion de su entrada, y la corrida
+   * `33973367477` murio en 8 s con «Unrecognized named-value: 'secrets'» **sin ejecutar
+   * un solo paso** — o sea que el defecto no se parece en nada a lo que se estaba
+   * documentando. Se lee el YAML ya analizado, para que un comentario pueda seguir
+   * enseñando como se llama a la accion.
+   */
+  it("el manifiesto de la accion no evalua ninguna expresion fuera de `runs`", () => {
+    const manifiesto = load(
+      readFileSync(join(raizDelRepositorio(), ACCION, "action.yml"), "utf8"),
+    ) as Record<string, unknown>;
+    const fuera = Object.entries(manifiesto)
+      .filter(([clave]) => clave !== "runs")
+      .map(([clave, valor]) => [clave, JSON.stringify(valor)] as const)
+      .filter(([, texto]) => texto.includes("${{"));
+    expect(fuera.map(([clave]) => clave)).toEqual([]);
   });
 
   it("las tres herramientas que cargan el descriptor, mas pulumi y verificar", () => {

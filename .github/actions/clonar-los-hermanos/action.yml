@@ -48,9 +48,14 @@ inputs:
       sin credencial estos checkouts mueren con un `404 Not Found` al buscar la rama por
       omision — medido en la corrida `33950853560`, donde `infrastructure` y `sgtm`
       (publico) entraron y `rentas` no. Se pasa como entrada y no se lee de `secrets`
-      porque una accion compuesta no ve el contexto `secrets`: quien la llama le pasa
-      `${{ secrets.GH_CLONE_KEY || github.token }}`, con el repliegue que deja el
-      comportamiento anterior intacto si el secreto no existiera.
+      porque una accion compuesta no ve el contexto `secrets`: quien la llama le pasa el
+      secreto `GH_CLONE_KEY` con `github.token` de repliegue —un secreto sin declarar vale
+      la cadena vacia, asi que el repliegue deja intacto el comportamiento anterior—.
+
+      Y ese repliegue no se puede transcribir aqui entre llaves dobles: GitHub evalua las
+      expresiones **tambien dentro de una `description`**, y el contexto `secrets` no
+      existe en el manifiesto de una accion. Costo la corrida `33973367477`, muerta en 8 s
+      con «Unrecognized named-value: 'secrets'» sin ejecutar un solo paso.
     required: true
   con-sgtm:
     description: >-
