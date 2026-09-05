@@ -199,49 +199,31 @@ const recursos = new k8s.yaml.v2.ConfigGroup(
   { objs: manifiestos },
   {
     provider: proveedor,
-    // El nombre viejo de este grupo, para que Pulumi reconozca como suyos los objetos que ya
-    // gobernaba. NO es una dependencia del monolito ni del proyecto `sgtm` de Pulumi —ese ya se
-    // renombro con `pulumi stack rename` y los 159 URN se reescribieron—: es el nombre que ESTE
-    // recurso tenia antes de la etapa D.
+    // NO se pone `aliases` aqui, y conviene que quede escrito porque se intento DOS VECES el
+    // 2026-09-05 y las dos fallaron:
     //
-    // POR QUE HACE FALTA, medido el 2026-09-05 en el primer `up` de verdad:
-    // los 93 objetos restantes viven en el espacio de nombres del ambiente, que paso de
-    // `sgtm-<amb>` a `kamayuk-<amb>`, asi que cambian de identidad y Pulumi los REEMPLAZA. Pero
-    // `kube-system/traefik` vive fuera: su identidad la fija k3s y no cambia. Lo unico que
-    // cambio para el es su PADRE —este grupo—, asi que su URN es otro y Pulumi lo trata como
-    // nuevo… contra un objeto que ya existe. El servidor lo rechazo con «server-side apply field
-    // conflict detected», y el `up` entero murio en su primer recurso.
+    //   1. `aliases` en este `ConfigGroup` — el `up` murio con el mismo conflicto.
+    //   2. `aliases` por hijo, en la transformacion de abajo — el `preview` siguio planeando
+    //      `+ kamayuk-<amb>-sistema:kube-system/traefik create` junto a
+    //      `- sgtm-<amb>-sistema:kube-system/traefik delete`: dos recursos distintos sobre el
+    //      MISMO objeto fisico, y como Pulumi crea antes de borrar, el conflicto vuelve.
     //
-    // Y el gestor de esos campos resulto ser `pulumi-kubernetes-df766d68`: **el propio Pulumi
-    // bajo el URN anterior**. No hay un tercero a quien quitarle nada; es el stack peleandose
-    // consigo mismo por un cambio de nombre.
+    // La leccion, medida: **un alias no reconduce a los hijos que este grupo construye**. Su
+    // nombre lleva dentro el del padre y se compone al construirlos.
     //
-    // POR QUE UN ALIAS Y NO `patchForce`: porque `patchForce` YA esta puesto en todos los
-    // objetos de este grupo (`conPatchForce`, arriba, issue #257) y aun asi este choco. Apoyarse
-    // en un mecanismo que se acaba de ver fallar no es un arreglo. Y borrar el objeto a mano
-    // tocaria la configuracion de Traefik de un cluster vivo para resolver algo que solo existe
-    // en la contabilidad de Pulumi.
-    //
-    // ES TEMPORAL: en cuanto un `up` cierre, el estado guarda cada recurso bajo el URN nuevo y
-    // este alias queda inerte. Se puede retirar entonces —y conviene, para que no se lea como
-    // una atadura viva al nombre viejo—.
-    aliases: [{ name: `sgtm-${env}-sistema` }],
+    // El unico objeto al que esto le importa es `kube-system/traefik`: los otros 93 viven en el
+    // espacio de nombres del ambiente y cambian de identidad con el, asi que se reemplazan sin
+    // pelea. Ese vive fuera y su identidad la fija k3s. Se resolvio borrandolo a mano una vez
+    // —k3s reinstala el chart con sus valores por omision y el `up` lo recrea— y `prod` volvera
+    // a necesitarlo. La salida sin parpadeo, si algun dia se quiere, es `pulumi state delete`
+    // del recurso viejo mas `pulumi import` del objeto bajo el URN nuevo.
     transformations: [
       (args) => {
         const props = conPatchForce(args.props as Record<string, unknown>);
-        // El alias va POR HIJO, y no basta con ponerselo al grupo: el nombre de cada hijo
-        // **lleva dentro el del padre** —`kamayuk-<amb>-sistema:kube-system/traefik`—, asi que
-        // aliasar solo el grupo no renombra a nadie. Se intento el 2026-09-05 y el `up` volvio a
-        // morir con el mismo conflicto, que es como se supo.
-        const nombreViejo = args.name.replace(`kamayuk-${env}-sistema`, `sgtm-${env}-sistema`);
-        const opts =
-          nombreViejo === args.name
-            ? args.opts
-            : { ...args.opts, aliases: [{ name: nombreViejo }] };
         if (args.type.startsWith("kubernetes:apps/v1:Deployment")) {
-          return { props, opts: { ...opts, ignoreChanges: IGNORAR_LA_VERSION } };
+          return { props, opts: { ...args.opts, ignoreChanges: IGNORAR_LA_VERSION } };
         }
-        return { props, opts };
+        return { props, opts: args.opts };
       },
     ],
   },
