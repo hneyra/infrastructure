@@ -277,11 +277,11 @@ es que el token no lo ve.
 (`gh secret list` devuelve vacio), y crear la credencial es del dueño. Se deja preparado, y se dice
 exactamente que se comprobo y que no:
 
-- los cuatro checkouts pasan a pedir `token: ${{ secrets.CLONES_TOKEN || github.token }}`. Un
+- los cuatro checkouts pasan a pedir `token: ${{ secrets.GH_CLONE_KEY || github.token }}`. Un
   secreto sin declarar vale la cadena vacia, asi que **hoy esa linea no cambia nada**: se sigue
   usando `github.token` y el fallo es el mismo, en el mismo sitio. Eso es lo unico que se puede
   verificar hoy, y se verifica **corriendolo**;
-- el dia que exista `CLONES_TOKEN` —un PAT de solo lectura sobre los cuatro, o un token de GitHub
+- el dia que exista `GH_CLONE_KEY` —un PAT de solo lectura sobre los cuatro, o un token de GitHub
   App— el flujo lo usa sin tocar una linea.
 
 **Lo que NO se hizo, y por que**: poner `continue-on-error` en esos checkouts dejaria el flujo en
