@@ -120,6 +120,15 @@ Medido el mismo día: un PAT de escritorio sin `read:packages` recibe **403** de
 equivocado sobre el monolito. Sin credencial el guion sale con código 3 diciendo que no pudo
 comprobar nada: **no pasa en verde**.
 
+**Y esa distincion se cobro la primera corrida del trabajo en CI, que es donde mejor se ve.** La
+`33985637872` salio roja con las ocho del corte en `200` y las **tres del monolito en `403`**: un
+`GITHUB_TOKEN` sólo alcanza los paquetes ligados a **su** repositorio, y los tres de `sgtm` no lo
+están al de `infrastructure`. Leer ese 403 como «no existe» habría acusado al monolito de no tener
+imágenes cuando sí las tiene. Se pasa a preguntar con `REGISTRY_PULL_TOKEN` —el PAT con
+`read:packages` que **el nodo** usa para traérselas (issue #257)—, con lo que la pregunta deja de
+ser «¿existe?» y pasa a ser «¿la puede bajar quien va a bajarla?», que es la que decide si el pod
+arranca.
+
 ### 4.1 · Las roturas, y lo que dijo cada una
 
 | Rotura | Rojo |

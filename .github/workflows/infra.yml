@@ -246,8 +246,16 @@ jobs:
       - name: Los dos ambientes, preguntados al registro
         working-directory: infrastructure/infra
         env:
-          GHCR_USUARIO: ${{ github.actor }}
-          GHCR_CLAVE: ${{ secrets.GITHUB_TOKEN }}
+          # `REGISTRY_PULL_TOKEN`, y no el `GITHUB_TOKEN`, por un motivo medido: un `GITHUB_TOKEN`
+          # solo alcanza los paquetes ligados a SU repositorio, asi que desde `infrastructure`
+          # los tres del monolito —que son de `sgtm`— contestan `403 DENIED`. Se comprobo en la
+          # corrida `33985637872`: las ocho del corte, `200`; las tres de `sgtm`, `403`.
+          #
+          # Y es ademas la credencial CORRECTA: `registryPullToken` es la que el nodo usa para
+          # traerse las imagenes (issue #257). Preguntar con ella no es preguntar «¿existe?» sino
+          # «¿la puede bajar quien va a bajarla?», que es la pregunta que decide si el pod arranca.
+          GHCR_USUARIO: ${{ github.repository_owner }}
+          GHCR_CLAVE: ${{ secrets.REGISTRY_PULL_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           yarn --silent imagenes --ambiente stg
           yarn --silent imagenes --ambiente prod
@@ -1164,8 +1172,16 @@ jobs:
         if: steps.credenciales.outputs.hay == 'si'
         working-directory: infrastructure/infra
         env:
-          GHCR_USUARIO: ${{ github.actor }}
-          GHCR_CLAVE: ${{ secrets.GITHUB_TOKEN }}
+          # `REGISTRY_PULL_TOKEN`, y no el `GITHUB_TOKEN`, por un motivo medido: un `GITHUB_TOKEN`
+          # solo alcanza los paquetes ligados a SU repositorio, asi que desde `infrastructure`
+          # los tres del monolito —que son de `sgtm`— contestan `403 DENIED`. Se comprobo en la
+          # corrida `33985637872`: las ocho del corte, `200`; las tres de `sgtm`, `403`.
+          #
+          # Y es ademas la credencial CORRECTA: `registryPullToken` es la que el nodo usa para
+          # traerse las imagenes (issue #257). Preguntar con ella no es preguntar «¿existe?» sino
+          # «¿la puede bajar quien va a bajarla?», que es la pregunta que decide si el pod arranca.
+          GHCR_USUARIO: ${{ github.repository_owner }}
+          GHCR_CLAVE: ${{ secrets.REGISTRY_PULL_TOKEN || secrets.GITHUB_TOKEN }}
         run: yarn --silent imagenes --ambiente stg
 
       # ANTES de `pulumi up`: los Deployment y Job que va a crear referencian estos
@@ -1366,8 +1382,16 @@ jobs:
       - name: Las etiquetas que este manifiesto pide existen en el registro
         working-directory: infrastructure/infra
         env:
-          GHCR_USUARIO: ${{ github.actor }}
-          GHCR_CLAVE: ${{ secrets.GITHUB_TOKEN }}
+          # `REGISTRY_PULL_TOKEN`, y no el `GITHUB_TOKEN`, por un motivo medido: un `GITHUB_TOKEN`
+          # solo alcanza los paquetes ligados a SU repositorio, asi que desde `infrastructure`
+          # los tres del monolito —que son de `sgtm`— contestan `403 DENIED`. Se comprobo en la
+          # corrida `33985637872`: las ocho del corte, `200`; las tres de `sgtm`, `403`.
+          #
+          # Y es ademas la credencial CORRECTA: `registryPullToken` es la que el nodo usa para
+          # traerse las imagenes (issue #257). Preguntar con ella no es preguntar «¿existe?» sino
+          # «¿la puede bajar quien va a bajarla?», que es la pregunta que decide si el pod arranca.
+          GHCR_USUARIO: ${{ github.repository_owner }}
+          GHCR_CLAVE: ${{ secrets.REGISTRY_PULL_TOKEN || secrets.GITHUB_TOKEN }}
         run: yarn --silent imagenes --ambiente prod
 
       - name: Generar los secretos que falten (INF-06)
