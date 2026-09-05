@@ -75,6 +75,10 @@ export interface ContextoDeAuditoria {
   secretoDeOwner: string;
   /** El namespace del ambiente. Todo lo demas tiene que estar dentro. */
   namespace: string;
+  /**
+   * Todos los espacios de ESTE ambiente: el de la plataforma y el de cada sistema (ADR-0031).
+   */
+  namespacesDelAmbiente: string[];
 }
 
 export function auditarManifiestos(
@@ -211,12 +215,26 @@ function auditarUbicacion(m: Manifiesto, contexto: ContextoDeAuditoria): string[
             "error y sin efecto, y el ingreso se queda con la configuracion por omision.",
         ];
   }
-  return m.metadata.namespace === contexto.namespace
+  // Un espacio de ESTE ambiente: el de la plataforma, o el de uno de sus cuatro sistemas.
+  //
+  // La regla exigia el namespace del ambiente y **ADR-0031 le dio a cada sistema el suyo** sin
+  // que nadie la actualizara. Eso es lo que impedia que `index.ts` desplegara los cuatro: al
+  // pasarselos, la auditoria los rechazaba uno a uno —«esta en kamayuk-rentas-stg y no en
+  // kamayuk-stg»—, asi que el programa se quedo componiendo solo la plataforma y los cuatro
+  // sistemas no llegaron nunca al cluster. Se descubrio el 2026-09-05, desplegando.
+  //
+  // Lo que la regla protege NO cambia: que el mismo `index.ts` sirva para los dos ambientes sin
+  // que uno pueda escribir en el espacio del otro (ADR-0011 §4). Por eso se compara contra la
+  // LISTA de espacios de este ambiente y no con un prefijo: `kamayuk-rentas-prod` no empieza por
+  // `kamayuk-stg`, pero un `startsWith` mal escrito dejaria pasar `kamayuk-stg-loquesea`.
+  return contexto.namespacesDelAmbiente.includes(m.metadata.namespace ?? "")
     ? []
     : [
-        `${m.kind}/${m.metadata.name} esta en «${m.metadata.namespace ?? "(ninguno)"}» y no en ` +
-          `«${contexto.namespace}». Un ambiente entero por namespace es lo que permite que el ` +
-          "mismo `index.ts` sirva para los dos (ADR-0011 §4).",
+        `${m.kind}/${m.metadata.name} esta en «${m.metadata.namespace ?? "(ninguno)"}», que no ` +
+          "es ninguno de los espacios de este ambiente " +
+          `(${contexto.namespacesDelAmbiente.join(", ")}). Un ambiente entero por namespace es ` +
+          "lo que permite que el mismo `index.ts` sirva para los dos (ADR-0011 §4); desde " +
+          "ADR-0031 cada sistema tiene el suyo.",
       ];
 }
 

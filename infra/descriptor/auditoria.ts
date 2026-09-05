@@ -46,6 +46,14 @@ export interface ContextoDeDescriptores {
   /** Las bases de TODOS los sistemas. Sin esto, (c) no se puede comprobar. */
   readonly basesDelClustre: readonly string[];
   /**
+   * Todos los espacios de nombres de este ambiente: el de la plataforma y el de cada sistema.
+   *
+   * Lo aporta `infrastructure` y no se deriva aqui a proposito: `EntornoDelDescriptor.ambiente`
+   * es `string` —el descriptor no depende del tipo de la plataforma—, y componer la lista desde
+   * una cadena seria adivinar. Quien la sabe es quien construye el contexto.
+   */
+  readonly namespacesDelAmbiente: readonly string[];
+  /**
    * Los manifiestos de la plataforma, y no son un adorno: **un descriptor no se puede
    * auditar solo**.
    *
@@ -69,7 +77,11 @@ export function auditarDescriptor(
   contexto: ContextoDeDescriptores,
 ): string[] {
   const manifiestos = manifiestosDe(d, entorno);
-  const heredada = { secretoDeOwner: contexto.secretoDeOwner, namespace: entorno.namespace };
+  const heredada = {
+    secretoDeOwner: contexto.secretoDeOwner,
+    namespace: entorno.namespace,
+    namespacesDelAmbiente: [...contexto.namespacesDelAmbiente],
+  };
   const soloPlataforma = new Set(
     auditarManifiestos([...contexto.manifiestosDeLaPlataforma], heredada),
   );
