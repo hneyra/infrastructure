@@ -2,7 +2,6 @@ import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
 import { auditarManifiestos, describirAuditoria } from "./auditoria";
 import { auditarCapacidad, describirCapacidad } from "./capacidad";
-import { construirManifiestos } from "./componentes";
 import { manifiestosDelAmbiente } from "./herramientas/emitir-manifiestos";
 import {
   CLAVES_DE_CREDENCIALES_DE_RESPALDO,
@@ -65,7 +64,22 @@ const settings = loadSettings();
 const env = settings.environment;
 const namespace = namespaceName(env);
 
-const manifiestos = construirManifiestos(settings);
+// LOS CINCO, no solo la plataforma. `construirManifiestos()` arma los objetos de la
+// plataforma; los de los cuatro sistemas los compone `manifiestosDeLosSistemas()`, y
+// `manifiestosDelAmbiente()` es la suma —la misma que emite `yarn manifiestos`—.
+//
+// Aqui decia `construirManifiestos(settings)` a secas, y esa linea es el defecto que costo la
+// noche del 2026-09-05: **los cuatro sistemas nunca estuvieron en lo que Pulumi despliega**. Se
+// vio desplegando y no leyendo: el `up` salio diciendo «70 sin cambio», sus namespaces quedaron
+// con secretos y CERO Deployment, y `pulumi stack export` confirmo 71 recursos en el estado y
+// **ninguno** de los cuatro. Mientras tanto `yarn manifiestos` publicaba 94 objetos y la guarda
+// de capacidad sumaba los cinco espacios: tres lecturas del mismo ambiente, dos que contaban
+// bien y la que despliega contando otra cosa.
+//
+// Y es el MISMO defecto que C-16 arreglo en `capacidad.ts`, repetido en el llamador que importa:
+// `manifiestosDeLosSistemas` se extrajo en C-14 «para que `capacidad.ts` pueda sumarlos», se
+// engancho ahi, y este se quedo sin cambiar. Lo dice el javadoc de `emitir-manifiestos.ts:143`.
+const manifiestos = manifiestosDelAmbiente(settings);
 
 const problemas = auditarManifiestos(manifiestos, {
   secretoDeOwner: secretos(env).owner,
