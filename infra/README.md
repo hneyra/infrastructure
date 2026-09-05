@@ -16,7 +16,8 @@ yarn install
 yarn verificar        # lint, tipos y pruebas. Lo que hay que pasar antes de un PR
 yarn manifiestos --ambiente stg          # los manifiestos de un ambiente, en JSON
 verificaciones/motor/verificar-el-motor.sh --ambiente stg --con-aislamiento
-respaldo/simulacro-de-restauracion.sh --ambiente stg   # el respaldo, restaurado de verdad
+respaldo/simulacro-de-restauracion.sh --ambiente stg   # el respaldo FISICO, restaurado de verdad
+respaldo/simulacro-de-restauracion-logica.sh           # pg_dump/pg_restore de los CINCO esquemas
 observabilidad/verificar-alertas.sh                    # apaga la base, comprueba que la alerta llega
 observabilidad/verificar-tableros.sh                   # cada panel del tablero, contra Prometheus
 ```
@@ -179,6 +180,9 @@ Todas se ejercen editando archivos reales y viendo el rojo:
 | Apagar PostgreSQL sin cablear el receptor de alertas | `verificar-alertas.sh`: la regla se evalúa y el receptor de prueba recibe 0 peticiones |
 | Quitar un panel del tablero de su fuente de datos real | `verificar-tableros.sh`: «No data», nombrando el panel |
 | Quitar `recovery_target_time` del simulacro | `simulacro-de-restauracion.sh`: se restauran 4 filas donde había 3 |
+| Devolver a `catastro` la función sin cualificar que C-4 arregló | `simulacro-de-restauracion-logica.sh`: **`TABLA via` con nombre**, sus 4 índices, su política de RLS, su secuencia, 5 restricciones y `< FILAS via 3` |
+| Declarar una pérdida que ya no ocurre, o dejar de declarar una que sí | el mismo guion, en las dos direcciones: la lista de `rl_perdidas_conocidas` no puede quedarse rancia |
+| Fiarse del código de salida de la restauración | `yarn test`: `(18 errores, código 0)` es lo que da `psql` sobre un volcado plano con el defecto dentro |
 | Hacer `SUPERUSER` a `sgtm_respaldo`, o darle `CONNECT` al padrón | `verificar-el-motor.sh` y el simulacro |
 | Apuntar `applicationBootstrapVersion` a un `sha` con migraciones de menos | `yarn test`, con **las dos cifras** y las migraciones que faltan |
 | Apuntarlo a un `sha` que no está en el clon | `yarn test`: no concluye en vez de contar las del árbol de trabajo, y dice `fetch-depth: 0` |

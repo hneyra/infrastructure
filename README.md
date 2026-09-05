@@ -23,7 +23,8 @@ yarn manifiestos --ambiente stg   # lo que se desplegaría, en JSON
 yarn capacidad --ambiente prod    # ¿cabe el stack en el nodo?
 yarn secretos --ambiente stg      # el inventario de INF-06: nombre, clave, rotación. Nunca un valor
 
-infra/respaldo/simulacro-de-restauracion.sh --ambiente stg   # el respaldo, restaurado de verdad
+infra/respaldo/simulacro-de-restauracion.sh --ambiente stg   # el respaldo FISICO, restaurado de verdad
+infra/respaldo/simulacro-de-restauracion-logica.sh           # pg_dump/pg_restore de los CINCO esquemas
 infra/observabilidad/verificar-alertas.sh                    # apaga la base, comprueba que la alerta llega
 infra/observabilidad/verificar-tableros.sh                   # cada panel del tablero, contra Prometheus
 infra/verificaciones/motor/verificar-el-motor.sh --ambiente stg --con-aislamiento
@@ -32,11 +33,12 @@ infra/secretos/bootstrap-secretos.sh --ambiente stg
 infra/secretos/rotar-clave.sh --ambiente stg --rol sgtm-app
 ```
 
-Los dos que más cuestan de operar y más valen, con lo que cada uno demuestra:
+Los tres que más cuestan de operar y más valen, con lo que cada uno demuestra:
 
 | Guion | Qué hace, y qué se rompió para saber que muerde |
 |---|---|
 | [`infra/respaldo/simulacro-de-restauracion.sh`](infra/respaldo/simulacro-de-restauracion.sh) | **Restaura el respaldo de verdad** (RNF-079, INF-08). Cinco roturas lo ponen rojo; la primera restaura **4 filas donde había 3** —la escritura posterior al instante marcado sobrevive—, que es el defecto que un PITR mal apuntado produce en silencio. `--contra-cluster` sólo corre contra `stg`: es destructivo sobre el volumen en marcha |
+| [`infra/respaldo/simulacro-de-restauracion-logica.sh`](infra/respaldo/simulacro-de-restauracion-logica.sh) | **Vuelca y restaura los cinco esquemas de verdad** (C-11, y el hueco 3 de C-4). No es el físico: éste es el camino `pg_dump`/`pg_restore`, el que se usa para migrar de ambiente o copiar `prod` a `stg`. Devolver a `catastro` el defecto que C-4 arregló pone en rojo **la tabla `via` con nombre** y los once objetos que se van con ella —cuatro índices, una política de RLS, una secuencia y cinco restricciones, dos de ellas de OTRAS tablas—, más sus tres filas — y en la misma pantalla se ve por qué no basta el código de salida: `psql` sobre el volcado plano sale con **0** y dieciocho errores dentro |
 | [`infra/observabilidad/verificar-alertas.sh`](infra/observabilidad/verificar-alertas.sh) | **Apaga PostgreSQL y comprueba que la alerta le llega a alguien.** Sin receptor configurado, la regla llega a `firing` y el receptor de prueba recibe 0 peticiones; con receptor, la misma alerta activa se entrega |
 
 El detalle de cada pieza, sus decisiones y su tabla de verificaciones está en
