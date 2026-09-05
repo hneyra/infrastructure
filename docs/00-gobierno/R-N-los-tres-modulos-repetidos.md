@@ -194,11 +194,15 @@ decidió.
 
 ## Huecos declarados
 
-1. **`infrastructure` mide 648 y R-A/B escribió 635.** No lo mueve este trabajo: `git status --
-   infra` está **vacío**, así que el código que `yarn verificar` ejecuta es byte a byte el de `HEAD`.
-   La primera medición de esta sesión —ya con los tres módulos renombrados— dio **647**, y las tres
-   siguientes 648; no se pudo atribuir esa prueba de diferencia a ningún cambio propio y no se
-   inventa una explicación. Lo que sí está medido es que no baja y que no hay fallos.
+1. **`infrastructure` mide 648 y R-A/B escribió 635, y ninguna de las dos diferencias es de este
+   trabajo.** `git status -- infra` está **vacío**: este trabajo no toca un solo archivo bajo
+   `infra/`, así que el código que `yarn verificar` ejecuta es byte a byte el de `HEAD`. La primera
+   medición de la sesión dio **647** y las tres siguientes 648, y **el salto está atribuido**: la
+   rama tenía en paralelo el trabajo de C-20, que aterrizó entre las dos mediciones y toca
+   `infra/verificaciones/` —`clones-de-los-hermanos.test.ts` nuevo, `deriva-de-migraciones.test.ts`
+   y `checkout-en-el-espacio-de-trabajo.test.ts` modificados—. Se anota porque medir sobre un árbol
+   que otro agente estaba moviendo es exactamente la condición en la que una cifra parece decir algo
+   que no dice.
 2. **La otra dirección del reparto por módulo no se comprueba.** `modulosDelReparto()` exige que todo
    módulo del disco esté declarado, no que no sobre ninguna clave. Los mapas de `catastro` y `caja`
    arrastran del monolito claves de módulos que su repositorio no tiene
