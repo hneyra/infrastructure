@@ -215,6 +215,19 @@ con el mismo valor— y no toca lo que ya existía. Corre **antes** de `pulumi u
 mismo kubeconfig del túnel SSH; CI lo hace así en `aplicar-stg` y `aplicar-prod`. No
 imprime ningún valor, solo huellas.
 
+**Cinco espacios de nombres, no uno** (C-17): el de la plataforma y el de cada sistema. Cuál es
+cuál lo dice el propio inventario, así que este guion **ya no admite `--namespace`** — un valor
+ahí sólo podría acertar con uno de los cinco. Antes de C-17 declaraba nueve `Secret` y los cuatro
+sistemas montaban diez, con **intersección cero**: el guion corría, decía «Listo» y creaba cero
+de los diez, mientras sus pods esperaban en `Pending`.
+
+**Ocho de esos diez son espejos, no valores nuevos.** Los cuatro sistemas se conectan con
+`sgtm_app` y migran con `sgtm_owner`, que son roles del **clúster**, y PostgreSQL le da a un rol
+**una** contraseña: no se pueden generar por separado sin dejar a tres de cada cuatro sin poder
+conectarse. Se copian del `Secret` de la plataforma —en base64, sin decodificar y sin pasar por
+`argv`— en **cada** corrida, de modo que tras `rotar-clave.sh` hay que volver a correr este guion
+para que los espejos alcancen al origen.
+
 **Las claves de los roles del motor se asignan una sola vez**, cuando el volumen está
 vacío: el guion de inicialización las lee del `Secret` y hace el `ALTER ROLE`. Cambiar el
 `Secret` después **no cambia la clave del rol** — eso es rotación:

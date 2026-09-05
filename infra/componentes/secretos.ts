@@ -7,7 +7,9 @@ import {
   servicioDeGrafana,
   servicioDeIdentidad,
 } from "./convenciones";
-import type { Environment } from "../config";
+import { namespaceName, type Environment, type Invariants } from "../config";
+import { SISTEMAS } from "../descriptor/sistemas";
+import { entornoDelAmbiente } from "../herramientas/emitir-manifiestos";
 
 /**
  * El inventario de secretos de la aplicacion, en un solo sitio (issue #154).
@@ -32,6 +34,17 @@ export type Periodicidad = "semestral" | "trimestral" | "anual" | "nunca-desde-e
 export interface EntradaDeSecreto {
   /** Identificador corto, el que usan los guiones de bash (`--rol sgtm-app`). */
   rol: string;
+  /**
+   * El espacio de nombres donde vive este `Secret`.
+   *
+   * Se declara desde C-17 y no se supone. Hasta entonces `bootstrap-secretos.sh` recibia UN
+   * `--namespace` y creaba todo alli, lo cual era cierto mientras el unico consumidor fuera el
+   * monolito. Desde ADR-0031 cada sistema tiene el suyo, **y un `Secret` no cruza namespaces**:
+   * un pod solo puede montar los de su propio espacio. El sintoma de suponerlo es un pod en
+   * `Pending` con el `Secret` ausente en su evento — que no es un error del despliegue, es una
+   * espera indefinida.
+   */
+  namespace: string;
   /** El `Secret` de Kubernetes que lo guarda. */
   secreto: string;
   /** La clave dentro de ese `Secret`. */
@@ -67,6 +80,36 @@ export interface EntradaDeSecreto {
    * `LOGIN`.
    */
   baseDeDatos?: string;
+  /**
+   * De donde se COPIA este valor, cuando no se genera (C-17, punto 4).
+   *
+   * ## Por que existe, y por que no son entradas independientes
+   *
+   * Los cuatro sistemas se conectan con `sgtm_app` y migran con `sgtm_owner`, y esos son roles
+   * **del clúster**: los crea el `crear-roles.sql` de cada sistema con el mismo nombre, y
+   * PostgreSQL le da a un rol **una** contrasena. De modo que `kamayuk-rentas-<amb>-app` y
+   * `kamayuk-catastro-<amb>-app` no pueden tener valores distintos: si los tuvieran, a lo sumo
+   * uno de los cuatro podria conectarse, y los otros tres darian «password authentication
+   * failed» — un rojo que se lee como credencial mal generada y es un modelo mal entendido.
+   *
+   * Por eso no son secretos nuevos: son **el mismo valor publicado en el namespace de quien lo
+   * consume**. Generarlos por separado seria pedirle al generador que produzca cuatro claves
+   * distintas para un rol que solo admite una, y `verificar-claves-distintas.sh` exigiria
+   * justamente lo contrario de lo que hace falta.
+   *
+   * Lo que NO es espejo: una credencial que no es de un rol del motor —`kamayuk-rentas-<amb>-
+   * catastro`, con la que el ingestor pide el buzon— se genera como cualquier otra, porque no
+   * hay ningun valor del que sea copia.
+   *
+   * ## Lo que cuesta, dicho aqui
+   *
+   * Un espejo **converge a su origen en cada corrida** de `bootstrap-secretos.sh`, no solo
+   * cuando falta: el `Secret` de la plataforma es la fuente de verdad y los demas son copias. La
+   * consecuencia hay que saberla: tras `rotar-clave.sh` los espejos quedan con el valor viejo
+   * hasta la siguiente corrida del bootstrap, asi que rotar `sgtm-app` o `sgtm-owner` incluye
+   * volver a correrlo (INF-06).
+   */
+  espejoDe?: { secreto: string; clave: string };
 }
 
 /**
@@ -81,10 +124,14 @@ export interface EntradaDeSecreto {
  */
 export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto[] {
   const nombres = nombresDeSecretos(environment);
+  // Los once de la plataforma viven todos en su namespace. Los de los cuatro sistemas
+  // no —cada uno en el suyo— y por eso el campo se declara en vez de suponerse.
+  const enLaPlataforma = namespaceName(environment);
 
   return [
     {
       rol: "postgres-superusuario",
+      namespace: enLaPlataforma,
       secreto: nombres.motor,
       clave: CLAVES.superusuario,
       consumidor: "Inicializacion del motor (el propio contenedor de PostgreSQL)",
@@ -97,6 +144,7 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
     },
     {
       rol: "sgtm-owner",
+      namespace: enLaPlataforma,
       secreto: nombres.owner,
       clave: CLAVES.owner,
       consumidor: "Los dos Jobs: migracion e implantacion. Nunca el Deployment de la aplicacion",
@@ -105,6 +153,7 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
     },
     {
       rol: "sgtm-app",
+      namespace: enLaPlataforma,
       secreto: nombres.aplicacion,
       clave: CLAVES.aplicacion,
       consumidor: "El Deployment de la aplicacion, perfil web y perfil batch",
@@ -114,6 +163,7 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
     },
     {
       rol: "keycloak-admin",
+      namespace: enLaPlataforma,
       secreto: nombres.identidad,
       clave: CLAVES.administradorDeIdentidad,
       consumidor: "El propio Keycloak (bootstrap admin), y el Job que reconcilia el realm",
@@ -124,6 +174,7 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
     },
     {
       rol: "keycloak-base",
+      namespace: enLaPlataforma,
       secreto: nombres.identidad,
       clave: CLAVES.baseDeIdentidad,
       consumidor: "Keycloak, para conectarse a su propia base",
@@ -135,6 +186,7 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
     },
     {
       rol: "sgtm-respaldo",
+      namespace: enLaPlataforma,
       secreto: nombres.respaldo,
       clave: CLAVES.respaldo,
       consumidor: "El CronJob de respaldo base (issue #155): solo pg_backup_start/stop",
@@ -148,6 +200,7 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
     },
     {
       rol: "respaldo-cifrado",
+      namespace: enLaPlataforma,
       secreto: nombres.respaldo,
       clave: CLAVES.cifradoDeRespaldo,
       consumidor: "El contenedor de PostgreSQL (archive_command/restore_command) y el CronJob de respaldo",
@@ -170,6 +223,7 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
     },
     {
       rol: "sgtm-monitor",
+      namespace: enLaPlataforma,
       secreto: nombres.monitoreo,
       clave: CLAVES.monitoreo,
       consumidor: "postgres-exporter, el sidecar del motor (issue #156): solo pg_monitor",
@@ -183,6 +237,7 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
     },
     {
       rol: "grafana-admin",
+      namespace: enLaPlataforma,
       secreto: nombres.grafana,
       clave: CLAVES.grafana,
       consumidor: "Grafana (issue #156). Nunca esta en una IngressRoute: se administra por el tunel SSH",
@@ -192,6 +247,7 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
     },
     {
       rol: "postgres-carga",
+      namespace: enLaPlataforma,
       secreto: nombres.carga,
       clave: CLAVES.carga,
       consumidor: "Solo los Jobs de carga de parametros (infra/carga-de-datos/publicar-parametros.sh, " +
@@ -205,6 +261,7 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
     },
     {
       rol: "postgres-ingestor-catastro",
+      namespace: enLaPlataforma,
       secreto: nombres.ingestorDeCatastro,
       clave: CLAVES.ingestorDeCatastro,
       consumidor:
@@ -226,6 +283,71 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       // aparezca su despliegue no deberia tener que tocar este archivo.
     },
   ];
+}
+
+/**
+ * El inventario COMPLETO del ambiente: la plataforma y los cuatro sistemas (C-17, punto 4).
+ *
+ * ## El hueco que cierra, medido
+ *
+ * `yarn secretos --ambiente stg` declaraba **nueve** `Secret`, los nueve del monolito. Los
+ * manifiestos de los cuatro sistemas piden **diez** —`kamayuk-<s>-<amb>-app` y `-owner` por
+ * sistema, mas `kamayuk-rentas-<amb>-ingestor` y `-catastro`—, y **la interseccion era cero**.
+ * `bootstrap-secretos.sh` corria, decia «Listo» y creaba cero de los diez: una herramienta que
+ * contesta que si porque no esta mirando, la misma forma exacta que `yarn capacidad` tenia antes
+ * de C-16.
+ *
+ * El sintoma tampoco es un error: un pod cuyo `secretKeyRef` no existe se queda en `Pending`,
+ * con el `Secret` ausente en su evento y nada en el registro del despliegue.
+ *
+ * ## De donde sale, y por que de ahi
+ *
+ * De `claves()` de cada descriptor, que es donde ADR-0031 dice que un sistema declara lo que
+ * necesita. No se escribe aqui una segunda lista: seria el mismo desajuste que este hueco es,
+ * con otro par de nombres.
+ *
+ * Y las que son clave de un rol del motor se marcan como **espejo** del `Secret` de la
+ * plataforma que ya guarda ese valor. El porque —un rol del clúster tiene UNA contrasena— esta
+ * en `EntradaDeSecreto.espejoDe`.
+ */
+export function inventarioDelAmbiente(invariantes: Invariants): EntradaDeSecreto[] {
+  const plataforma = inventarioDeSecretos(invariantes.environment);
+  const porRol = new Map(
+    plataforma.filter((e) => e.rolDePostgres !== undefined).map((e) => [e.rolDePostgres!, e]),
+  );
+  const entornoDe = entornoDelAmbiente(invariantes);
+
+  const deLosSistemas = SISTEMAS.flatMap(({ descriptor }) => {
+    const entorno = entornoDe(descriptor.sistema);
+    return descriptor.claves(entorno).map((c): EntradaDeSecreto => {
+      const origen = c.rol === undefined ? undefined : porRol.get(c.rol);
+      if (c.rol !== undefined && origen === undefined) {
+        throw new Error(
+          `[${descriptor.sistema}] la clave «${c.nombre}» dice ser del rol «${c.rol}», y este ` +
+            "ambiente no tiene ninguna entrada para el. Un rol del motor cuya clave no esta en " +
+            "el inventario de la plataforma no lo genera nadie, no lo rota nadie y " +
+            "`asignar-claves.sh` no lo lleva a la base: existiria con `GRANT` puestos y sin " +
+            "poder abrir una sesion, que es lo que #435 encontro con `rol_carga_parametros`.",
+        );
+      }
+      return {
+        rol: `${descriptor.sistema}-${c.nombre.split("-").pop()}`,
+        namespace: entorno.namespace,
+        secreto: c.nombre,
+        clave: c.clave,
+        consumidor: `${descriptor.sistema}: ${c.proposito}`,
+        periodicidad: c.rotacion === "nunca" ? "tras-incidente" : c.rotacion,
+        // El rol del motor NO se repite aqui a proposito: quien lo lleva a la base es
+        // `asignar-claves.sh`, y hacerlo desde cinco entradas distintas seria cinco `ALTER ROLE`
+        // sobre el mismo rol con valores que tienen que ser el mismo. El origen ya lo dice.
+        ...(origen === undefined
+          ? {}
+          : { espejoDe: { secreto: origen.secreto, clave: origen.clave } }),
+      };
+    });
+  });
+
+  return [...plataforma, ...deLosSistemas];
 }
 
 /**

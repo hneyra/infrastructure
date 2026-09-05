@@ -155,7 +155,7 @@ export interface EntornoDelDescriptor {
    *
    * Los cuatro sistemas comparten **un** motor y **un** emisor de identidad: son de
    * `infrastructure`, viven en su namespace y ningun descriptor los despliega. Lo que se
-   * entrega aqui son las tres cosas que un sistema necesita saber de ellos y no puede componer
+   * entrega aqui son las cuatro cosas que un sistema necesita saber de ellos y no puede componer
    * sin repetir una convencion ajena.
    *
    * El reparto entre `emisor` y `jwks` **no es un detalle**: el emisor es una IDENTIDAD —es lo
@@ -172,6 +172,29 @@ export interface EntornoDelDescriptor {
     readonly emisor: string;
     /** El JWKS, direccion de red **interna**, ya cruzando el namespace. */
     readonly jwks: string;
+    /**
+     * El anfitrion del motor de datos, `host:puerto`, **ya cruzando el namespace**.
+     *
+     * Es la cuarta cosa, y llego tarde: hasta C-17 los cuatro descriptores escribian a mano
+     * `jdbc:postgresql://postgres:5432/<sistema>`, y en Kubernetes **no existe ningun `Service`
+     * que se llame `postgres`**. El nombre viene del `compose.yaml` local, donde si lo hay; en el
+     * clúster el servicio es `sgtm-<ambiente>-postgres` y vive en el namespace de la plataforma,
+     * asi que un nombre corto tampoco resolveria aunque coincidiera.
+     *
+     * El sintoma medido fue `UnknownHostException` en los ocho Jobs y en los cuatro
+     * `Deployment` — es decir, **nada de los cuatro sistemas podia arrancar**, y la unica pista
+     * era una excepcion de resolucion de nombres que no dice de quien es el nombre.
+     *
+     * Va aqui por lo mismo que `jwks`: quien sabe donde vive el motor es su dueno. Un descriptor
+     * que lo compusiera repetiria `resourceName` y `namespaceName`, y dos copias de una
+     * convencion se separan — con la particularidad de que aqui separarse no da un error de
+     * compilacion sino un pod que no encuentra su base.
+     *
+     * Lleva el puerto dentro para que el sistema no lo teclee: lo que un descriptor compone con
+     * esto es `jdbc:postgresql://${motor}/<su base>`, y el nombre de su base **si** es suyo —lo
+     * declara en `baseDeDatos()`—.
+     */
+    readonly motor: string;
   };
 }
 

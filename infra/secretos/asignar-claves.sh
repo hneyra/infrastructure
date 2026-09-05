@@ -79,24 +79,32 @@ CLAVE_SUPER=$(kubectl -n "$NAMESPACE" get secret "$SECRETO_SUPER" \
 # sondearlos contra `sgtm` daria un rojo falso justo en los dos roles cuyo aislamiento
 # es deliberado — paso al escribir este guion, y el rojo era indistinguible del de un
 # rol sin `LOGIN`.
+# shellcheck disable=SC2016  # `${}` aqui son plantillas de JavaScript, no del shell
 inventario=$(yarn --silent secretos --ambiente "$AMBIENTE" | node -e '
   const datos = JSON.parse(require("fs").readFileSync(0, "utf8"));
   const filas = datos
-    .filter((e) => e.rolDePostgres)
-    .map((e) => [e.rol, e.secreto, e.clave, e.rolDePostgres, e.baseDeDatos || "sgtm"].join(" "));
+    // Los ESPEJOS no entran, y no es un olvido (C-17, punto 4): un espejo es el MISMO valor de
+    // un rol del cluster publicado en el namespace de quien lo consume, no una credencial mas.
+    // Con ellos dentro, este guion haria cinco `ALTER ROLE sgtm_app` seguidos —uno por copia—
+    // con valores que tienen que ser el mismo, y el ultimo decidiria. Quien manda es el `Secret`
+    // de la plataforma, que es de donde `bootstrap-secretos.sh` los copia.
+    .filter((e) => e.rolDePostgres && e.espejoDe === undefined)
+    .map((e) =>
+      [e.rol, e.namespace, e.secreto, e.clave, e.rolDePostgres, e.baseDeDatos || "sgtm"].join(" "),
+    );
   process.stdout.write(filas.join("\n"));
 ')
 [ -n "$inventario" ] || { echo "El inventario no trae ningun rol de PostgreSQL." >&2; exit 1; }
 
 FALLOS=0
 
-while read -r rol secreto clave rolDePostgres base; do
+while read -r rol ns secreto clave rolDePostgres base; do
     [ -n "$rol" ] || continue
 
-    valor=$(kubectl -n "$NAMESPACE" get secret "$secreto" -o jsonpath="{.data.$clave}" \
+    valor=$(kubectl -n "$ns" get secret "$secreto" -o jsonpath="{.data.$clave}" \
         2>/dev/null | base64 --decode || true)
     if [ -z "$valor" ]; then
-        echo "  FALTA  ${rolDePostgres}: no existe ${secreto}/${clave} en ${NAMESPACE}." >&2
+        echo "  FALTA  ${rolDePostgres}: no existe ${secreto}/${clave} en ${ns}." >&2
         echo "         Correr antes: secretos/bootstrap-secretos.sh --ambiente ${AMBIENTE}" >&2
         FALLOS=$((FALLOS + 1))
         continue

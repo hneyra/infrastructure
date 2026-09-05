@@ -96,6 +96,38 @@ describe("C-14 §1 · cada sistema publica DOS imagenes, y el migrador corre la 
     }
   });
 
+  /**
+   * Y el `COPY` nombra el jar que ese modulo produce de verdad (C-17, arreglo B).
+   *
+   * `normativa/backend/Dockerfile` pedia `sgtm.jar` y su modulo declara
+   * `archiveFileName.set("normativa.jar")`. La imagen **no se podia construir**: `docker build`
+   * compilaba entero —Gradle en verde, el jar producido— y se caia en el ultimo paso con «stat
+   * .../sgtm.jar: file does not exist». Nadie lo veia porque ningun CI construye todavia estas
+   * imagenes, y desde el clúster el sintoma es `ImagePullBackOff`, indistinguible de un registro
+   * que aun no publico la etiqueta.
+   *
+   * Se leen los DOS archivos y no se compara contra una lista escrita aqui: la lista seria el
+   * tercer sitio con la misma verdad, y el que envejece.
+   */
+  it.each(SISTEMAS_DEL_PRODUCTO)("el Dockerfile de «%s» copia el jar que su modulo produce", (sistema) => {
+    const clon = resolve(raizDelRepositorio(), "..", sistema);
+    const gradle = readFileSync(
+      join(clon, "backend", `kamayuk-${sistema}-aplicacion`, "build.gradle.kts"),
+      "utf8",
+    );
+    const declarado = /archiveFileName\.set\("([^"]+)"\)/.exec(gradle)?.[1];
+    expect(declarado, `«${sistema}» no declara ningun archiveFileName`).toBeDefined();
+
+    const dockerfile = readFileSync(join(clon, "backend", "Dockerfile"), "utf8");
+    const copiado = /build\/libs\/([^\s]+)/.exec(dockerfile)?.[1];
+    expect(
+      copiado,
+      `el Dockerfile de «${sistema}» copia «${copiado}» y su modulo produce «${declarado}». ` +
+        "La imagen no se puede construir: Gradle compila en verde y el ultimo `COPY` se cae con " +
+        "«file does not exist», que desde el clúster se ve como `ImagePullBackOff`.",
+    ).toBe(declarado);
+  });
+
   it.each(SISTEMAS_DEL_PRODUCTO)("«%s» declara las dos imagenes, y solo esas", (sistema) => {
     const descriptor = SISTEMAS.find((s) => s.descriptor.sistema === sistema)?.descriptor;
     expect(descriptor?.imagenes).toEqual([sistema, `${sistema}-migrador`]);
@@ -121,8 +153,14 @@ describe("C-14 §1 · cada sistema publica DOS imagenes, y el migrador corre la 
     // a proposito, para que una clave no quede en el historial del proceso.
     expect(valorDe(principal, "SGTM_DB_OWNER_USUARIO")).toBe("sgtm_owner");
     expect(declara(principal, "SGTM_DB_OWNER_CLAVE")).toBe(true);
+    // Y la URL sale del anfitrion que ENTREGA el entorno (C-17, punto 1). Esta linea decia
+    // `jdbc:postgresql://postgres:5432/...`, o sea que la guarda de C-14 EXIGIA el nombre roto:
+    // en Kubernetes no hay ningun `Service` llamado `postgres` —ese nombre viene del
+    // `compose.yaml` local— y lo medido fue `UnknownHostException` en los ocho Jobs. Una guarda
+    // escrita contra un valor literal fosiliza el valor; comparada contra `entorno.plataforma`
+    // sigue al ambiente.
     expect(valorDe(principal, "SGTM_DB_URL")).toBe(
-      `jdbc:postgresql://postgres:5432/${sistema}`,
+      `jdbc:postgresql://${entorno.plataforma.motor}/${sistema}`,
     );
     expect(
       declara(principal, "SGTM_DB_USUARIO"),
@@ -379,5 +417,108 @@ describe("C-14 · lo que los cuatro sistemas anaden al nodo", () => {
       "los cuatro sistemas ya caben en `prod` por CPU. Si eso es cierto, lo que hay que revisar " +
         "es esta prueba y el hueco 3 de C-14, no el numero.",
     ).toBeGreaterThan(disponible);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C-17 — que el despliegue PASE, no solo que se pueda intentar
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Las politicas de egreso que un sistema aplica sobre sus propios pods. */
+function politicasDeEgreso(sistema: string) {
+  return delSistema(AMBIENTE, sistema).filter(
+    (m) => m.kind === "NetworkPolicy" && (m.spec.policyTypes ?? []).includes("Egress"),
+  );
+}
+
+describe("C-17 §3 · sin DNS, ninguna otra regla de egreso puede resolver un nombre", () => {
+  /**
+   * El defecto medido: las cuatro politicas abrian `TCP/5432` y `TCP/8080` y **nada mas**.
+   *
+   * Una politica de egreso convierte a los pods que selecciona en «solo lo declarado», y todo lo
+   * que esas reglas nombran —el motor, la identidad, los sistemas hermanos— se alcanza por el
+   * nombre de un `Service`: resolverlo es una consulta a CoreDNS, en `kube-system`. El sintoma es
+   * `UnknownHostException`, y es **intermitente** —la resolucion se cachea, asi que a veces sale
+   * y a veces no—, que es peor que fallar siempre.
+   *
+   * Con la regla anadida a mano sobre el clúster, las OCHO tareas de los cuatro sistemas —cuatro
+   * migraciones y cuatro implantaciones— pasaron de `Failed` a `Complete`.
+   *
+   * La plataforma lo tenia bien desde que existe (`permitirDns` en `Red.ts`): lo que fallo no fue
+   * la idea, fue que estas politicas se escribieron de cero y esa parte no se copio. Por eso la
+   * guarda vive aqui y no en cada repositorio — un quinto sistema tampoco la copiaria.
+   */
+  it.each(SISTEMAS_DEL_PRODUCTO)("«%s» abre UDP/53 y TCP/53 hacia kube-system", (sistema) => {
+    const politicas = politicasDeEgreso(sistema);
+    expect(politicas.length, `«${sistema}» no declara ninguna politica de egreso`).toBeGreaterThan(0);
+
+    for (const p of politicas) {
+      if (p.kind !== "NetworkPolicy") continue;
+      const dns = (p.spec.egress ?? []).filter((r) =>
+        (r.to ?? []).some(
+          (d) => d.namespaceSelector?.matchLabels?.["kubernetes.io/metadata.name"] === "kube-system",
+        ),
+      );
+      const protocolos = dns.flatMap((r) => (r.ports ?? []).map((x) => `${x.protocol}/${x.port}`));
+
+      expect(
+        protocolos.sort(),
+        `NetworkPolicy/${p.metadata.name} restringe la salida de los pods que selecciona y NO ` +
+          "abre DNS. Sus otras reglas nombran `Service` por su nombre, y resolver un nombre es " +
+          "una consulta a CoreDNS en `kube-system`: sin esto no sirven de nada, y el sintoma es " +
+          "`UnknownHostException` intermitente —la resolucion se cachea— en vez de un fallo " +
+          "estable. TCP tambien: una respuesta que no cabe en un datagrama se reintenta por TCP.",
+      ).toEqual(["TCP/53", "UDP/53"]);
+    }
+  });
+});
+
+describe("C-17 §5 · ningun `Deployment` de un sistema corre un perfil que termina", () => {
+  /**
+   * `kamayuk-rentas-batch` era un `Deployment`, y el perfil `batch` **sale**.
+   *
+   * Medido en el clúster: arranca, registra «No TaskScheduler/ScheduledExecutorService bean found
+   * for scheduled processing», sale con **codigo 0** a los once segundos y Kubernetes lo vuelve a
+   * crear. `CrashLoopBackOff` con siete reinicios, sobre un proceso que hizo exactamente lo que
+   * tenia que hacer.
+   *
+   * Y lo dice el propio codigo de `rentas`: `CorrerElIngestor` y `CorrerLaAntiEntropia` son
+   * `ApplicationRunner` del perfil `batch`, y su javadoc explica que no son `@Scheduled` porque
+   * «en los cuatro backends no hay ni un `@EnableScheduling` […] y el perfil `batch` TERMINA el
+   * proceso con `web-application-type: none`».
+   *
+   * Un `Deployment` solo admite `restartPolicy: Always`, de modo que Kubernetes no puede
+   * distinguir «termino» de «se murio»: la forma miente en las dos direcciones. Donde el perfil
+   * `batch` SI corre es en un `Job` —la implantacion— y en un `CronJob` —el ingestor—, que crean
+   * su pod cuando hay trabajo y lo dejan morir al acabar.
+   */
+  it.each(SISTEMAS_DEL_PRODUCTO)("«%s»", (sistema) => {
+    const enBatch: string[] = [];
+    for (const m of delSistema(AMBIENTE, sistema)) {
+      if (m.kind !== "Deployment") continue;
+      for (const c of m.spec.template.spec.containers) {
+        if (valorDe(c, "SPRING_PROFILES_ACTIVE") !== "web") {
+          enBatch.push(`${m.metadata.name}/${c.name} → ${valorDe(c, "SPRING_PROFILES_ACTIVE")}`);
+        }
+      }
+    }
+    expect(
+      enBatch,
+      "un `Deployment` en un perfil que termina es un CrashLoopBackOff garantizado: el proceso " +
+        "sale con codigo 0 y `restartPolicy: Always` lo vuelve a crear. El trabajo por lotes va " +
+        "en un `Job` o en un `CronJob`, que crean su pod cuando hay algo que hacer.",
+    ).toEqual([]);
+  });
+
+  /** Y el contraste: el perfil `batch` sigue existiendo donde le toca. */
+  it("`rentas` sigue corriendo el perfil `batch` en su Job y en su CronJob", () => {
+    const suyos = delSistema(AMBIENTE, "rentas");
+    const enBatch = suyos
+      .flatMap((m) => podsDe(m).map((p) => ({ m, pod: p.pod })))
+      .filter(({ pod }) =>
+        pod.containers.some((c) => valorDe(c, "SPRING_PROFILES_ACTIVE") === "batch"),
+      )
+      .map(({ m }) => m.kind);
+    expect(enBatch.sort()).toEqual(["CronJob", "Job"]);
   });
 });

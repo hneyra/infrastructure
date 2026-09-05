@@ -1,8 +1,10 @@
-import { inventarioDeSecretos } from "../componentes/secretos";
+import { inventarioDelAmbiente } from "../componentes/secretos";
 import { ENVIRONMENTS, type Environment } from "../config";
+import { invariantesDe } from "../verificaciones/stacks";
 
 /**
- * Escribe el inventario de secretos de un ambiente por la salida estandar, en JSON.
+ * Escribe el inventario de secretos de un ambiente por la salida estandar, en JSON: **la
+ * plataforma y los cuatro sistemas**, cada entrada con el namespace donde vive.
  *
  * ```
  *   yarn secretos --ambiente stg
@@ -28,5 +30,8 @@ export function leerAmbiente(argv: string[]): Environment {
 }
 
 export function emitir(environment: Environment): string {
-  return JSON.stringify(inventarioDeSecretos(environment), null, 2);
+  // El inventario COMPLETO: la plataforma y los cuatro sistemas (C-17, punto 4). Hasta aqui
+  // emitia solo el del monolito, y por eso `bootstrap-secretos.sh` creaba cero de los diez
+  // `Secret` que los cuatro sistemas montan — diciendo «Listo».
+  return JSON.stringify(inventarioDelAmbiente(invariantesDe(environment)), null, 2);
 }

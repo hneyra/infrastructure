@@ -12,6 +12,7 @@
  */
 
 import {
+  anfitrionDelMotor,
   emisorPublico,
   jwksInterno,
   nombreDePrioridad,
@@ -62,6 +63,11 @@ export function entornoPara(
         `//${servicioDeIdentidad(ambiente)}:`,
         `//${servicioDeIdentidad(ambiente)}.${namespaceName(ambiente)}:`,
       ),
+      // Y lo mismo un componente mas abajo (C-17, punto 1): el motor vive en el namespace de la
+      // plataforma, asi que su nombre corto no resuelve desde el de un sistema. Los cuatro
+      // escribian `postgres` a secas, que es el nombre del compose local y no el de ningun
+      // `Service` del clúster.
+      motor: anfitrionDelMotor(ambiente),
     },
   });
 }

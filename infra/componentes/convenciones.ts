@@ -1,4 +1,4 @@
-import { commonLabels, resourceName, type Environment } from "../config";
+import { commonLabels, namespaceName, resourceName, type Environment } from "../config";
 import type {
   Contenedor,
   MontajeDeVolumen,
@@ -414,9 +414,26 @@ export function servicioDeInterfaz(environment: Environment): string {
   return resourceName(environment, "interfaz");
 }
 
+/** El puerto en que escucha el motor. Un solo sitio, para que no se teclee cinco veces. */
+export const PUERTO_DEL_MOTOR = 5432;
+
 /** URL JDBC de la base del padron, dentro del clúster. */
 export function urlDelPadron(environment: Environment): string {
-  return `jdbc:postgresql://${servicioDeBaseDeDatos(environment)}:5432/${BASE_DEL_PADRON}`;
+  return `jdbc:postgresql://${servicioDeBaseDeDatos(environment)}:${PUERTO_DEL_MOTOR}/${BASE_DEL_PADRON}`;
+}
+
+/**
+ * El anfitrion del motor visto **desde otro namespace**: `host:puerto`.
+ *
+ * `urlDelPadron` compone el suyo con el nombre corto del servicio, y puede: el monolito vive en
+ * el MISMO namespace que el motor. Los cuatro sistemas no —desde ADR-0031 cada uno tiene el
+ * suyo—, y un nombre corto no resuelve al cruzar: la busqueda de `postgres` a secas termina en
+ * `NXDOMAIN`, no en el motor de al lado.
+ *
+ * Es la misma correccion que C-14 le hizo al JWKS y por el mismo motivo, un componente mas abajo.
+ */
+export function anfitrionDelMotor(environment: Environment): string {
+  return `${servicioDeBaseDeDatos(environment)}.${namespaceName(environment)}:${PUERTO_DEL_MOTOR}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

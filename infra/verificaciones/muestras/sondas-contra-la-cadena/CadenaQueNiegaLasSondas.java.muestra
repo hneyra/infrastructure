@@ -1,0 +1,12 @@
+// Muestra: el estado exacto anterior a C-17. Abre `health` y las metricas, y NO los dos grupos
+// que las sondas de los descriptores piden. Los pods arrancan y el kubelet los mata a los ~45 s.
+public class CadenaQueNiegaLasSondas {
+    public static final String SONDA_DE_SALUD = "/actuator/health";
+    public static final String METRICAS = "/actuator/prometheus";
+
+    SecurityFilterChain cadena(HttpSecurity http) throws Exception {
+        return http.authorizeHttpRequests(
+                        rutas -> rutas.requestMatchers(SONDA_DE_SALUD, METRICAS).permitAll())
+                .build();
+    }
+}

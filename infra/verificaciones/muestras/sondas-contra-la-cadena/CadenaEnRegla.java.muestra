@@ -1,0 +1,21 @@
+// Muestra: una cadena que abre las tres rutas que sus sondas piden. NO es codigo compilado.
+public class CadenaEnRegla {
+    public static final String SONDA_DE_SALUD = "/actuator/health";
+    public static final String SONDA_DE_VIDA = SONDA_DE_SALUD + "/liveness";
+    public static final String SONDA_DE_PREPARACION = SONDA_DE_SALUD + "/readiness";
+    public static final String METRICAS = "/actuator/prometheus";
+
+    SecurityFilterChain cadena(HttpSecurity http) throws Exception {
+        return http.authorizeHttpRequests(
+                        rutas ->
+                                rutas.requestMatchers(
+                                                SONDA_DE_SALUD,
+                                                SONDA_DE_VIDA,
+                                                SONDA_DE_PREPARACION,
+                                                METRICAS)
+                                        .permitAll()
+                                        .anyRequest()
+                                        .denyAll())
+                .build();
+    }
+}

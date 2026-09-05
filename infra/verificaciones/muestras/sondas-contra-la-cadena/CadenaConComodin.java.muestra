@@ -1,0 +1,12 @@
+// Muestra: la salida comoda, y por que se rechaza. Con el comodin toda sonda pasaria —la
+// comprobacion no podria fallar nunca— y quedaria abierto todo grupo del actuator que alguien
+// anada despues.
+public class CadenaConComodin {
+    public static final String SONDA_DE_SALUD = "/actuator/health";
+
+    SecurityFilterChain cadena(HttpSecurity http) throws Exception {
+        return http.authorizeHttpRequests(
+                        rutas -> rutas.requestMatchers(SONDA_DE_SALUD + "/**").permitAll())
+                .build();
+    }
+}

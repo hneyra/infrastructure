@@ -1,0 +1,8 @@
+// Muestra: un argumento que no se resuelve a un literal. Se falla en vez de omitirlo.
+public class CadenaQueNoSeEntiende {
+    SecurityFilterChain cadena(HttpSecurity http) throws Exception {
+        return http.authorizeHttpRequests(
+                        rutas -> rutas.requestMatchers(RutasDeOtraClase.SALUD).permitAll())
+                .build();
+    }
+}
