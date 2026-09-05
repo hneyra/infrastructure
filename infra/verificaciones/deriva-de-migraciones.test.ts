@@ -3,7 +3,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { raizDelRepositorio } from "../componentes/fuentes";
 import { ENVIRONMENTS } from "../config";
+import { invariantesDe } from "./stacks";
 import {
+  ambientesConMigrador,
   clonDe,
   derivaDeMigraciones,
   loQueFalta,
@@ -43,8 +45,23 @@ import {
  * y trae **las mismas 68** migraciones que `sgtm origin/main` declara — o sea que **no
  * habia deriva**, y el rojo no era de deriva.
  */
+/**
+ * Los ambientes que de verdad migran algo (`C-19`).
+ *
+ * Desde que `stg` dejo de desplegar el monolito no compone ningun `Job` de migracion, asi
+ * que su `applicationBootstrapVersion` no gobierna nada y **no hay deriva que medir**.
+ * Medir la de un ambiente que no migra no seria estricto: seria comparar una linea contra
+ * un `git log` que nadie aplica, y ponerse rojo por ello ensena a ignorar el rojo.
+ *
+ * Se **deriva de los manifiestos** —no del nombre del ambiente ni de una lista—, y el
+ * describe de abajo comprueba las dos direcciones: que el que no migra sea exactamente el
+ * que declara que no despliega el monolito, y que quede al menos uno midiendose. Sin esa
+ * segunda mitad, este filtro seria la forma de apagar la guarda de #675 entera.
+ */
+const CON_MIGRADOR = ambientesConMigrador(ENVIRONMENTS);
+
 describe("los ambientes declaran la version que trae las migraciones de su sistema", () => {
-  it.each(ENVIRONMENTS)("Pulumi.%s.yaml", (ambiente) => {
+  it.each(CON_MIGRADOR)("Pulumi.%s.yaml", (ambiente) => {
     const deriva = derivaDeMigraciones(ambiente);
     expect(loQueFalta(deriva), loQueFalta(deriva)).toBe("");
   });
@@ -55,7 +72,7 @@ describe("los ambientes declaran la version que trae las migraciones de su siste
    * —o cero para las dos—, que es el modo de fallo de toda comparacion entre dos
    * lecturas del mismo sitio.
    */
-  it.each(ENVIRONMENTS)("y la cuenta de %s no es cero ni inventada", (ambiente) => {
+  it.each(CON_MIGRADOR)("y la cuenta de %s no es cero ni inventada", (ambiente) => {
     const deriva = derivaDeMigraciones(ambiente);
     expect(deriva.traeLaVersion).toBeGreaterThan(0);
     expect(deriva.declaraLaReferencia).toBeGreaterThan(0);
@@ -78,7 +95,7 @@ describe("los ambientes declaran la version que trae las migraciones de su siste
    *
    * *Mutacion:* declarar en `Pulumi.stg.yaml` la cabeza de cualquier rama sin integrar.
    */
-  it.each(ENVIRONMENTS)("y el sha de %s esta en la historia de main", (ambiente) => {
+  it.each(CON_MIGRADOR)("y el sha de %s esta en la historia de main", (ambiente) => {
     const deriva = derivaDeMigraciones(ambiente);
     expect(loQueNoEncaja(deriva), loQueNoEncaja(deriva)).toBe("");
   });
@@ -91,7 +108,7 @@ describe("los ambientes declaran la version que trae las migraciones de su siste
    * `MIGRACIONES` a una ruta de `infrastructure`, esta prueba se pone roja diciendo que
    * la deriva se esta midiendo contra la copia historica que nadie aplica.
    */
-  it.each(ENVIRONMENTS)("y la mide contra el clon de su sistema, no contra este", (ambiente) => {
+  it.each(CON_MIGRADOR)("y la mide contra el clon de su sistema, no contra este", (ambiente) => {
     const deriva = derivaDeMigraciones(ambiente);
     expect(deriva.sistema).toBe("sgtm");
     expect(clonDe(sistemaLlamado(deriva.sistema))).not.toBe(raizDelRepositorio());
@@ -109,9 +126,43 @@ describe("los ambientes declaran la version que trae las migraciones de su siste
  * que #675 encontro y que ocho meses en verde no delataron.
  */
 describe("el censo de sistemas desplegados cuadra con lo que se declara", () => {
-  it.each(ENVIRONMENTS)("%s construye exactamente un migrador", (ambiente) => {
+  it.each(CON_MIGRADOR)("%s construye exactamente un migrador", (ambiente) => {
     expect(sistemasDesplegados(ambiente)).toEqual(["sgtm"]);
     expect(unicoSistemaDesplegado(ambiente)).toBe("sgtm");
+  });
+
+  /**
+   * C-19 · y el que NO construye ninguno lo hace porque lo declara, no por descuido.
+   *
+   * Las dos direcciones, que es lo unico que impide que `CON_MIGRADOR` se convierta en la
+   * forma de apagar la guarda de #675: un ambiente sin migrador tiene que ser exactamente
+   * uno que declara `desplegarElMonolito: false`, y un ambiente que lo declara `true`
+   * tiene que construir el suyo.
+   *
+   * *Mutacion:* poner `desplegarElMonolito: "true"` en `Pulumi.stg.yaml` sin devolver los
+   * Jobs, o al reves.
+   */
+  it.each(ENVIRONMENTS)("%s: hay migrador si y solo si el stack despliega el monolito", (ambiente) => {
+    const conMonolito = invariantesDe(ambiente).application.deployMonolith;
+    expect(
+      sistemasDesplegados(ambiente).length > 0,
+      conMonolito
+        ? `«${ambiente}» declara que despliega el monolito y no construye ningun migrador`
+        : `«${ambiente}» declara que NO despliega el monolito y construye un migrador igual`,
+    ).toBe(conMonolito);
+  });
+
+  /**
+   * Y queda al menos uno midiendose. Sin esto, apagar el monolito en los dos ambientes
+   * dejaria el describe de arriba con `it.each([])` —cero casos— y la guarda de #675
+   * entera pasaria por lista vacia, en verde y sin haber mirado nada.
+   */
+  it("y al menos un ambiente sigue midiendo su deriva", () => {
+    expect(
+      CON_MIGRADOR.length,
+      "ningun ambiente construye migrador: la guarda de #675 no esta midiendo nada. " +
+        "Si eso es lo que se quiere, hay que decidirlo aqui, no dejarlo pasar por lista vacia.",
+    ).toBeGreaterThan(0);
   });
 
   /**

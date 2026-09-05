@@ -35,6 +35,30 @@ export type Environment = (typeof ENVIRONMENTS)[number];
 export const LOCAL_IS_NOT_A_STACK =
   "Local no es un stack: es `despliegue/compose.yaml` (ADR-0011 §4).";
 
+/**
+ * Los dos perfiles de recursos (`C-19`). **Es una capacidad declarada, no el nombre del
+ * ambiente.**
+ *
+ * `index.ts` lo dice desde que existe: «los únicos condicionales admisibles son los que
+ * responden a una **capacidad** declarada en configuración, no al nombre del ambiente».
+ * Hasta C-19 `RECURSOS` era **una sola tabla para los dos**, así que bajar una petición
+ * para que `stg` cupiera en su nodo la bajaba también en `prod`, donde el margen es el
+ * que el issue #158 midió desplegando. Con esto, cada stack declara cuánto pide y la
+ * decisión de uno no puede filtrarse al otro.
+ *
+ * - `dimensionado` — lo que `INF-01` §2 estima para una municipalidad en servicio. Es
+ *   la tabla base, y es la que declara `prod`.
+ * - `minimo` — lo que basta para **ensayar**. Es la que declara `stg`, cuyo nodo es más
+ *   pequeño y cuya base tiene la municipalidad de demostración, no un padrón real. Baja
+ *   `requests`, que es lo que el planificador **reserva**; ningún `limits` cambia, así
+ *   que nada pierde capacidad de cómputo cuando el nodo la tiene libre.
+ *
+ * ⚠ Las dos son **estimaciones, no mediciones** (`INF-01` §2, y el docstring de la tabla
+ * lo repite). Lo que C-19 mide es que el ambiente quepa, no que la cifra sea la justa.
+ */
+export const PERFILES_DE_RECURSOS = ["dimensionado", "minimo"] as const;
+export type PerfilDeRecursos = (typeof PERFILES_DE_RECURSOS)[number];
+
 export interface IngressSettings {
   /** Nombre público por el que llega el navegador. De él cuelga el certificado. */
   domain: string;
@@ -212,6 +236,22 @@ export interface ApplicationSettings {
    * decir que es de demostración. Caer en el valor por omisión no es decidir.
    */
   isDemonstrationDeclared: boolean;
+  /**
+   * Si este ambiente despliega **el monolito** (`C-19`): el `Deployment` del perfil `web`,
+   * la interfaz, el `CronJob` de `lote` y los dos `Job` de arranque del archivo histórico.
+   *
+   * Sin valor por omisión **a propósito**, y es lo mismo que `municipalidadId`: un
+   * `?? true` haría que olvidarlo se leyera igual que declararlo, y lo que se declara aquí
+   * decide si un ambiente sirve o no la aplicación entera. Los dos stacks lo dicen.
+   *
+   * **Lo que NO gobierna, y es la mitad que importa**: la plataforma. El motor, la
+   * identidad, el correo, el `Job` del realm, el respaldo y la observabilidad viven en el
+   * **mismo** namespace `sgtm-<ambiente>` y **los cuatro sistemas de ADR-0031 se conectan
+   * literalmente** a `sgtm-<ambiente>-postgres.sgtm-<ambiente>` (C-17, punto 1). Apagar
+   * esto no puede tocar nada de eso, y una guarda lo mide en vez de confiarlo al
+   * cuidado de quien lea.
+   */
+  deployMonolith: boolean;
 }
 
 /**
@@ -328,9 +368,15 @@ export interface NodeSettings {
   capacityGapIssue?: string;
 }
 
+/** Cuánto pide este ambiente sobre su nodo (`C-19`). */
+export interface RecursosSettings {
+  perfil: PerfilDeRecursos;
+}
+
 export interface Invariants {
   environment: Environment;
   node: NodeSettings;
+  recursos: RecursosSettings;
   ingress: IngressSettings;
   database: DatabaseSettings;
   backup: BackupSettings;
@@ -436,6 +482,21 @@ function requireNumber(reader: ConfigReader, key: string, purpose: string): numb
 }
 
 /**
+ * Lo mismo para un booleano (`C-19`).
+ *
+ * Hace falta porque `reader.boolean` devuelve `undefined` cuando la clave no está y `false`
+ * cuando dice `false`, y las dos cosas se leen igual en un `??`. Con esto, «no lo declaré» y
+ * «declaré que no» dejan de ser la misma respuesta: la primera revienta nombrando la clave.
+ */
+function requireBoolean(reader: ConfigReader, key: string, purpose: string): boolean {
+  const value = reader.boolean(key);
+  if (value === undefined) {
+    throw new MissingConfigError(key, purpose);
+  }
+  return value;
+}
+
+/**
  * El relay SMTP, o `undefined` si el ambiente no lo declara.
  *
  * `keycloakSmtpHost` es el interruptor: sin él no hay relay (ADR-0012, Opción B).
@@ -465,6 +526,18 @@ function readSmtp(reader: ConfigReader): SmtpSettings | undefined {
 export function readInvariants(environment: Environment, reader: ConfigReader): Invariants {
   return {
     environment,
+    recursos: {
+      // Sin valor por omisión, como `municipalidadId`: un `?? "dimensionado"` haría que
+      // olvidarlo se leyera igual que declararlo, y lo que se declara aquí decide cuánto
+      // reserva este ambiente sobre su nodo. `checkInvariants` comprueba que el nombre
+      // sea uno de los dos: un valor inventado caería en silencio en la tabla base.
+      perfil: requireText(
+        reader,
+        "perfilDeRecursos",
+        "cuánto pide este ambiente sobre su nodo: `dimensionado` (INF-01 §2, lo que declara" +
+          " `prod`) o `minimo` (lo que basta para ensayar, C-19)",
+      ) as PerfilDeRecursos,
+    },
     node: {
       allocatableCpu: requireText(
         reader,
@@ -539,6 +612,17 @@ export function readInvariants(environment: Environment, reader: ConfigReader): 
       webReplicas: reader.number("webReplicas") ?? 2,
       isDemonstration: reader.boolean("esDemostracion") ?? false,
       isDemonstrationDeclared: reader.boolean("esDemostracion") !== undefined,
+      // Sin `??`: ver el docstring del campo. Olvidarlo tiene que reventar aquí, con el
+      // nombre del valor, y no dejar un ambiente desplegando —o dejando de desplegar— la
+      // aplicación entera porque nadie lo escribió.
+      deployMonolith: requireBoolean(
+        reader,
+        "desplegarElMonolito",
+        "si este ambiente despliega el monolito —la aplicación, la interfaz, el CronJob de" +
+          " lote y sus dos Job de arranque—. La plataforma (motor, identidad, correo, realm," +
+          " respaldo y observabilidad) NO depende de esto: los cuatro sistemas se conectan a" +
+          " ella (C-19)",
+      ),
     },
     implantacion: {
       ubigeo: requireText(reader, "ubigeo", "el ubigeo de la municipalidad que se implanta"),
@@ -621,6 +705,28 @@ export function checkInvariants(s: Invariants): string[] {
     problems.push(
       `El stack «${s.environment}» no es uno de los dos ambientes de INF-03 §1: ` +
         `${ENVIRONMENTS.join(", ")}. ${LOCAL_IS_NOT_A_STACK}`,
+    );
+  }
+
+  // ── C-19 — cuánto pide este ambiente sobre su nodo ─────────────────────────
+  if (!PERFILES_DE_RECURSOS.includes(s.recursos.perfil)) {
+    problems.push(
+      `\`perfilDeRecursos\` vale «${s.recursos.perfil}» y no es uno de los dos de C-19: ` +
+        `${PERFILES_DE_RECURSOS.join(", ")}. Un nombre inventado no puede caer en silencio en ` +
+        "la tabla base: eso desharía el perfil del ambiente sin que ninguna cifra pareciera mal.",
+    );
+  }
+  // Y `prod` no puede pedir el mínimo, que es la dirección peligrosa de las dos. El perfil
+  // `minimo` baja lo que el planificador RESERVA, y en el nodo que atiende a la
+  // municipalidad esa reserva es lo que separa «va lento» de «el kubelet desaloja».
+  // Al revés no se prohíbe: `stg` puede pedir lo dimensionado —solo dejaría de caber, y eso
+  // ya lo dice `capacidad.ts` con las cifras—.
+  if (isProd && s.recursos.perfil === "minimo") {
+    problems.push(
+      "`perfilDeRecursos` es «minimo» en «prod». Ese perfil es el de un ambiente de ENSAYO " +
+        "(C-19): baja lo que el planificador reserva, y sobre el nodo que atiende a la " +
+        "municipalidad lo que se pierde no es margen, es la garantía de tener esa memoria " +
+        "cuando el nodo se aprieta (INF-01 §2).",
     );
   }
 

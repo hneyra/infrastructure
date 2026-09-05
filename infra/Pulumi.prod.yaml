@@ -70,6 +70,18 @@ config:
   # `capacidad.test.ts` exige que la brecha SIGA AHI, asi que el dia que el nodo crezca la
   # prueba se pone roja y obliga a retirarla.
   sgtm:nodeCapacityGapIssue: "1"
+  #
+  # Cuanto pide este ambiente sobre su nodo (C-19). `dimensionado` es la tabla de INF-01 §2,
+  # que es la que este archivo ha usado siempre: esta linea NO cambia una sola peticion de
+  # `prod` — se comprobo comparando `yarn manifiestos --ambiente prod` byte a byte antes y
+  # despues, y una prueba fija las dos cifras del pico para que no pueda moverse en silencio.
+  # Se declara igualmente, sin valor por omision, por lo mismo que `municipalidadId`: un
+  # `?? "dimensionado"` haria que olvidarlo se leyera igual que declararlo. Y `checkInvariants`
+  # RECHAZA `minimo` aqui: ese perfil es de un ambiente de ensayo.
+  sgtm:perfilDeRecursos: dimensionado
+  # `prod` SI despliega el monolito (C-19): es el ambiente que lo sirve, y por eso `stg` es el
+  # unico que lo apaga. Sin valor por omision, por lo mismo de arriba.
+  sgtm:desplegarElMonolito: "true"
   sgtm:domain: vmd120205.contaboserver.net
   # A QUIEN se le avisa cuando algo de operacion necesita una persona, y DONDE (C-7 §4).
   # El primero que lo consume es `caja`: ADR-0026 §4 exige que un pago que no se pudo imputar

@@ -314,6 +314,31 @@ export function sistemasDesplegados(ambiente: Environment): string[] {
   return [...nombres].sort();
 }
 
+/**
+ * Un ambiente que no construye ningun migrador (`C-19`).
+ *
+ * Tiene tipo propio y no es un `Error` a secas porque quien lo recibe tiene que poder
+ * distinguirlo del otro fallo de `unicoSistemaDesplegado` —«construye dos y la
+ * configuracion declara una version»—, que es un defecto de verdad y no un estado.
+ */
+export class SinMigrador extends Error {
+  constructor(mensaje: string) {
+    super(mensaje);
+    this.name = "SinMigrador";
+  }
+}
+
+/**
+ * Los ambientes cuya version declarada gobierna de verdad un `Job` de migracion.
+ *
+ * Se **deriva de los manifiestos**, como `sistemasDesplegados`, y no de una lista ni del
+ * nombre del ambiente: el dia que `stg` vuelva a desplegar el monolito entra solo, y el
+ * dia que `prod` deje de hacerlo sale solo.
+ */
+export function ambientesConMigrador(ambientes: readonly Environment[]): Environment[] {
+  return ambientes.filter((ambiente) => sistemasDesplegados(ambiente).length > 0);
+}
+
 /** La deriva de un ambiente, medida contra la revision de referencia de SU sistema. */
 export function derivaDeMigraciones(
   ambiente: Environment,
@@ -348,6 +373,20 @@ export function unicoSistemaDesplegado(ambiente: Environment): string {
   const desplegados = sistemasDesplegados(ambiente);
   const unico = desplegados[0];
   if (desplegados.length === 1 && unico !== undefined) return unico;
+
+  // Cero no es lo mismo que dos, y desde C-19 puede pasar: un ambiente que no despliega
+  // el monolito no compone ningun `Job` de migracion, asi que su
+  // `applicationBootstrapVersion` no gobierna nada y **no hay deriva que medir**. El
+  // mensaje lo dice en vez de acusar a la configuracion de un defecto que no tiene.
+  if (desplegados.length === 0) {
+    throw new SinMigrador(
+      `El ambiente «${ambiente}» no construye ningun migrador: no despliega el monolito ` +
+        "(C-19) y ningun sistema del corte tiene todavia su version declarada.\n" +
+        "  Su `applicationBootstrapVersion` no gobierna ningun Job, asi que aqui no hay " +
+        "deriva que medir. Quien pregunte tiene que preguntar antes por " +
+        "`ambientesConMigrador()`.",
+    );
+  }
 
   throw new Error(
     `El ambiente «${ambiente}» construye ${desplegados.length} migradores ` +

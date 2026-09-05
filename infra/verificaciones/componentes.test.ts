@@ -17,7 +17,7 @@ import {
 import { nginxDelCluster } from "../componentes/Aplicacion";
 import { valoresDeTraefik } from "../componentes/Ingreso";
 import { manifiestosDeObservabilidad } from "../componentes/Observabilidad";
-import { PRIORIDADES, nombreDePrioridad, secretos } from "../componentes/convenciones";
+import { PRIORIDADES, nombreDePrioridad, recursosDe, secretos } from "../componentes/convenciones";
 import {
   ciudadanosJson,
   raizDelRepositorio,
@@ -386,7 +386,15 @@ describe("#150 · sgtm_owner no entra en el Deployment", () => {
   });
 
   it("el alta lleva la marca de demostracion que el stack decidio", () => {
-    for (const ambiente of ENVIRONMENTS) {
+    // Solo los ambientes que DESPLIEGAN el monolito (C-19): desde que `stg` lo apago no
+    // compone ningun Job de implantacion, y buscarlo alli seria exigir un objeto que ese
+    // ambiente declara a proposito que no tiene. El filtro sale de la configuracion y no
+    // de una lista, para que el dia que `stg` vuelva a desplegarlo entre solo.
+    const conMonolito = ENVIRONMENTS.filter(
+      (a) => invariantesDe(a).application.deployMonolith,
+    );
+    expect(conMonolito.length, "ningun ambiente despliega el monolito: no hay alta que medir").toBeGreaterThan(0);
+    for (const ambiente of conMonolito) {
       const implantacion = buscar(manifiestosDe(ambiente), "Job", "implantacion") as {
         spec: { template: { spec: { containers: Contenedor[] } } };
       };
@@ -705,6 +713,7 @@ describe("#151 · identidad", () => {
       manifiestosDeIdentidad({
         environment: AMBIENTE,
         namespace: namespaceName(AMBIENTE),
+        recursos: recursosDe(invariantesDe(AMBIENTE).recursos.perfil),
         image: "quay.io/keycloak/keycloak:26.0",
         realm: "otro-realm",
         domain: invariantesDe(AMBIENTE).ingress.domain,
@@ -735,6 +744,7 @@ describe("#151 · identidad", () => {
       manifiestosDeIdentidad({
         environment: AMBIENTE,
         namespace: namespaceName(AMBIENTE),
+        recursos: recursosDe(invariantesDe(AMBIENTE).recursos.perfil),
         image: "quay.io/keycloak/keycloak:26.1",
         realm: "sgtm",
         domain: invariantesDe(AMBIENTE).ingress.domain,
@@ -846,6 +856,7 @@ describe("ADR-0012 · alta declarativa de usuarios", () => {
       manifiestosDeIdentidad({
         environment: AMBIENTE,
         namespace: namespaceName(AMBIENTE),
+        recursos: recursosDe(invariantesDe(AMBIENTE).recursos.perfil),
         image: "quay.io/keycloak/keycloak:26.0",
         realm: inv.identity.realm,
         domain: inv.ingress.domain,
@@ -1181,6 +1192,7 @@ describe("#415 · enrolamiento del ciudadano", () => {
     const conEnrolado = manifiestosDeIdentidad({
       environment: AMBIENTE,
       namespace: namespaceName(AMBIENTE),
+      recursos: recursosDe(inv.recursos.perfil),
       image: "quay.io/keycloak/keycloak:26.0",
       realm: inv.identity.realm,
       domain: inv.ingress.domain,
@@ -1782,6 +1794,8 @@ function manifiestosDeObservabilidadDePrueba(alertWebhookUrl: string | undefined
   return manifiestosDeObservabilidad({
     environment: AMBIENTE,
     namespace: namespaceName(AMBIENTE),
+    recursos: recursosDe(invariantesDe(AMBIENTE).recursos.perfil),
+    conMonolito: invariantesDe(AMBIENTE).application.deployMonolith,
     alertWebhookUrl,
   });
 }

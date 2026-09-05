@@ -2,7 +2,7 @@ import { commonLabels, resourceName, type Environment } from "../config";
 import {
   BASE_DEL_PADRON,
   CLAVES,
-  RECURSOS,
+  type TablaDeRecursos,
   nombreDePrioridad,
   secretos,
   seguridadSinRoot,
@@ -60,6 +60,8 @@ import type { Contenedor, Job, Manifiesto, VariableDeEntorno } from "./tipos";
 export interface MigracionArgs {
   environment: Environment;
   namespace: string;
+  /** La tabla del perfil de recursos de este ambiente (`C-19`). */
+  recursos: TablaDeRecursos;
   /** Repositorio de las imagenes, sin etiqueta (`ADR-0011` §5). */
   imageRepository: string;
   /** La version con que se crean los Jobs. Ver `Aplicacion.ts` sobre de donde sale. */
@@ -95,11 +97,13 @@ export function sufijoDeVersion(version: string): string {
 export function esperaDeMigracion(args: {
   environment: Environment;
   postgresImage: string;
+  recursos: TablaDeRecursos;
 }): Contenedor {
   return contenedorDeEspera({
     nombre: "espera-migracion",
     environment: args.environment,
     postgresImage: args.postgresImage,
+    recursos: args.recursos,
     consulta:
       "SELECT 1 FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1",
     queEspera: "el esquema aplicado por el Job de migracion",
@@ -116,11 +120,13 @@ export function esperaDeMigracion(args: {
 export function esperaDeImplantacion(args: {
   environment: Environment;
   postgresImage: string;
+  recursos: TablaDeRecursos;
 }): Contenedor {
   return contenedorDeEspera({
     nombre: "espera-implantacion",
     environment: args.environment,
     postgresImage: args.postgresImage,
+    recursos: args.recursos,
     consulta: "SELECT 1 FROM municipalidad LIMIT 1",
     queEspera: "la municipalidad dada de alta por el Job de implantacion",
   });
@@ -141,6 +147,7 @@ export function esperaDeImplantacion(args: {
 function esperaDePostgres(args: {
   environment: Environment;
   postgresImage: string;
+  recursos: TablaDeRecursos;
 }): Contenedor {
   const servicio = servicioDeBaseDeDatos(args.environment);
   return {
@@ -157,7 +164,7 @@ function esperaDePostgres(args: {
       ].join("\n"),
     ],
     securityContext: seguridadSinRoot({ runAsUser: 70 }),
-    resources: RECURSOS.auxiliar,
+    resources: args.recursos.auxiliar,
   };
 }
 
@@ -167,6 +174,7 @@ function contenedorDeEspera(args: {
   postgresImage: string;
   consulta: string;
   queEspera: string;
+  recursos: TablaDeRecursos;
 }): Contenedor {
   const { environment } = args;
   const secreto = secretos(environment);
@@ -207,12 +215,13 @@ function contenedorDeEspera(args: {
     // (issue #158: encontrado reconstruyendo un cluster real desde cero. `70` es el UID
     // de `postgres` en esta imagen, confirmado corriendola: `id postgres`).
     securityContext: seguridadSinRoot({ runAsUser: 70 }),
-    resources: RECURSOS.auxiliar,
+    resources: args.recursos.auxiliar,
   };
 }
 
 export function manifiestosDeMigracion(args: MigracionArgs): Manifiesto[] {
   const { environment, namespace, imageRepository, version, postgresImage, implantacion } = args;
+  const { recursos } = args;
   const sufijo = sufijoDeVersion(version);
   const secreto = secretos(environment);
 
@@ -234,7 +243,7 @@ export function manifiestosDeMigracion(args: MigracionArgs): Manifiesto[] {
         spec: {
           restartPolicy: "Never",
           priorityClassName: nombreDePrioridad(environment, "lote"),
-          initContainers: [esperaDePostgres({ environment, postgresImage })],
+          initContainers: [esperaDePostgres({ environment, postgresImage, recursos })],
           containers: [
             {
               name: "migrador",
@@ -251,7 +260,7 @@ export function manifiestosDeMigracion(args: MigracionArgs): Manifiesto[] {
               // `USER 10002` en el propio Dockerfile del migrador (issue #157): la
               // imagen ya no corre como root, esto solo lo declara.
               securityContext: seguridadSinRoot(),
-              resources: RECURSOS.arranque,
+              resources: recursos.arranque,
             },
           ],
         },
@@ -303,7 +312,7 @@ export function manifiestosDeMigracion(args: MigracionArgs): Manifiesto[] {
         spec: {
           restartPolicy: "Never",
           priorityClassName: nombreDePrioridad(environment, "lote"),
-          initContainers: [esperaDeMigracion({ environment, postgresImage })],
+          initContainers: [esperaDeMigracion({ environment, postgresImage, recursos })],
           containers: [
             {
               name: "implantacion",
@@ -313,7 +322,7 @@ export function manifiestosDeMigracion(args: MigracionArgs): Manifiesto[] {
               env: variablesDeImplantacion,
               // `USER 10001` en el Dockerfile, la misma imagen que `aplicacion` (issue #157).
               securityContext: seguridadSinRoot(),
-              resources: RECURSOS.arranque,
+              resources: recursos.arranque,
             },
           ],
         },

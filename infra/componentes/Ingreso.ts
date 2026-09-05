@@ -43,6 +43,19 @@ export interface IngresoArgs {
   acmeEmail: string;
   /** Emitir contra el entorno de pruebas de Let's Encrypt. Nunca en `prod`. */
   acmeStaging: boolean;
+  /**
+   * Si este ambiente despliega el monolito (`C-19`).
+   *
+   * Decide **dos** de las tres rutas: la de la interfaz —la raiz del dominio— y la de
+   * `/api/v1`. Las dos apuntan por nombre a `Service` que solo existen con el monolito, y
+   * una `IngressRoute` a un `Service` ausente **no se queda callada**: Traefik la acepta,
+   * el certificado se emite, y lo que contesta el dominio publico es un `503` que se lee
+   * como «el sistema esta caido» y no como «aqui no hay nada desplegado».
+   *
+   * La de la identidad NO depende de esto: Keycloak es plataforma, y los cuatro sistemas
+   * de ADR-0031 validan sus tokens contra el (C-14, punto 3).
+   */
+  conMonolito: boolean;
 }
 
 /** El resolvedor de certificados. Un nombre, usado en tres sitios. */
@@ -59,7 +72,7 @@ export const RESOLVEDOR = "letsencrypt";
 export const ACME_DE_PRUEBAS = "https://acme-staging-v02.api.letsencrypt.org/directory";
 
 export function manifiestosDeIngreso(args: IngresoArgs): Manifiesto[] {
-  const { environment, namespace, domain, acmeEmail, acmeStaging } = args;
+  const { environment, namespace, domain, acmeEmail, acmeStaging, conMonolito } = args;
   const etiquetas = commonLabels(environment, "ingreso");
 
   const configuracionDeTraefik: HelmChartConfig = {
@@ -203,7 +216,17 @@ export function manifiestosDeIngreso(args: IngresoArgs): Manifiesto[] {
     },
   };
 
-  return [configuracionDeTraefik, versionMinima, limiteDeTasa, limiteDeIdentidad, interfaz, api, identidad];
+  return [
+    configuracionDeTraefik,
+    versionMinima,
+    limiteDeTasa,
+    limiteDeIdentidad,
+    // Las dos del monolito, o ninguna. `limite-de-tasa` se queda aunque se vayan: un
+    // `Middleware` sin ruta que lo nombre es inerte —no se aplica a nada— y volver a
+    // declararlo el dia que el monolito vuelva seria un segundo sitio donde acordarse.
+    ...(conMonolito ? [interfaz, api] : []),
+    identidad,
+  ];
 }
 
 /**

@@ -4,7 +4,7 @@ import {
   BASE_DE_IDENTIDAD,
   CLAVES,
   IMAGEN_DE_MAILPIT,
-  RECURSOS,
+  type TablaDeRecursos,
   ROL_DE_IDENTIDAD,
   nombreDePrioridad,
   secretos,
@@ -71,6 +71,8 @@ import type {
 export interface IdentidadArgs {
   environment: Environment;
   namespace: string;
+  /** La tabla del perfil de recursos de este ambiente (`C-19`). */
+  recursos: TablaDeRecursos;
   /** Imagen de Keycloak con su version fijada. */
   image: string;
   /** Realm que emite los tokens del SGTM. */
@@ -646,6 +648,7 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
     smtp,
     ubigeo,
     administrador,
+    recursos,
   } = args;
   const nombre = servicioDeIdentidad(environment);
   const nombreDelCorreo = resourceName(environment, "correo");
@@ -802,7 +805,7 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
               ],
               // La imagen de quay.io ya corre como no-root de fabrica (issue #157).
               securityContext: seguridadSinRoot(),
-              resources: RECURSOS.identidad,
+              resources: recursos.identidad,
               // Keycloak migra su propia base al arrancar tras una actualizacion
               // menor, y eso tarda. `startupProbe` con 60 intentos da hasta cinco
               // minutos antes de que la sonda de vida empiece a contar.
@@ -915,7 +918,7 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
             : []),
         ],
         securityContext: seguridadSinRoot(),
-        resources: RECURSOS.auxiliar,
+        resources: recursos.auxiliar,
         volumeMounts: [{ name: "realm", mountPath: "/realm", readOnly: true }],
       },
     ],
@@ -1008,7 +1011,7 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
                     // estan por encima de 1024, y sin `MP_DATABASE` el buzon escribe su
                     // SQLite temporal en `/tmp`, que alpine trae en 1777.
                     securityContext: seguridadSinRoot({ runAsUser: 65534 }),
-                    resources: RECURSOS.auxiliar,
+                    resources: recursos.auxiliar,
                     readinessProbe: sondaHttp("/readyz", 8025, { failureThreshold: 3 }),
                     livenessProbe: sondaHttp("/", 8025, {
                       periodSeconds: 20,

@@ -3,7 +3,7 @@ import {
   BASE_DEL_PADRON,
   SISTEMAS_DEL_PRODUCTO,
   CLAVES,
-  RECURSOS,
+  type TablaDeRecursos,
   contenedorDeDescargaDeWalg,
   montajeDeWalg,
   nombreDePrioridad,
@@ -92,6 +92,8 @@ const IMAGEN_DE_POSTGRES_EXPORTER = "prometheuscommunity/postgres-exporter:v0.15
 export interface BaseDeDatosArgs {
   environment: Environment;
   namespace: string;
+  /** La tabla del perfil de recursos de este ambiente (`C-19`). */
+  recursos: TablaDeRecursos;
   /** Imagen de PostgreSQL con su version fijada. Sale de `config.ts`. */
   image: string;
   /** Tamano del volumen. Es disco local del nodo: no crece solo (`INF-01` §5). */
@@ -120,6 +122,7 @@ export interface BaseDeDatosArgs {
 export const DIRECTORIO_DE_DATOS = "/var/lib/postgresql/data/pgdata";
 
 export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
+  const { recursos } = args;
   const { environment, namespace, image, storageSize, backup } = args;
   const nombre = servicioDeBaseDeDatos(environment);
   const etiquetas = commonLabels(environment, "postgres");
@@ -219,7 +222,7 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
           // Descarga y verifica wal-g ANTES de que el motor arranque: `archive_mode`
           // esta encendido desde el primer segundo, asi que el binario tiene que
           // existir antes del primer `archive_command`.
-          initContainers: [contenedorDeDescargaDeWalg()],
+          initContainers: [contenedorDeDescargaDeWalg(recursos)],
           containers: [
             {
               name: "postgres",
@@ -321,7 +324,7 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
                 { name: "PGDATA", value: DIRECTORIO_DE_DATOS },
                 ...variablesDeWalg,
               ],
-              resources: RECURSOS.motor,
+              resources: recursos.motor,
               volumeMounts: [
                 { name: "datos", mountPath: "/var/lib/postgresql/data" },
                 { name: "inicializacion", mountPath: "/docker-entrypoint-initdb.d", readOnly: true },
@@ -384,7 +387,7 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
               // repositorio -Prometheus, Alertmanager, node-exporter,
               // kube-state-metrics-, y el mismo fallo que esas cuatro dieron en CI.
               securityContext: seguridadSinRoot({ runAsUser: 65534, readOnlyRootFilesystem: true }),
-              resources: RECURSOS.exportador,
+              resources: recursos.exportador,
               // `httpGet`, no `exec`: la sonda la hace el kubelet desde fuera del
               // contenedor, asi que no depende de que la imagen traiga `wget` —la
               // de `postgres_exporter` no trae shell ni utilidades, es un solo

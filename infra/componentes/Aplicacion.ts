@@ -1,7 +1,7 @@
 import { commonLabels, resourceName, type Environment } from "../config";
 import {
   CLAVES,
-  RECURSOS,
+  type TablaDeRecursos,
   emisorPublico,
   jwksInterno,
   nombreDePrioridad,
@@ -51,6 +51,8 @@ import type { ConfigMap, CronJob, Deployment, Manifiesto, Service } from "./tipo
 export interface AplicacionArgs {
   environment: Environment;
   namespace: string;
+  /** La tabla del perfil de recursos de este ambiente (`C-19`). */
+  recursos: TablaDeRecursos;
   imageRepository: string;
   /** La version de las imagenes. Ver «la frontera» mas abajo. */
   version: string;
@@ -71,7 +73,7 @@ export const VENTANA_DE_LOTE = "0 7 * * *";
 
 export function manifiestosDeAplicacion(args: AplicacionArgs): Manifiesto[] {
   const { environment, namespace, imageRepository, version, postgresImage } = args;
-  const { webReplicas, domain, realm } = args;
+  const { webReplicas, domain, realm, recursos } = args;
   const secreto = secretos(environment);
   const nombreDeLaAplicacion = servicioDeAplicacion(environment);
   const nombreDeLaInterfaz = servicioDeInterfaz(environment);
@@ -122,7 +124,7 @@ export function manifiestosDeAplicacion(args: AplicacionArgs): Manifiesto[] {
           priorityClassName: nombreDePrioridad(environment, "servicio"),
           // Un esquema a medias con la aplicacion ya sirviendo peticiones es el estado
           // que este orden existe para impedir (issue #150).
-          initContainers: [esperaDeImplantacion({ environment, postgresImage })],
+          initContainers: [esperaDeImplantacion({ environment, postgresImage, recursos })],
           containers: [
             {
               name: "aplicacion",
@@ -157,7 +159,7 @@ export function manifiestosDeAplicacion(args: AplicacionArgs): Manifiesto[] {
               // `USER 10001` en el Dockerfile (issue #157): sin root desde antes de
               // este manifiesto, esto solo lo declara.
               securityContext: seguridadSinRoot(),
-              resources: RECURSOS.aplicacionWeb,
+              resources: recursos.aplicacionWeb,
               // La JVM tarda en arrancar —el compose le da `start_period: 30s`—, y el
               // `startupProbe` es la forma de decirlo sin aflojar la sonda de vida:
               // hasta dos minutos para arrancar, y despues tres fallos seguidos matan.
@@ -231,7 +233,7 @@ export function manifiestosDeAplicacion(args: AplicacionArgs): Manifiesto[] {
               // `USER nobody`), aqui contra la imagen propia-. 101 es el UID/GID con
               // que la imagen base `nginx:1.31-alpine` crea a "nginx".
               securityContext: seguridadSinRoot({ runAsUser: 101 }),
-              resources: RECURSOS.interfaz,
+              resources: recursos.interfaz,
               volumeMounts: [
                 {
                   name: "configuracion",
@@ -308,7 +310,7 @@ export function manifiestosDeAplicacion(args: AplicacionArgs): Manifiesto[] {
                     ...credencialesDeLaBase,
                   ],
                   securityContext: seguridadSinRoot(),
-                  resources: RECURSOS.aplicacionLote,
+                  resources: recursos.aplicacionLote,
                 },
               ],
             },

@@ -34,6 +34,9 @@ function baseline(environment: Environment = "prod"): Invariants {
     // A quien se le avisa en este ambiente (C-7 §4). La guarda de `checkInvariants` no mira
     // que este puesto —`requireText` ya lo exige al leer— sino que no sea un relleno.
     operacion: { responsable: "Jefa de Tesoreria", canal: "tesoreria@example.pe" },
+    // C-19: cuanto pide este ambiente sobre su nodo. Es una capacidad declarada, no el
+    // nombre del ambiente: `checkInvariants` rechaza `minimo` en `prod`.
+    recursos: { perfil: isStg ? "minimo" : "dimensionado" },
     ingress: {
       domain: isStg ? "stg.sgtm.example.pe" : "sgtm.example.pe",
       acmeEmail: "operaciones@example.pe",
@@ -76,6 +79,9 @@ function baseline(environment: Environment = "prod"): Invariants {
       isDemonstration: isStg,
       // Declarado en los dos: en prod es obligatorio decidirlo a mano (issue #150).
       isDemonstrationDeclared: true,
+      // C-19: `prod` es el ambiente que sirve el monolito; `stg` lo apago porque no lo usa
+      // nadie y era su mayor consumidor. Los dos lo declaran, sin valor por omision.
+      deployMonolith: !isStg,
     },
     implantacion: {
       ubigeo: "200101",
@@ -371,6 +377,11 @@ const VALORES_MINIMOS = {
   // declararlo, y lo que se declara aqui decide bajo que municipalidad escriben los procesos por
   // lotes de los cuatro sistemas.
   municipalidadId: 1,
+  // C-19. Los dos sin valor por omision, por lo mismo que los tres de arriba: en un
+  // booleano «no lo declare» y «declare que no» se leen igual en un `??`, y aqui lo que se
+  // declara decide si el ambiente sirve la aplicacion entera y cuanto reserva sobre su nodo.
+  perfilDeRecursos: "dimensionado",
+  desplegarElMonolito: true,
 };
 
 /**

@@ -1,7 +1,7 @@
 import { commonLabels, resourceName, type Environment } from "../config";
 import {
   CLAVES,
-  RECURSOS,
+  type TablaDeRecursos,
   nombreDePrioridad,
   secretos,
   seguridadSinRoot,
@@ -85,22 +85,42 @@ const IMAGEN_DE_KUBE_STATE_METRICS = "registry.k8s.io/kube-state-metrics/kube-st
 export interface ObservabilidadArgs {
   environment: Environment;
   namespace: string;
+  /** La tabla del perfil de recursos de este ambiente (`C-19`). */
+  recursos: TablaDeRecursos;
+  /**
+   * Si este ambiente despliega el monolito (`C-19`).
+   *
+   * Decide **un** objetivo de raspado: el `job_name: aplicacion`. Sin el monolito ese
+   * objetivo apunta a un `Service` que no existe y Prometheus lo declara `down` para
+   * siempre. No dispara ninguna alerta —`alertas.yml` no tiene ninguna sobre
+   * `up{job="aplicacion"}`, comprobado—, y eso es justo lo que lo hace peor: un objetivo
+   * caido permanente en la lista es ruido que ensena a no mirar la lista, que es la misma
+   * leccion que C-17 §5 escribio sobre el `CrashLoopBackOff` del perfil `batch`.
+   */
+  conMonolito: boolean;
   /** A donde Alertmanager envia (`backupAlertWebhookUrl`-style). Ver `config.ts`. */
   alertWebhookUrl?: string;
 }
 
 export function manifiestosDeObservabilidad(args: ObservabilidadArgs): Manifiesto[] {
-  const { environment, namespace, alertWebhookUrl } = args;
+  const { environment, namespace, alertWebhookUrl, recursos, conMonolito } = args;
   const etiquetas = commonLabels(environment, "observabilidad");
   const prioridad = nombreDePrioridad(environment, "lote");
   const secreto = secretos(environment);
 
   return [
-    ...manifiestosDePrometheus({ environment, namespace, etiquetas, prioridad }),
-    ...manifiestosDeAlertmanager({ environment, namespace, etiquetas, prioridad, alertWebhookUrl }),
-    ...manifiestosDeNodeExporter({ environment, namespace, etiquetas, prioridad }),
-    ...manifiestosDeKubeStateMetrics({ environment, namespace, etiquetas, prioridad }),
-    ...manifiestosDeGrafana({ environment, namespace, etiquetas, prioridad, secreto }),
+    ...manifiestosDePrometheus({ environment, namespace, etiquetas, prioridad, recursos, conMonolito }),
+    ...manifiestosDeAlertmanager({
+      environment,
+      namespace,
+      etiquetas,
+      prioridad,
+      recursos,
+      alertWebhookUrl,
+    }),
+    ...manifiestosDeNodeExporter({ environment, namespace, etiquetas, prioridad, recursos }),
+    ...manifiestosDeKubeStateMetrics({ environment, namespace, etiquetas, prioridad, recursos }),
+    ...manifiestosDeGrafana({ environment, namespace, etiquetas, prioridad, recursos, secreto }),
   ];
 }
 
@@ -109,13 +129,15 @@ interface ArgsComunes {
   namespace: string;
   etiquetas: Record<string, string>;
   prioridad: string;
+  /** La tabla del perfil de recursos de este ambiente (`C-19`). */
+  recursos: TablaDeRecursos;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Prometheus
 // ─────────────────────────────────────────────────────────────────────────────
 
-function configuracionDePrometheus(environment: Environment): string {
+function configuracionDePrometheus(environment: Environment, conMonolito: boolean): string {
   return [
     "# Generado por infra/componentes/Observabilidad.ts. No editar en el nodo.",
     "global:",
@@ -133,10 +155,15 @@ function configuracionDePrometheus(environment: Environment): string {
     "  - job_name: prometheus",
     "    static_configs:",
     '      - targets: ["localhost:9090"]',
-    "  - job_name: aplicacion",
-    "    metrics_path: /actuator/prometheus",
-    "    static_configs:",
-    `      - targets: ["${servicioDeAplicacion(environment)}:8080"]`,
+    // El monolito, y solo si este ambiente lo despliega (C-19). Ver `ObservabilidadArgs`.
+    ...(conMonolito
+      ? [
+          "  - job_name: aplicacion",
+          "    metrics_path: /actuator/prometheus",
+          "    static_configs:",
+          `      - targets: ["${servicioDeAplicacion(environment)}:8080"]`,
+        ]
+      : []),
     "  - job_name: postgres",
     "    static_configs:",
     `      - targets: ["${servicioDeBaseDeDatos(environment)}:9187"]`,
@@ -154,8 +181,8 @@ function configuracionDePrometheus(environment: Environment): string {
   ].join("\n");
 }
 
-function manifiestosDePrometheus(args: ArgsComunes): Manifiesto[] {
-  const { environment, namespace, etiquetas, prioridad } = args;
+function manifiestosDePrometheus(args: ArgsComunes & { conMonolito: boolean }): Manifiesto[] {
+  const { environment, namespace, etiquetas, prioridad, recursos, conMonolito } = args;
   const nombre = servicioDePrometheus(environment);
 
   const configuracion: ConfigMap = {
@@ -163,7 +190,7 @@ function manifiestosDePrometheus(args: ArgsComunes): Manifiesto[] {
     kind: "ConfigMap",
     metadata: { name: resourceName(environment, "observabilidad-prometheus"), namespace, labels: etiquetas },
     data: {
-      "prometheus.yml": configuracionDePrometheus(environment),
+      "prometheus.yml": configuracionDePrometheus(environment, conMonolito),
       "alertas.yml": alertasYml(),
     },
   };
@@ -231,7 +258,7 @@ function manifiestosDePrometheus(args: ArgsComunes): Manifiesto[] {
               // encontrado en CI-. 65534 es el UID real de `nobody` en la imagen; el
               // `fsGroup` de mas abajo ya usaba el mismo numero, por la misma razon.
               securityContext: seguridadSinRoot({ runAsUser: 65534 }),
-              resources: RECURSOS.prometheus,
+              resources: recursos.prometheus,
               volumeMounts: [
                 { name: "configuracion", mountPath: "/etc/prometheus" },
                 { name: "reglas", mountPath: "/etc/prometheus/reglas" },
@@ -308,7 +335,7 @@ function configuracionDeAlertmanager(alertWebhookUrl: string | undefined): strin
 function manifiestosDeAlertmanager(
   args: ArgsComunes & { alertWebhookUrl?: string },
 ): Manifiesto[] {
-  const { environment, namespace, etiquetas, prioridad, alertWebhookUrl } = args;
+  const { environment, namespace, etiquetas, prioridad, recursos, alertWebhookUrl } = args;
   const nombre = servicioDeAlertmanager(environment);
 
   const configuracion: ConfigMap = {
@@ -343,7 +370,7 @@ function manifiestosDeAlertmanager(
               // `runAsUser: 65534` (issue #157): ver el comentario identico junto a
               // Prometheus -misma imagen base, mismo `USER nobody` sin numero-.
               securityContext: seguridadSinRoot({ runAsUser: 65534 }),
-              resources: RECURSOS.alertmanager,
+              resources: recursos.alertmanager,
               volumeMounts: [
                 { name: "configuracion", mountPath: "/etc/alertmanager" },
                 // El estado de deduplicacion, no algo que sobreviva a un
@@ -389,7 +416,7 @@ function manifiestosDeAlertmanager(
  * hay. Modelar `DaemonSet` para una flota de uno es complejidad que nadie pidio.
  */
 function manifiestosDeNodeExporter(args: ArgsComunes): Manifiesto[] {
-  const { environment, namespace, etiquetas, prioridad } = args;
+  const { environment, namespace, etiquetas, prioridad, recursos } = args;
   const nombre = servicioDeNodeExporter(environment);
 
   const motor: Deployment = {
@@ -431,7 +458,7 @@ function manifiestosDeNodeExporter(args: ArgsComunes): Manifiesto[] {
               // `runAsUser: 65534`: la misma imagen base que Prometheus y
               // Alertmanager, con el mismo `USER nobody` sin numero.
               securityContext: seguridadSinRoot({ runAsUser: 65534, readOnlyRootFilesystem: true }),
-              resources: RECURSOS.exportador,
+              resources: recursos.exportador,
               volumeMounts: [
                 { name: "proc", mountPath: "/host/proc", readOnly: true },
                 { name: "sys", mountPath: "/host/sys", readOnly: true },
@@ -468,7 +495,7 @@ function manifiestosDeNodeExporter(args: ArgsComunes): Manifiesto[] {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function manifiestosDeKubeStateMetrics(args: ArgsComunes): Manifiesto[] {
-  const { environment, namespace, etiquetas, prioridad } = args;
+  const { environment, namespace, etiquetas, prioridad, recursos } = args;
   const nombre = servicioDeKubeStateMetrics(environment);
 
   const cuenta: ServiceAccount = {
@@ -533,7 +560,7 @@ function manifiestosDeKubeStateMetrics(args: ArgsComunes): Manifiesto[] {
               // `runAsUser: 65534`: la imagen fija `USER nobody`, un nombre, no un
               // numero -el mismo motivo que Prometheus, Alertmanager y node-exporter-.
               securityContext: seguridadSinRoot({ runAsUser: 65534, readOnlyRootFilesystem: true }),
-              resources: RECURSOS.kubeStateMetrics,
+              resources: recursos.kubeStateMetrics,
               readinessProbe: sondaHttp("/healthz", 8080, { periodSeconds: 10, failureThreshold: 3 }),
               livenessProbe: sondaHttp("/healthz", 8080, { periodSeconds: 20, failureThreshold: 5 }),
             },
@@ -589,7 +616,7 @@ const PROVEEDOR_DE_TABLEROS = [
 function manifiestosDeGrafana(
   args: ArgsComunes & { secreto: ReturnType<typeof secretos> },
 ): Manifiesto[] {
-  const { environment, namespace, etiquetas, prioridad, secreto } = args;
+  const { environment, namespace, etiquetas, prioridad, recursos, secreto } = args;
   const nombre = servicioDeGrafana(environment);
 
   const configuracion: ConfigMap = {
@@ -644,7 +671,7 @@ function manifiestosDeGrafana(
               ports: [{ name: "http", containerPort: 3000 }],
               // La imagen ya corre como `grafana` de fabrica (issue #157).
               securityContext: seguridadSinRoot(),
-              resources: RECURSOS.grafana,
+              resources: recursos.grafana,
               volumeMounts: [
                 {
                   name: "configuracion",

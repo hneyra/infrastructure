@@ -1,4 +1,10 @@
-import { commonLabels, namespaceName, resourceName, type Environment } from "../config";
+import {
+  commonLabels,
+  namespaceName,
+  resourceName,
+  type Environment,
+  type PerfilDeRecursos,
+} from "../config";
 import type {
   Contenedor,
   MontajeDeVolumen,
@@ -207,7 +213,7 @@ export function clasesDePrioridad(environment: Environment): PriorityClass[] {
  * ⚠ Estimaciones, no mediciones (`INF-01` §2). Se recalibran con la volumetria de la
  * municipalidad piloto, que hoy no existe porque D-01 esta abierta.
  */
-export const RECURSOS = {
+const RECURSOS = {
   motor: {
     requests: { cpu: "500m", memory: "2Gi" },
     limits: { cpu: "4", memory: "8Gi" },
@@ -296,9 +302,65 @@ export const RECURSOS = {
     requests: { cpu: "50m", memory: "128Mi" },
     limits: { cpu: "500m", memory: "512Mi" },
   },
-  // `satisfies` y no una anotacion de tipo: asi `RECURSOS.motor` es un `Recursos` y no
+  // `satisfies` y no una anotacion de tipo: asi `recursos.motor` es un `Recursos` y no
   // un `Recursos | undefined`, y a la vez cada entrada se comprueba contra el tipo.
 } satisfies Record<string, Recursos>;
+
+/** La tabla que recibe cada componente. Se resuelve una vez, en `componentes/index.ts`. */
+export type TablaDeRecursos = typeof RECURSOS;
+
+/**
+ * Lo que el perfil `minimo` baja, y **solo** lo que baja (`C-19`).
+ *
+ * Es un ambiente de ENSAYO: su base tiene la municipalidad de demostracion, no un padron
+ * real. Lo que cambia son `requests` —lo que el planificador RESERVA y bloquea—; **ningun
+ * `limits` se toca**, asi que el motor sigue pudiendo usar las 4 CPU y los 8 Gi que tenga
+ * libres el nodo. Un `request` bajo no es menos computo: es menos garantia previa, que es
+ * el mismo razonamiento con que `RECURSOS.arranque` bajo de 250m a 100m en el issue #252.
+ *
+ * **Es una sola entrada, y esta medido por que**: quitando el monolito de `stg` (C-19 §1)
+ * su pico queda en 1 820m / 7 552Mi contra 3 800m / 7 008Mi disponibles — sobra CPU y
+ * faltan 544Mi. El unico sitio donde 544Mi existen sin inventar holgura es el motor, que
+ * es el mayor consumidor del ambiente por un factor de cuatro. Bajarlo a 1Gi deja el pico
+ * en 6 528Mi, con 480Mi de margen.
+ *
+ * Lo que NO se toca, y a proposito:
+ * - **la CPU del motor**, porque la CPU no es lo que falta en `stg` (1 820m de 3 800m) y
+ *   bajar lo que no estorba es cambiar sin motivo;
+ * - **la identidad**, porque Keycloak es lo unico de la plataforma que ya se vio
+ *   reiniciarse en el clúster real (C-17), y bajar el `request` de un pod que de verdad
+ *   usa esa memoria es justo lo que lo hace desalojable antes;
+ * - **la observabilidad**, 180m / 512Mi entre los cinco: es barata y hay verificaciones
+ *   que la ejercitan.
+ *
+ * ⚠ La cifra sigue siendo una ESTIMACION, como la de arriba (`INF-01` §2). Lo que C-19
+ * mide es que el ambiente quepa; que 1Gi sea lo justo se sabra con volumetria.
+ */
+const AJUSTES_DEL_PERFIL_MINIMO = {
+  motor: {
+    requests: { cpu: "500m", memory: "1Gi" },
+    limits: { cpu: "4", memory: "8Gi" },
+  },
+} satisfies Partial<Record<keyof TablaDeRecursos, Recursos>>;
+
+/**
+ * La tabla de recursos de un perfil.
+ *
+ * **La tabla base no se exporta, y eso es la guarda.** Hasta C-19 `RECURSOS` era una
+ * constante exportada que los seis componentes leian directamente, de modo que un perfil
+ * podia declarar una entrada y no aplicarse a nada. Sin export, un componente que la
+ * quisiera **no compila** — la misma clase de barrera que C-14 midio con `M3`, donde el
+ * defecto no se puede ni escribir—. Lo que si se puede escribir, y por eso tiene su
+ * prueba, es una entrada del perfil que no la consuma nadie.
+ */
+export function recursosDe(perfil: PerfilDeRecursos): TablaDeRecursos {
+  return perfil === "minimo" ? { ...RECURSOS, ...AJUSTES_DEL_PERFIL_MINIMO } : RECURSOS;
+}
+
+/** Las entradas que el perfil `minimo` cambia. La prueba de C-19 exige que todas se apliquen. */
+export const ENTRADAS_DEL_PERFIL_MINIMO = Object.keys(
+  AJUSTES_DEL_PERFIL_MINIMO,
+) as (keyof TablaDeRecursos)[];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sondas
@@ -562,7 +624,7 @@ export const WALG_BINARIO = `${WALG_DIRECTORIO}/wal-g`;
  * Definirlo una vez es lo que evita que las dos copias de la logica de descarga se
  * separen la primera vez que alguien actualice `WALG_VERSION` en un solo sitio.
  */
-export function contenedorDeDescargaDeWalg(): Contenedor {
+export function contenedorDeDescargaDeWalg(recursos: TablaDeRecursos): Contenedor {
   const url =
     `https://github.com/wal-g/wal-g/releases/download/v${WALG_VERSION}/` +
     "wal-g-pg-ubuntu-20.04-amd64.tar.gz";
@@ -618,7 +680,7 @@ export function contenedorDeDescargaDeWalg(): Contenedor {
     // De ahi que el montaje de `/tmp` y este `readOnlyRootFilesystem` sean una sola
     // decision y no dos, y que `componentes.test.ts` los exija juntos.
     securityContext: seguridadSinRoot({ runAsUser: 65534, readOnlyRootFilesystem: true }),
-    resources: RECURSOS.auxiliar,
+    resources: recursos.auxiliar,
     volumeMounts: [
       { name: "wal-g-bin", mountPath: WALG_DIRECTORIO },
       { name: "wal-g-tmp", mountPath: "/tmp" },

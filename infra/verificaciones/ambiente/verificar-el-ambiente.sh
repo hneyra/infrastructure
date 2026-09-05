@@ -89,6 +89,16 @@ comoAplicacion() {
         env PGPASSWORD="$CLAVE_APP" psql -U sgtm_app -h 127.0.0.1 -d sgtm -tAqc "$1"
 }
 
+# Si este ambiente DESPLIEGA el monolito (C-19). Se lee del mismo `Pulumi.<amb>.yaml` que
+# `capacidad.ts`, no de una lista ni del nombre del ambiente. Desde que `stg` lo apago, ahi
+# no hay `Deployment` de aplicacion, ni Job de migracion, ni servicio al que asomarse: dar
+# eso por MAL seria un rojo permanente por algo que nadie puede arreglar en un PR, y dar por
+# bueno un ambiente que no se ha mirado seria peor. Lo que se hace es lo de C-15/C-16: decir
+# que NO se comprueba, que no es lo mismo que decir que esta bien.
+MONOLITO=$(grep -E '^\s+sgtm:desplegarElMonolito:' "$INFRA/Pulumi.$AMBIENTE.yaml" \
+    | sed -E 's/.*:\s*//' | tr -d '"'"'"' ')
+[ -n "$MONOLITO" ] || { echo "No se pudo leer desplegarElMonolito de Pulumi.$AMBIENTE.yaml" >&2; exit 1; }
+
 echo "== 1. La version declarada, la desplegada y el esquema =="
 
 DECLARADA=$(grep -E '^\s+sgtm:applicationBootstrapVersion:' "$INFRA/Pulumi.$AMBIENTE.yaml" \
@@ -96,10 +106,17 @@ DECLARADA=$(grep -E '^\s+sgtm:applicationBootstrapVersion:' "$INFRA/Pulumi.$AMBI
 [ -n "$DECLARADA" ] || { echo "No se pudo leer applicationBootstrapVersion de Pulumi.$AMBIENTE.yaml" >&2; exit 1; }
 echo "  declarada en Pulumi.$AMBIENTE.yaml: $DECLARADA"
 
-CORRIENDO=$(kubectl -n "$NAMESPACE" get deployment "sgtm-${AMBIENTE}-aplicacion" \
-    -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
-[ -n "$CORRIENDO" ] || { mal "no hay Deployment sgtm-${AMBIENTE}-aplicacion en $NAMESPACE"; }
-echo "  corriendo en el clúster:           ${CORRIENDO:-—}"
+if [ "$MONOLITO" = "true" ]; then
+    CORRIENDO=$(kubectl -n "$NAMESPACE" get deployment "sgtm-${AMBIENTE}-aplicacion" \
+        -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
+    [ -n "$CORRIENDO" ] || { mal "no hay Deployment sgtm-${AMBIENTE}-aplicacion en $NAMESPACE"; }
+    echo "  corriendo en el clúster:           ${CORRIENDO:-—}"
+else
+    aviso "este ambiente declara desplegarElMonolito: false (C-19), asi que no hay"
+    aviso "Deployment sgtm-${AMBIENTE}-aplicacion que mirar: esta comprobacion NO se hace"
+    aviso "(no pasa: no se hace). La plataforma —motor, identidad, correo, respaldo— si"
+    aviso "se comprueba abajo, porque los cuatro sistemas se conectan a ella."
+fi
 
 # Las migraciones que la version declarada TRAE. Se cuentan en el arbol de git a ese
 # sha —no en el de trabajo—: contar los archivos de `main` diria que faltan migraciones
@@ -129,8 +146,13 @@ if [ -z "$ESPERADAS" ]; then
 elif [ "$APLICADAS" -lt "$ESPERADAS" ]; then
     echo "  migraciones aplicadas: $APLICADAS · las que trae la version declarada: $ESPERADAS"
     mal "la base va POR DETRAS de la version declarada ($APLICADAS < $ESPERADAS)."
-    mal "El Job sgtm-${AMBIENTE}-migracion-${DECLARADA:0:12} no ha corrido, o fallo."
-    mal "Sintoma tipico: una carga batch termina en verde y no escribe ninguna fila."
+    if [ "$MONOLITO" = "true" ]; then
+        mal "El Job sgtm-${AMBIENTE}-migracion-${DECLARADA:0:12} no ha corrido, o fallo."
+        mal "Sintoma tipico: una carga batch termina en verde y no escribe ninguna fila."
+    else
+        mal "Y este ambiente ya no declara ningun Job de migracion (C-19), asi que el"
+        mal "esquema del monolito se queda donde esta: no hay nada que lo adelante."
+    fi
 elif [ "$APLICADAS" -gt "$ESPERADAS" ]; then
     # La otra direccion, desde #675. Antes caia en el `else` y se declaraba «al dia»: el
     # `-lt` dejaba pasar en VERDE precisamente la mutacion que este issue pide medir
@@ -291,6 +313,13 @@ fi
 
 echo
 echo "== 4. La escalera de identidad =="
+if [ "$MONOLITO" != "true" ]; then
+    aviso "este ambiente no despliega el monolito (C-19): no hay servicio"
+    aviso "sgtm-${AMBIENTE}-aplicacion al que asomarse, asi que la escalera de identidad y"
+    aviso "la deuda con su fecha NO se comprueban aqui (no pasan: no se hacen)."
+    aviso "La cadena de identidad de los cuatro sistemas se comprueba en su propio"
+    aviso "repositorio; lo que este guion mide de la plataforma es el motor y su aislamiento."
+else
 PUERTO=18080
 kubectl -n "$NAMESPACE" port-forward "svc/sgtm-${AMBIENTE}-aplicacion" "$PUERTO:8080" \
     >/tmp/sgtm-pf-$$.log 2>&1 &
@@ -353,6 +382,7 @@ else
     aviso "sin --token: los dos ultimos peldanos de la escalera y la deuda con su fecha"
     aviso "quedan SIN comprobar. Un token se obtiene del realm de este ambiente; el"
     aviso "runbook «Abrir la consola de Keycloak» dice como"
+fi
 fi
 
 echo

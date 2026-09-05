@@ -1,4 +1,5 @@
 import {
+  ambientesConMigrador,
   derivaDeMigraciones,
   estaEnLaHistoriaDe,
   loQueLeFaltaA,
@@ -30,17 +31,36 @@ if (candidato === undefined || candidato === "") {
   process.exit(2);
 }
 
+// Solo los ambientes que de verdad migran algo (C-19). Un ambiente que no despliega el
+// monolito no compone ningun `Job` de migracion, asi que su `applicationBootstrapVersion`
+// no gobierna nada: medirle deriva seria compararlo contra un `git log` que nadie aplica,
+// y reescribirle la linea, tocar un archivo por nada. Se deriva de los manifiestos —igual
+// que el censo de #675—, no del nombre del ambiente.
+const conMigrador = ambientesConMigrador(AMBIENTES);
+const primero = conMigrador[0];
+
+if (primero === undefined) {
+  // Y si no queda ninguno se dice y se sale con exito, no se revienta: no hay nada que
+  // declarar y eso no es un fallo del flujo. Lo que SI se pone rojo es la guarda de #675,
+  // que exige que al menos un ambiente siga midiendose.
+  process.stdout.write(
+    "No se declara nada: ningun ambiente construye un migrador (C-19), asi que " +
+      "`applicationBootstrapVersion` no gobierna ningun Job y no hay deriva que cerrar.\n",
+  );
+  process.exit(0);
+}
+
 // De QUE repositorio es el `sha` candidato: el del sistema cuyo migrador construye el
 // despliegue. Se resuelve y no se supone —hasta P6 se suponia «este», y por eso la
 // guarda de #675 llevaba seis pruebas en rojo desde la mudanza—; y si algun dia hay mas
 // de un migrador, `unicoSistemaDesplegado` lanza en vez de elegir uno.
-const sistema = sistemaLlamado(unicoSistemaDesplegado(AMBIENTES[0]));
+const sistema = sistemaLlamado(unicoSistemaDesplegado(primero));
 
 const decision = decidir({
   candidato,
   candidatoEnLaHistoria: estaEnLaHistoriaDe(candidato, REVISION_DE_REFERENCIA, sistema),
   faltanEnElCandidato: loQueLeFaltaA(candidato, REVISION_DE_REFERENCIA, sistema),
-  derivas: AMBIENTES.map((ambiente) => derivaDeMigraciones(ambiente)),
+  derivas: conMigrador.map((ambiente) => derivaDeMigraciones(ambiente)),
 });
 
 aplicar(decision);

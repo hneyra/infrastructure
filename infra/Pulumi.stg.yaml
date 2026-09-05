@@ -31,22 +31,41 @@ config:
   sgtm:nodeAllocatableCpu: "4"
   sgtm:nodeAllocatableMemory: 7Gi
   #
-  # BRECHA DECLARADA (issue #1, C-16). Este nodo NO da para el monolito y los cuatro
-  # sistemas juntos. Medido con `yarn capacidad --ambiente stg`, que desde C-16 suma los
-  # CINCO espacios de nombres y no solo la plataforma:
+  # LA BRECHA DE #1 SE RETIRA (C-19). Este nodo NO daba para el monolito y los cuatro
+  # sistemas juntos —C-16 lo midio: faltaban 3 232Mi—, y la direccion decidio que `stg` es un
+  # entorno de ENSAYO y tiene que pedir lo minimo. Ya no hay brecha que declarar, y no se
+  # podia dejar la marca puesta: `capacidad.test.ts` exige que un ambiente que la declara
+  # SIGA sin caber, asi que dejarla habria puesto la prueba en rojo. Las dos lineas de abajo
+  # son lo que la cierra, y estan medidas:
   #
-  # pico del arranque 2720m / 10240Mi contra 3800m / 7008Mi disponibles:
-  #   NO CABE por memoria, faltan 3232Mi (3,16 Gi). Los cuatro sistemas aportan 950m / 4864Mi.
+  #   pico del arranque 1820m / 6528Mi contra 3800m / 7008Mi disponibles  ->  CABE
+  #     el monolito que se retira valia          800m / 2176Mi
+  #     el perfil `minimo` del motor vale                 1024Mi
   #
-  # No se «arregla» bajando peticiones hasta que cuadre: eso seria inventar una holgura que no
-  # existe. Lo que hay que decidir es si el monolito y los cuatro conviven en el mismo nodo, y
-  # eso es ADR-0029 y D-22. Mientras tanto la marca solo hace que `index.ts` AVISE en vez de
-  # lanzar —lanzar ahi rompe `pulumi preview`, que corre en cada PR—; el bloqueo duro sigue en
-  # el paso «El stack cabe en su nodo» de `aplicar-stg`, que corre `yarn capacidad --estricto`
-  # antes de invocar a Pulumi y se pone rojo con las cifras. Y no se puede quedar puesta de mas:
-  # `capacidad.test.ts` exige que la brecha SIGA AHI, asi que el dia que el nodo crezca la
-  # prueba se pone roja y obliga a retirarla.
-  sgtm:nodeCapacityGapIssue: "1"
+  # `prod` conserva su brecha: alli el monolito se despliega y el nodo es el que es.
+  #
+  # Cuanto pide este ambiente sobre su nodo (C-19). `minimo` baja lo que el planificador
+  # RESERVA —hoy, una sola entrada: la memoria del motor, de 2Gi a 1Gi— y no toca ningun
+  # `limits`, asi que PostgreSQL sigue pudiendo usar los 8 Gi que el nodo tenga libres.
+  # Aqui vale porque esta base tiene la municipalidad de demostracion, no un padron real.
+  sgtm:perfilDeRecursos: minimo
+  # `stg` NO despliega el monolito (C-19, decision de la direccion): no lo usa nadie, y era
+  # el mayor consumidor del ambiente. Lo que se va son sus dos `Job` de arranque, el
+  # `Deployment` del perfil `web`, la interfaz, el `CronJob` de `lote` y las dos rutas del
+  # ingreso que apuntaban a sus dos `Service`.
+  #
+  # LO QUE NO SE VA, y conviene tenerlo escrito porque vive en el MISMO namespace `sgtm-stg`:
+  # el motor (`sgtm-stg-postgres`), la identidad, el correo, el `Job` del realm, el respaldo
+  # y la observabilidad. Los cuatro sistemas de ADR-0031 se conectan literalmente a
+  # `sgtm-stg-postgres.sgtm-stg` (C-17, punto 1) y validan sus tokens contra `sgtm-stg-identidad`
+  # (C-14, punto 3): borrar la plataforma con el monolito los rompe a los cuatro, y el sintoma
+  # no seria un error sino cuatro pods que arrancan y no pasan nunca su sonda de arranque.
+  #
+  # Volver a encenderlo es esta linea, y nada mas. La aplicacion escalada a cero a mano en el
+  # cluster (2026-09-05: `sgtm-stg-aplicacion` 1->0, `sgtm-stg-interfaz` 2->0) es lo que ya
+  # estaba; esto es lo que hace que los manifiestos dejen de declararlo, que es lo que
+  # `yarn capacidad` mide.
+  sgtm:desplegarElMonolito: "false"
   sgtm:domain: sv-RFoVCw2ifaqy3G9NZ1eT.cloud.elastika.pe
   # A QUIEN se le avisa cuando algo de operacion necesita una persona, y DONDE (C-7 §4).
   # El primero que lo consume es `caja`: ADR-0026 §4 exige que un pago que no se pudo imputar

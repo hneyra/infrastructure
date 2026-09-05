@@ -3,7 +3,7 @@ import { DIRECTORIO_DE_DATOS } from "./BaseDeDatos";
 import {
   BASE_DEL_PADRON,
   CLAVES,
-  RECURSOS,
+  type TablaDeRecursos,
   contenedorDeDescargaDeWalg,
   montajeDeWalg,
   nombreDePrioridad,
@@ -71,6 +71,8 @@ import type { CronJob, Manifiesto } from "./tipos";
 export interface RespaldoArgs {
   environment: Environment;
   namespace: string;
+  /** La tabla del perfil de recursos de este ambiente (`C-19`). */
+  recursos: TablaDeRecursos;
   /** Imagen de PostgreSQL: la usa este contenedor, por su `psql`. */
   postgresImage: string;
   backup: {
@@ -94,6 +96,7 @@ export const VENTANA_DE_RESPALDO = "0 6 * * *";
 
 export function manifiestosDeRespaldo(args: RespaldoArgs): Manifiesto[] {
   const { environment, namespace, postgresImage, backup, alertWebhookUrl } = args;
+  const { recursos } = args;
   const nombre = resourceName(environment, "respaldo");
   const etiquetas = commonLabels(environment, "respaldo");
   const secreto = secretos(environment);
@@ -210,7 +213,7 @@ export function manifiestosDeRespaldo(args: RespaldoArgs): Manifiesto[] {
             spec: {
               restartPolicy: "Never",
               priorityClassName: nombreDePrioridad(environment, "lote"),
-              initContainers: [contenedorDeDescargaDeWalg()],
+              initContainers: [contenedorDeDescargaDeWalg(recursos)],
               containers: [
                 {
                   name: "respaldo-base",
@@ -252,7 +255,7 @@ export function manifiestosDeRespaldo(args: RespaldoArgs): Manifiesto[] {
                       ? []
                       : [{ name: "ALERT_WEBHOOK_URL", value: alertWebhookUrl }]),
                   ],
-                  resources: RECURSOS.auxiliar,
+                  resources: recursos.auxiliar,
                   volumeMounts: [
                     // Solo lectura: wal-g lee PGDATA, nunca lo modifica.
                     { name: "datos", mountPath: "/var/lib/postgresql/data", readOnly: true },
