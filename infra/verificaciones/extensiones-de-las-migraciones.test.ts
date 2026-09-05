@@ -130,10 +130,15 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
     expect(cuantas).toEqual({
       "infrastructure (copia del esquema del monolito)": 68,
       sgtm: 68,
-      // rentas 12 y catastro 5 desde C-8: el buzon de salida del emisor y la cola de muertos
-      // del ingestor. Cuando esto se ponga rojo lo que hay que hacer NO es actualizar el numero:
-      // es mirar que migracion entro y comprobar que declaro las extensiones que usa.
-      rentas: 12,
+      // catastro 5 desde C-8: el buzon de salida del emisor y la cola de muertos del ingestor.
+      // rentas 13 desde C-12, que retiro `contribuyente_nombre_trgm_ix` —inalcanzable bajo RLS—.
+      // Cuando esto se ponga rojo lo que hay que hacer NO es actualizar el numero: es mirar que
+      // migracion entro y comprobar que declaro las extensiones que usa. Se comprobo para `V13`:
+      // no usa ninguna, y `pg_trgm` sigue declarada en `rentas` porque `similarity()` se llama en
+      // tiempo de consulta —lo que esta guarda NO lee, porque solo mira migraciones; hoy la
+      // mantiene verde el `gin_trgm_ops` que `V1` sigue nombrando, o sea por un motivo que dejo
+      // de ser cierto—.
+      rentas: 13,
       catastro: 5,
       normativa: 1,
       caja: 2,

@@ -58,6 +58,17 @@ import {
  * `pg_restore` lo dice como **aviso** —«errors ignored on restore»— y termina con codigo de
  * salida 0. No hay ningun rojo, y el sintoma aparece meses despues y en otro sitio.
  *
+ * **C-12 cambio la primera fila, y conviene decirlo para no prometer de mas.** `V13` de
+ * `rentas` retiro `contribuyente_nombre_trgm_ix` —era inalcanzable bajo RLS—, y ese indice
+ * era lo UNICO que quedaba en ese esquema insertando en linea el cuerpo de la funcion
+ * (`via`, con su columna generada, se habia ido con `V6`). Medido despues: con el cuerpo
+ * fragil devuelto a mano y el indice ya retirado, la ida y vuelta de `rentas` da **0
+ * errores y 347 indices a los dos lados**. De modo que hoy quien sostiene esta guarda es
+ * `catastro` —su `via.nombre_busqueda` es una columna generada, y esa se inserta en linea
+ * al CREAR LA TABLA— y el monolito, que no se puede arreglar. En `rentas` la migracion de
+ * C-4 se queda porque sigue siendo correcta y porque el mismo cuerpo se vuelca desde el
+ * mismo generador a los cuatro esquemas, no porque alli falle nada hoy.
+ *
  * ## Por que aqui, y por que no basta con la migracion que lo arregla
  *
  * Por lo mismo que C-2 y C-3: el defecto es de familia —lo trae el mismo generador a los
