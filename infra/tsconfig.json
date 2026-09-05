@@ -17,7 +17,20 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
     "noUnusedLocals": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    // `@sgtm/infra-contrato` se resuelve AQUI, y no por el `node_modules` del sistema que lo
+    // importa. Los cuatro descriptores lo declaran como `link:` y quien materializa ese enlace
+    // es `yarn install` DENTRO de cada sistema; el CI de este repositorio los clona para
+    // comprobarlos y solo instala en `infrastructure/infra`, asi que el enlace no existe alli.
+    // Sin el, `DescriptorDeSistema` no resuelve, el parametro `e` de cada metodo cae a `any` y
+    // salen 30 `TS7006` — en CI y solo en CI, porque en una maquina de desarrollo los cinco
+    // clones si tienen sus dependencias instaladas y el enlace esta. Es la clase de defecto que
+    // este proyecto persigue: verde aqui, rojo alli, y la diferencia no la medi­a nadie.
+    //
+    // Se arregla apuntando al contrato de este repositorio, que es EXACTAMENTE a donde el enlace
+    // apunta cuando existe, en vez de instalar cuatro `node_modules` en CI para materializarlo.
+    // `EL_ENLACE_DE_LOS_SISTEMAS` lo ata: si un sistema cambia su `link:`, la guarda muerde.
+    "paths": { "@sgtm/infra-contrato": ["./contrato/index.ts"] }
   },
   "include": [
     "index.ts",
