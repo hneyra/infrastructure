@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { namespacesDelAmbiente } from "../descriptor/entorno";
 import { auditarManifiestos } from "../auditoria";
 import { clasesDePrioridad, nombreDePrioridad } from "../componentes/convenciones";
 import {
@@ -61,6 +62,7 @@ const ENTORNO: EntornoDelDescriptor = {
  */
 const CONTEXTO: ContextoDeDescriptores = {
   secretoDeOwner: "kamayuk-stg-owner",
+  namespacesDelAmbiente: namespacesDelAmbiente("stg"),
   basesDelClustre: ["rentas", "catastro", "normativa", "caja"],
   manifiestosDeLaPlataforma: clasesDePrioridad("stg"),
 };
@@ -137,7 +139,11 @@ describe("las convenciones de INF-01 §4 valen IGUAL para un descriptor ajeno", 
    */
   it("la (d) la produce `auditarManifiestos`, no una copia", () => {
     const entorno = entornoDe("catastro");
-    const heredada = { secretoDeOwner: CONTEXTO.secretoDeOwner, namespace: entorno.namespace };
+    const heredada = {
+      secretoDeOwner: CONTEXTO.secretoDeOwner,
+      namespace: entorno.namespace,
+      namespacesDelAmbiente: [...CONTEXTO.namespacesDelAmbiente],
+    };
     const soloPlataforma = new Set(
       auditarManifiestos([...CONTEXTO.manifiestosDeLaPlataforma], heredada),
     );

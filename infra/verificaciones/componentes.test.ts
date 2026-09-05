@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { namespacesDelAmbiente } from "../descriptor/entorno";
 import { auditarManifiestos } from "../auditoria";
 import { construirManifiestos } from "../componentes";
 import {
@@ -113,6 +114,7 @@ describe("los manifiestos de los dos ambientes pasan su propia auditoria", () =>
     expect(
       auditarManifiestos(ms, {
         secretoDeOwner: secretos(ambiente).owner,
+        namespacesDelAmbiente: namespacesDelAmbiente(ambiente),
         namespace: namespaceName(ambiente),
       }),
     ).toEqual([]);
@@ -2501,6 +2503,7 @@ function valoresDelIngreso(ms: Manifiesto[]): string {
 function auditar(ms: Manifiesto[]): string[] {
   return auditarManifiestos(ms, {
     secretoDeOwner: secretos(AMBIENTE).owner,
+    namespacesDelAmbiente: namespacesDelAmbiente(AMBIENTE),
     namespace: namespaceName(AMBIENTE),
   });
 }

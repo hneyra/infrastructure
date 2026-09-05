@@ -1,7 +1,7 @@
 import { auditarManifiestos, describirAuditoria } from "../auditoria";
 import { construirManifiestos } from "../componentes";
 import { componerOFallar } from "../descriptor";
-import { entornoPara } from "../descriptor/entorno";
+import { entornoPara, namespacesDelAmbiente } from "../descriptor/entorno";
 import { SISTEMAS } from "../descriptor/sistemas";
 import { secretos } from "../componentes/convenciones";
 import {
@@ -133,6 +133,7 @@ export function manifiestosDeLosSistemas(
       (s) => s.descriptor.baseDeDatos(entornoDe(s.descriptor.sistema)).nombre,
     ),
     manifiestosDeLaPlataforma: plataforma,
+    namespacesDelAmbiente: namespacesDelAmbiente(invariantes.environment),
   });
 }
 
@@ -162,7 +163,6 @@ export function manifiestosDelAmbiente(invariantes: Invariants): Manifiesto[] {
 export function emitir(opciones: Opciones): string {
   const ambiente = opciones.ambiente;
   const invariantes = invariantesDe(ambiente);
-  const plataforma = construirManifiestos(invariantes);
   const todos = manifiestosDelAmbiente(invariantes);
 
   // Se audita SIEMPRE, aunque se emita un componente: un manifiesto que incumple no se copia a
@@ -171,9 +171,10 @@ export function emitir(opciones: Opciones): string {
   // —uno por sistema y por ambiente—, que es lo que permite escribir las politicas de red de
   // cada uno sin mirar a los demas. Auditarlos aqui otra vez los mediria contra el namespace de
   // la plataforma y los rechazaria a todos por estar donde tienen que estar.
-  const problemas = auditarManifiestos(plataforma, {
+  const problemas = auditarManifiestos(todos, {
     secretoDeOwner: secretos(ambiente).owner,
     namespace: namespaceName(ambiente),
+    namespacesDelAmbiente: namespacesDelAmbiente(ambiente),
   });
   if (problemas.length > 0) {
     throw new Error(describirAuditoria(ambiente, problemas));

@@ -17,6 +17,7 @@ import {
   jwksInterno,
   nombreDePrioridad,
   servicioDeIdentidad,
+  SISTEMAS_DEL_PRODUCTO,
 } from "../componentes/convenciones";
 import { sufijoDeVersion } from "../componentes/Migracion";
 import { commonLabels, namespaceName, type Environment } from "../config";
@@ -27,6 +28,25 @@ const REGISTRO = "ghcr.io/hneyra";
 
 export function namespaceDelSistema(ambiente: Environment, sistema: string): string {
   return `kamayuk-${sistema}-${ambiente}`;
+}
+
+/**
+ * TODOS los espacios de nombres de un ambiente: el de la plataforma y el de cada sistema.
+ *
+ * Existe porque la auditoria de ubicacion tiene que saber cuales son legitimos. Su regla exigia
+ * el namespace del ambiente y **ADR-0031 le dio a cada sistema el suyo**; hasta que se arreglo,
+ * `emitir-manifiestos.ts` auditaba SOLO la plataforma —lo dice su propio comentario: «los
+ * rechazaria a todos por estar donde tienen que estar»— e `index.ts` desplegaba solo la
+ * plataforma. Los cuatro sistemas no llegaban al cluster y nada lo decia.
+ *
+ * Devuelve una lista y no un prefijo a proposito: comparar por prefijo dejaria pasar
+ * `kamayuk-stg-loquesea`, y lo que la regla protege es que un ambiente no escriba en el otro.
+ */
+export function namespacesDelAmbiente(ambiente: Environment): string[] {
+  return [
+    namespaceName(ambiente),
+    ...SISTEMAS_DEL_PRODUCTO.map((sistema) => namespaceDelSistema(ambiente, sistema)),
+  ];
 }
 
 export function entornoPara(

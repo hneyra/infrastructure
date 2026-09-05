@@ -2,6 +2,7 @@ import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
 import { auditarManifiestos, describirAuditoria } from "./auditoria";
 import { auditarCapacidad, describirCapacidad } from "./capacidad";
+import { namespacesDelAmbiente } from "./descriptor/entorno";
 import { manifiestosDelAmbiente } from "./herramientas/emitir-manifiestos";
 import {
   CLAVES_DE_CREDENCIALES_DE_RESPALDO,
@@ -84,6 +85,7 @@ const manifiestos = manifiestosDelAmbiente(settings);
 const problemas = auditarManifiestos(manifiestos, {
   secretoDeOwner: secretos(env).owner,
   namespace,
+  namespacesDelAmbiente: namespacesDelAmbiente(env),
 });
 if (problemas.length > 0) {
   throw new Error(describirAuditoria(env, problemas));
