@@ -36,7 +36,7 @@
  * `web-application-type: none` y por tanto no sirve `/actuator` en absoluto.
  *
  * Y **no se puede resolver por el otro lado**, poniendole consultas propias al `postgres_exporter`:
- * ese sidecar se conecta como `sgtm_monitor`, que tiene `pg_monitor` y ningun `SELECT` sobre una
+ * ese sidecar se conecta como `kamayuk_monitor`, que tiene `pg_monitor` y ningun `SELECT` sobre una
  * tabla de negocio; darselo seria darle una credencial capaz de leer el padron entero. Y aunque se
  * le diera, las tablas llevan RLS con `FORCE`: una consulta sin contexto de tenant **no devuelve
  * vacio, revienta**, y un agregado entre municipalidades es exactamente lo que la politica existe

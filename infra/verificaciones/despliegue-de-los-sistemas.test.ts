@@ -21,7 +21,7 @@ import { invariantesDe } from "./stacks";
  *
  * 1. **Los Jobs de migracion no migraban** (C-7, hueco 2). Corrian la MISMA imagen que el
  *    `Deployment` —el descriptor declaraba `imagenes: [SISTEMA]`, una sola— con
- *    `KAMAYUK_DB_USUARIO=sgtm_owner` y sin `SPRING_PROFILES_ACTIVE`: o sea, arrancaban la aplicacion
+ *    `KAMAYUK_DB_USUARIO=kamayuk_owner` y sin `SPRING_PROFILES_ACTIVE`: o sea, arrancaban la aplicacion
  *    con las credenciales del unico rol con DDL, y la aplicacion tiene `spring.flyway.enabled:
  *    false` a proposito (ARQ-03 §4).
  * 2. **Nada creaba las cuatro bases ni sus roles** (C-7, hueco 3). Esa mitad la mide
@@ -77,7 +77,7 @@ describe("C-14 §1 · cada sistema publica DOS imagenes, y el migrador corre la 
    * La decision, leida del `Dockerfile` de cada repositorio en vez de de una lista escrita aqui.
    *
    * Son dos objetivos del mismo arbol de fuentes —`aplicacion` y `migrador`— y estan separados
-   * porque las credenciales son distintas: las de `sgtm_owner` existen durante la migracion y
+   * porque las credenciales son distintas: las de `kamayuk_owner` existen durante la migracion y
    * desaparecen con ella. Es el mismo reparto que el monolito tiene desde el issue #150
    * (`sgtm-aplicacion` y `sgtm-migrador`).
    */
@@ -206,7 +206,7 @@ describe("C-14 §1 · cada sistema publica DOS imagenes, y el migrador corre la 
 
     // Y las variables que el migrador de verdad LEE. Su `main` las nombra y rechaza argumentos
     // a proposito, para que una clave no quede en el historial del proceso.
-    expect(valorDe(principal, "KAMAYUK_DB_OWNER_USUARIO")).toBe("sgtm_owner");
+    expect(valorDe(principal, "KAMAYUK_DB_OWNER_USUARIO")).toBe("kamayuk_owner");
     expect(declara(principal, "KAMAYUK_DB_OWNER_CLAVE")).toBe(true);
     // Y la URL sale del anfitrion que ENTREGA el entorno (C-17, punto 1). Esta linea decia
     // `jdbc:postgresql://postgres:5432/...`, o sea que la guarda de C-14 EXIGIA el nombre roto:
@@ -382,14 +382,14 @@ describe("C-14 §3 · los CronJob del emisor y del ingestor", () => {
    * Un `CronJob` corre la imagen de la APLICACION en perfil `batch`, nunca la del migrador ni
    * con las credenciales del owner. Lo segundo lo rechaza ademas `auditarLaAplicacion`.
    */
-  it("ningun CronJob de un sistema lleva la credencial de `sgtm_owner`", () => {
+  it("ningun CronJob de un sistema lleva la credencial de `kamayuk_owner`", () => {
     for (const sistema of SISTEMAS_DEL_PRODUCTO) {
       for (const m of delSistema(AMBIENTE, sistema)) {
         if (m.kind !== "CronJob") continue;
         for (const c of m.spec.jobTemplate.spec.template.spec.containers) {
           expect(declara(c, "KAMAYUK_DB_OWNER_USUARIO"), m.metadata.name).toBe(false);
           expect(declara(c, "KAMAYUK_DB_OWNER_CLAVE"), m.metadata.name).toBe(false);
-          expect(valorDe(c, "KAMAYUK_DB_USUARIO"), m.metadata.name).toBe("sgtm_app");
+          expect(valorDe(c, "KAMAYUK_DB_USUARIO"), m.metadata.name).toBe("kamayuk_app");
         }
       }
     }

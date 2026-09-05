@@ -81,7 +81,7 @@ ensayar_contra_cluster() {
     echo "· Escribiendo la fila BUENA -T_BUENO queda entre esta y la mala-"
     codigoBueno="ENSAYO-PITR-B$$"
     kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveOwner" \
-        psql --username=sgtm_owner --dbname=sgtm --quiet -v ON_ERROR_STOP=1 <<SQL
+        psql --username=kamayuk_owner --dbname=sgtm --quiet -v ON_ERROR_STOP=1 <<SQL
 BEGIN;
 SET LOCAL app.municipalidad_id = '$MUNICIPALIDAD_DE_ENSAYO';
 INSERT INTO contribuyente
@@ -104,7 +104,7 @@ SQL
     echo "· Escribiendo la fila MALA -la que el PITR tiene que dejar fuera-"
     codigoMalo="ENSAYO-PITR-M$$"
     kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveOwner" \
-        psql --username=sgtm_owner --dbname=sgtm --quiet -v ON_ERROR_STOP=1 <<SQL
+        psql --username=kamayuk_owner --dbname=sgtm --quiet -v ON_ERROR_STOP=1 <<SQL
 BEGIN;
 SET LOCAL app.municipalidad_id = '$MUNICIPALIDAD_DE_ENSAYO';
 INSERT INTO contribuyente
@@ -269,7 +269,7 @@ CONF
         || { echo "FALLO: el motor restaurado no salio de recuperacion." >&2; exit 1; }
 
     kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveOwner" \
-        psql --username=sgtm_owner --dbname=sgtm --quiet -v ON_ERROR_STOP=1 <<SQL >/dev/null
+        psql --username=kamayuk_owner --dbname=sgtm --quiet -v ON_ERROR_STOP=1 <<SQL >/dev/null
 BEGIN;
 SET LOCAL app.municipalidad_id = '$MUNICIPALIDAD_DE_ENSAYO';
 INSERT INTO contribuyente
@@ -306,13 +306,13 @@ SQL
     # PROCEDIMIENTO y no ninguna copia registrada -marcar una fila desde ahi
     # diria que se restauro una copia del cluster que nadie toco-.
     #
-    # Como sgtm_owner: `respaldo_escritura` (V8) nombra solo a ese rol, y
-    # `sgtm_app` no tiene INSERT ni UPDATE a proposito (ARQ-03 §4).
+    # Como kamayuk_owner: `respaldo_escritura` (V8) nombra solo a ese rol, y
+    # `kamayuk_app` no tiene INSERT ni UPDATE a proposito (ARQ-03 §4).
     # ─────────────────────────────────────────────────────────────────────
     echo
     echo "· Dejando constancia de la restauracion verificada en la tabla respaldo (RF-126)"
     marcadas=$(kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveOwner" \
-        psql --username=sgtm_owner --dbname=sgtm --tuples-only --no-align -v ON_ERROR_STOP=1 <<SQL
+        psql --username=kamayuk_owner --dbname=sgtm --tuples-only --no-align -v ON_ERROR_STOP=1 <<SQL
 UPDATE respaldo
    SET ultima_restauracion_verificada     = now(),
        ultima_restauracion_verificada_por = 'simulacro-de-restauracion.sh --contra-cluster ($AMBIENTE)'

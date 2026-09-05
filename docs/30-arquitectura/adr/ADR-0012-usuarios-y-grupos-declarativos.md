@@ -123,7 +123,7 @@ un** cliente HTTP saliente en `src/main` —cero `RestClient`, `WebClient`, `Res
 extremos **públicos y de lectura** con los que Spring Security valida una firma. Para crear una
 cuenta haría falta una credencial de administración del realm, que es justo la clase de credencial
 que [`ADR-0011`](ADR-0011-infraestructura-como-codigo.md) §3 mantiene fuera del alcance de la
-aplicación —«claves de `sgtm_owner`, `sgtm_app`, administrador de Keycloak: **no están en
+aplicación —«claves de `kamayuk_owner`, `kamayuk_app`, administrador de Keycloak: **no están en
 Pulumi**»—.
 
 El precio de dársela no es teórico: el proceso que atiende el padrón pasaría a llevar dentro una

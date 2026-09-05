@@ -38,7 +38,7 @@
 #
 # LA CREDENCIAL. Este Job es el UNICO que corre como rol_carga_parametros. No es una preferencia:
 # parametro_tributario lleva FORCE ROW LEVEL SECURITY y la unica politica de escritura de V6 nombra
-# a ese rol, asi que ni sgtm_app -que solo tiene SELECT (V7)- ni sgtm_owner pueden insertar en ella.
+# a ese rol, asi que ni kamayuk_app -que solo tiene SELECT (V7)- ni kamayuk_owner pueden insertar en ella.
 # Y ese rol no alcanza nada mas: ni el conjunto, ni su detalle, ni la auditoria. Es la separacion de
 # funciones SoD-1 de REQ-03, escrita en los privilegios.
 #
@@ -46,7 +46,7 @@
 # sgtm-<ambiente>-postgres-carga, generado por secretos/bootstrap-secretos.sh y listado en el
 # inventario de INF-06 (issue #387). El guion comprueba que el secreto exista en ESTE namespace y se
 # para nombrandolo si no: montar el Job con la credencial de la aplicacion lo dejaria fallar dentro
-# con un error de privilegio, y la salida comoda ante eso es darle a sgtm_app el INSERT que no debe
+# con un error de privilegio, y la salida comoda ante eso es darle a kamayuk_app el INSERT que no debe
 # tener.
 #
 #   uso: publicar-cuadros.sh --ambiente stg|prod --archivo cuadros-2026.csv \
@@ -102,7 +102,7 @@ este namespace es el secreto con su clave. Corre, contra este ambiente:
 
   secretos/bootstrap-secretos.sh --ambiente $AMBIENTE
 
-Lo que NO hay que hacer es montar este Job con la credencial de la aplicacion: sgtm_app solo
+Lo que NO hay que hacer es montar este Job con la credencial de la aplicacion: kamayuk_app solo
 tiene SELECT sobre parametro_tributario, y darle el INSERT que le falta pondria la publicacion
 de valores normativos al alcance del proceso que atiende peticiones.
 EOF
@@ -405,8 +405,8 @@ spec:
             - name: KAMAYUK_DB_URL
               value: jdbc:postgresql://sgtm-${AMBIENTE}-postgres:5432/sgtm
             # rol_carga_parametros, y solo aqui. parametro_tributario lleva FORCE ROW LEVEL
-            # SECURITY y la unica politica de escritura de V6 nombra a este rol: ni sgtm_app
-            # ni sgtm_owner pueden insertar en ella. Y este rol no alcanza ninguna otra tabla
+            # SECURITY y la unica politica de escritura de V6 nombra a este rol: ni kamayuk_app
+            # ni kamayuk_owner pueden insertar en ella. Y este rol no alcanza ninguna otra tabla
             # (V7), asi que este Job no puede componer ni sellar aunque quisiera.
             - name: KAMAYUK_DB_USUARIO
               value: rol_carga_parametros

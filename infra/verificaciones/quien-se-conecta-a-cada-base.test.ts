@@ -30,14 +30,14 @@ const CONNECT_ESPERADO: Record<string, readonly string[]> = {
   // `rol_ingestor_catastro` escribe la proyeccion local de `catastro` (V4, V5).
   // `rol_carga_parametros` NO esta: desde P5B los valores normativos viven en `normativa` y aqui
   // no tiene ni una tabla que escribir. Es el punto que C-7 §6 cierra.
-  rentas: ["sgtm_owner", "sgtm_app", "sgtm_readonly", "rol_ingestor_catastro"],
-  // La normativa que `catastro` usa es su copia local sellada, y la escribe `sgtm_app`.
-  catastro: ["sgtm_owner", "sgtm_app", "sgtm_readonly"],
+  rentas: ["kamayuk_owner", "kamayuk_app", "kamayuk_readonly", "rol_ingestor_catastro"],
+  // La normativa que `catastro` usa es su copia local sellada, y la escribe `kamayuk_app`.
+  catastro: ["kamayuk_owner", "kamayuk_app", "kamayuk_readonly"],
   // `caja` no sabe que es un tributo: ningun rol de carga tiene nada que hacer aqui.
-  caja: ["sgtm_owner", "sgtm_app", "sgtm_readonly"],
+  caja: ["kamayuk_owner", "kamayuk_app", "kamayuk_readonly"],
   // El unico sitio donde `rol_carga_parametros` tiene sentido: sus cuatro politicas de escritura
   // estan en el `V1` de este esquema (ADR-0007 §5).
-  normativa: ["sgtm_owner", "sgtm_app", "sgtm_readonly", "rol_carga_parametros"],
+  normativa: ["kamayuk_owner", "kamayuk_app", "kamayuk_readonly", "rol_carga_parametros"],
 };
 
 function guionDeRoles(nombre: string): string {

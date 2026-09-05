@@ -54,7 +54,7 @@ repositorio. Si alguien pega una versión editada, se pone rojo.
 Solo hay cuatro archivos propios de `infra/`, y los cuatro tienen motivo:
 `inicializacion/30-base-de-keycloak.sh` —el compose no lo necesita, porque allí Keycloak
 guarda su base dentro del contenedor—, `inicializacion/40-rol-de-respaldo.sh` y
-`inicializacion/50-rol-de-monitoreo.sh` —`sgtm_respaldo` y `sgtm_monitor` solo existen
+`inicializacion/50-rol-de-monitoreo.sh` —`kamayuk_respaldo` y `kamayuk_monitor` solo existen
 donde hay respaldo y monitoreo que servir (issues #155 y #156)— y
 `identidad/reconciliar-realm.sh`.
 

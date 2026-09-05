@@ -54,7 +54,7 @@ Cada uno declara **tres servicios**, uno por proceso del descriptor:
 
 | Servicio | Qué es | Imagen |
 |---|---|---|
-| `<sistema>-migraciones` | Aplica el esquema como `sgtm_owner`. Corre y termina | objetivo `migrador` |
+| `<sistema>-migraciones` | Aplica el esquema como `kamayuk_owner`. Corre y termina | objetivo `migrador` |
 | `<sistema>-implantacion` | La fila de `municipalidad` en **su** base. Corre y termina | objetivo `aplicacion`, perfil `batch` |
 | `<sistema>` | El backend, en el perfil `web` | objetivo `aplicacion` |
 
@@ -145,16 +145,16 @@ identidad ──(arrancada)─────────────────�
 | `base` | superusuario, solo dentro del contenedor | siempre |
 | `identidad` | Keycloak, con su propio administrador | siempre |
 | `correo` | Mailpit: buzón que atrapa el correo de Keycloak (el enlace de clave del alta declarativa) | siempre |
-| `migraciones` | `sgtm_owner` — **el único con DDL** | corre y termina |
-| `implantacion` | `sgtm_owner` para **una** sentencia; el resto como `sgtm_app` | corre y termina |
-| `aplicacion` | `sgtm_app` — sin DDL, sin `BYPASSRLS`, sin `DELETE`, propietaria de nada | siempre |
+| `migraciones` | `kamayuk_owner` — **el único con DDL** | corre y termina |
+| `implantacion` | `kamayuk_owner` para **una** sentencia; el resto como `kamayuk_app` | corre y termina |
+| `aplicacion` | `kamayuk_app` — sin DDL, sin `BYPASSRLS`, sin `DELETE`, propietaria de nada | siempre |
 | `interfaz` | nginx: sirve la aplicación y reenvía `/api/v1` | siempre |
 
 El orden no es una preferencia de arranque. Un esquema a medias con la aplicación
 ya sirviendo peticiones es el estado que `depends_on:
 service_completed_successfully` existe para impedir.
 
-**Las credenciales de `sgtm_owner` no entran nunca en el contenedor de la
+**Las credenciales de `kamayuk_owner` no entran nunca en el contenedor de la
 aplicación.** Por eso son dos imágenes distintas del mismo árbol de fuentes
 ([`backend/Dockerfile`](../backend/Dockerfile)) y no una con dos modos: un proceso
 de larga vida expuesto en HTTP no puede tener DDL sobre el padrón de todas las
@@ -170,9 +170,9 @@ municipalidades (ARQ-03 §4).
    Los roles no pueden ir en una migración: una política de `V6__rls.sql` los
    nombra, y un rol no puede crearse a sí mismo.
 2. **`migraciones`** comprueba el ambiente y aplica lo que falte, como
-   `sgtm_owner`. Antes de migrar se niega si faltan los cuatro roles, y se niega
+   `kamayuk_owner`. Antes de migrar se niega si faltan los cuatro roles, y se niega
    si quien migra es superusuario o tiene `BYPASSRLS`: lo que la prueba de
-   aislamiento demuestra, lo demuestra sobre objetos creados por un `sgtm_owner`
+   aislamiento demuestra, lo demuestra sobre objetos creados por un `kamayuk_owner`
    sin privilegios de más.
 3. **`identidad`** importa el realm y queda emitiendo. La aplicación **no** la
    espera, y no es un descuido: con `jwk-set-uri` configurado, el validador se
@@ -220,7 +220,7 @@ se traen las claves— es el interno.
 `implantacion` corre una vez por despliegue, con la misma imagen que la aplicación
 en perfil `batch`, y deja el sistema **administrable**:
 
-1. da de alta la municipalidad —es la única escritura que necesita `sgtm_owner`,
+1. da de alta la municipalidad —es la única escritura que necesita `kamayuk_owner`,
    una sentencia, en una conexión que se abre y se cierra ahí—;
 2. siembra los accesos de las 134 opciones del catálogo;
 3. crea el grupo de administración y el primer administrador;
@@ -280,7 +280,7 @@ permisos son una barrera y no un sello.
 A las filas mismas llega, por su lado,
 [`CadenaDeIdentidadTest`](../backend/sgtm-plataforma/src/test/java/pe/gob/sgtm/plataforma/identidad/CadenaDeIdentidadTest.java),
 en `./gradlew build`: token firmado → cadena → claim → `SET LOCAL` → **las filas
-que RLS deja ver**, contra PostgreSQL y como `sgtm_app`. Las dos hacen falta —una
+que RLS deja ver**, contra PostgreSQL y como `kamayuk_app`. Las dos hacen falta —una
 habla con el Keycloak de verdad, la otra llega a las filas— y ninguna sustituye a
 la otra.
 
@@ -292,6 +292,6 @@ sano y no atiende a nadie.
 
 Y la que da valor al resto: **las credenciales que el contenedor de la aplicación
 tiene de verdad no pueden crear una tabla**. Se demuestra que puede fallar
-cambiando en `compose.yaml` el `KAMAYUK_DB_USUARIO` por `sgtm_owner`: el trabajo se
+cambiando en `compose.yaml` el `KAMAYUK_DB_USUARIO` por `kamayuk_owner`: el trabajo se
 pone rojo. Lee las credenciales del contenedor en marcha, no las que el compose
 debería tener.

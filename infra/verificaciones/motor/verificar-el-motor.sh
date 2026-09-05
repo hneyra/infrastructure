@@ -6,8 +6,8 @@
 # contra el proceso en marcha lo que el issue #149 exige:
 #
 #   1. Los cuatro roles existen, y ninguno es superusuario ni omite RLS.
-#   2. sgtm_owner, sgtm_app y rol_carga_parametros pueden conectarse (issue #387);
-#      sgtm_readonly no.
+#   2. kamayuk_owner, kamayuk_app y rol_carga_parametros pueden conectarse (issue #387);
+#      kamayuk_readonly no.
 #   3. Con las credenciales de la aplicacion o de la carga, `CREATE TABLE` **falla**.
 #   4. Los cuatro roles del SGTM conservan el CONNECT sobre la base del padron.
 #   5. Keycloak tiene base propia, y NO puede conectarse a la del padron.
@@ -62,7 +62,7 @@ comoSuperusuario() { motor_como_superusuario "$@"; }
 
 # ── 3. Los cuatro roles, con sus atributos ───────────────────────────────────
 echo "· Los cuatro roles"
-for rol in sgtm_owner sgtm_app sgtm_readonly rol_carga_parametros; do
+for rol in kamayuk_owner kamayuk_app kamayuk_readonly rol_carga_parametros; do
     atributos=$(comoSuperusuario \
         "SELECT rolsuper, rolbypassrls, rolcanlogin FROM pg_roles WHERE rolname = '$rol'")
     [ -n "$atributos" ] || { echo "FALLO: el rol $rol no existe" >&2; exit 1; }
@@ -73,23 +73,23 @@ for rol in sgtm_owner sgtm_app sgtm_readonly rol_carga_parametros; do
     echo "  $rol → rolsuper|rolbypassrls|rolcanlogin = $atributos"
 done
 
-[ "$(comoSuperusuario "SELECT rolcanlogin FROM pg_roles WHERE rolname='sgtm_owner'")" = "t" ] \
-    || { echo "FALLO: sgtm_owner no puede conectarse; el migrador no podria migrar" >&2; exit 1; }
-[ "$(comoSuperusuario "SELECT rolcanlogin FROM pg_roles WHERE rolname='sgtm_app'")" = "t" ] \
-    || { echo "FALLO: sgtm_app no puede conectarse; la aplicacion no arrancaria" >&2; exit 1; }
+[ "$(comoSuperusuario "SELECT rolcanlogin FROM pg_roles WHERE rolname='kamayuk_owner'")" = "t" ] \
+    || { echo "FALLO: kamayuk_owner no puede conectarse; el migrador no podria migrar" >&2; exit 1; }
+[ "$(comoSuperusuario "SELECT rolcanlogin FROM pg_roles WHERE rolname='kamayuk_app'")" = "t" ] \
+    || { echo "FALLO: kamayuk_app no puede conectarse; la aplicacion no arrancaria" >&2; exit 1; }
 # rol_carga_parametros SI tiene LOGIN (issue #387): es la unica credencial que
 # publicar-parametros.sh/publicar-cuadros.sh usan, y sin conexion esos Jobs no podrian
 # correr contra ningun ambiente real.
 [ "$(comoSuperusuario "SELECT rolcanlogin FROM pg_roles WHERE rolname='rol_carga_parametros'")" = "t" ] \
     || { echo "FALLO: rol_carga_parametros no puede conectarse" >&2; exit 1; }
 # Un rol que puede iniciar sesion sin que nadie lo use es una credencial mas que rotar y
-# vigilar: sgtm_readonly se queda NOLOGIN hasta que haga falta.
-[ "$(comoSuperusuario "SELECT rolcanlogin FROM pg_roles WHERE rolname='sgtm_readonly'")" = "f" ] \
-    || { echo "FALLO: sgtm_readonly puede conectarse, y todavia no lo usa nadie" >&2; exit 1; }
+# vigilar: kamayuk_readonly se queda NOLOGIN hasta que haga falta.
+[ "$(comoSuperusuario "SELECT rolcanlogin FROM pg_roles WHERE rolname='kamayuk_readonly'")" = "f" ] \
+    || { echo "FALLO: kamayuk_readonly puede conectarse, y todavia no lo usa nadie" >&2; exit 1; }
 
 # ── 4. Con las credenciales de la aplicacion, no hay DDL ─────────────────────
 echo "· La aplicacion no puede ejecutar DDL"
-if PGPASSWORD="$CLAVE_APP" psql --username=sgtm_app --dbname=sgtm --quiet \
+if PGPASSWORD="$CLAVE_APP" psql --username=kamayuk_app --dbname=sgtm --quiet \
         --command 'CREATE TABLE intento_de_ddl (id int)' >/dev/null 2>&1; then
     echo "FALLO: las credenciales de la aplicacion pueden crear tablas. Un proceso expuesto en HTTP con DDL sobre el padron de todas las municipalidades es lo que ARQ-03 §4 excluye" >&2
     exit 1
@@ -98,7 +98,7 @@ fi
 # ── 4b. rol_carga_parametros tampoco puede ejecutar DDL ──────────────────────
 #
 # V7 le da INSERT sobre parametro_tributario y nada mas (SoD-1, REQ-03): ni siquiera
-# puede crear una tabla propia. Es la misma separacion de funciones que sgtm_app,
+# puede crear una tabla propia. Es la misma separacion de funciones que kamayuk_app,
 # comprobada de la misma forma.
 echo "· rol_carga_parametros tampoco puede ejecutar DDL"
 if PGPASSWORD="$CLAVE_CARGA" psql --username=rol_carga_parametros --dbname=sgtm --quiet \
@@ -109,16 +109,16 @@ fi
 
 # ── 5. Los cuatro conservan el CONNECT sobre la base del padron ──────────────
 echo "· Los cuatro roles conservan el CONNECT sobre la base del padron"
-for par in "sgtm_owner:$CLAVE_OWNER" "sgtm_app:$CLAVE_APP" "rol_carga_parametros:$CLAVE_CARGA"; do
+for par in "kamayuk_owner:$CLAVE_OWNER" "kamayuk_app:$CLAVE_APP" "rol_carga_parametros:$CLAVE_CARGA"; do
     rol=${par%%:*}
     clave=${par#*:}
     PGPASSWORD="$clave" psql --username="$rol" --dbname=sgtm --quiet --command 'SELECT 1' \
         >/dev/null 2>&1 \
         || { echo "FALLO: $rol no puede conectarse a la base del padron: 30-base-de-keycloak.sh revoca el CONNECT de PUBLIC y tiene que volver a concederselo a los cuatro roles" >&2; exit 1; }
 done
-# sgtm_readonly no tiene LOGIN, asi que su privilegio se comprueba por el catalogo.
-[ "$(comoSuperusuario "SELECT has_database_privilege('sgtm_readonly','sgtm','CONNECT')")" = "t" ] \
-    || { echo "FALLO: sgtm_readonly perdio el CONNECT sobre la base del padron" >&2; exit 1; }
+# kamayuk_readonly no tiene LOGIN, asi que su privilegio se comprueba por el catalogo.
+[ "$(comoSuperusuario "SELECT has_database_privilege('kamayuk_readonly','sgtm','CONNECT')")" = "t" ] \
+    || { echo "FALLO: kamayuk_readonly perdio el CONNECT sobre la base del padron" >&2; exit 1; }
 
 # ── 5c. Las CUATRO bases del producto, con sus roles aplicados (C-14, punto 2) ─
 #
@@ -139,11 +139,11 @@ echo "· Las cuatro bases del producto, con sus roles"
 for base in rentas catastro normativa caja; do
     [ "$(comoSuperusuario "SELECT 1 FROM pg_database WHERE datname='$base'" postgres)" = "1" ] \
         || { echo "FALLO: la base «${base}» no existe. La crea 05-crear-bases.sh, de la lista de archivos de roles que el ConfigMap monta en /etc/kamayuk/roles" >&2; exit 1; }
-    [ "$(comoSuperusuario "SELECT has_schema_privilege('sgtm_owner','public','CREATE')" "$base")" = "t" ] \
-        || { echo "FALLO: sgtm_owner no puede crear en «public» de «${base}»: la migracion moriria en la primera sentencia con 42501. Lo concede 06-roles-de-los-sistemas.sh aplicando el crear-roles.sql de ese sistema contra SU base" >&2; exit 1; }
+    [ "$(comoSuperusuario "SELECT has_schema_privilege('kamayuk_owner','public','CREATE')" "$base")" = "t" ] \
+        || { echo "FALLO: kamayuk_owner no puede crear en «public» de «${base}»: la migracion moriria en la primera sentencia con 42501. Lo concede 06-roles-de-los-sistemas.sh aplicando el crear-roles.sql de ese sistema contra SU base" >&2; exit 1; }
     [ "$(comoSuperusuario "SELECT has_database_privilege('public','$base','CONNECT')" postgres)" = "f" ] \
         || { echo "FALLO: PUBLIC conserva el CONNECT sobre «${base}». Los roles son del CLUSTER: sin el REVOKE, la credencial de cualquier sistema abre una sesion contra la base de otro" >&2; exit 1; }
-    echo "  $base → sgtm_owner puede crear, y PUBLIC no se conecta"
+    echo "  $base → kamayuk_owner puede crear, y PUBLIC no se conecta"
 done
 # Y las extensiones, cada una donde su sistema la declara (C-10). `caja` no declara ninguna a
 # proposito —«la ventanilla tiene que poder correr en el motor mas simple que exista»— y esa
@@ -156,7 +156,7 @@ echo "  catastro tiene PostGIS; caja, ninguna extension"
 
 # ── 5b. El rol de carga no llega a la base de Keycloak ───────────────────────
 #
-# La leccion de `sgtm_respaldo` (#155), aplicada al otro rol privilegiado, y en la
+# La leccion de `kamayuk_respaldo` (#155), aplicada al otro rol privilegiado, y en la
 # direccion que faltaba: ya se comprobaba que el rol de Keycloak no alcanza el padron,
 # pero no que el rol que publica cifras normativas no alcance la base de identidad.
 # `30-base-de-keycloak.sh` revoca el CONNECT de PUBLIC sobre `keycloak` y se lo concede
@@ -169,7 +169,7 @@ echo "  catastro tiene PostGIS; caja, ninguna extension"
 # dos dan 42501 (#380, #435).
 echo "· rol_carga_parametros no llega a la base de Keycloak"
 [ "$(comoSuperusuario "SELECT has_database_privilege('rol_carga_parametros','keycloak','CONNECT')" postgres)" = "f" ] \
-    || { echo "FALLO: rol_carga_parametros puede conectarse a la base de Keycloak. No la necesita —solo escribe el catalogo normativo del padron—, y una credencial de mas apuntando a otra base es una credencial de mas (la leccion de sgtm_respaldo, #155)" >&2; exit 1; }
+    || { echo "FALLO: rol_carga_parametros puede conectarse a la base de Keycloak. No la necesita —solo escribe el catalogo normativo del padron—, y una credencial de mas apuntando a otra base es una credencial de mas (la leccion de kamayuk_respaldo, #155)" >&2; exit 1; }
 
 # ── 6. Keycloak: base propia, y lejos del padron ─────────────────────────────
 echo "· La base de Keycloak"
@@ -194,16 +194,16 @@ PGPASSWORD="$CLAVE_IDENTIDAD" psql --username=keycloak --dbname=keycloak --quiet
 # municipalidades, y el sintoma no aparece por ninguna parte — el respaldo funciona.
 echo "· El rol del respaldo no puede mas de lo que necesita"
 atributos=$(comoSuperusuario \
-    "SELECT rolsuper, rolbypassrls, rolcanlogin FROM pg_roles WHERE rolname = 'sgtm_respaldo'" postgres)
+    "SELECT rolsuper, rolbypassrls, rolcanlogin FROM pg_roles WHERE rolname = 'kamayuk_respaldo'" postgres)
 [ -n "$atributos" ] \
-    || { echo "FALLO: el rol sgtm_respaldo no existe; 40-rol-de-respaldo.sh no corrio" >&2; exit 1; }
+    || { echo "FALLO: el rol kamayuk_respaldo no existe; 40-rol-de-respaldo.sh no corrio" >&2; exit 1; }
 case "$atributos" in
     f\|f\|t) ;;
-    *) echo "FALLO: sgtm_respaldo es superusuario, omite RLS o no puede conectarse: $atributos" >&2; exit 1 ;;
+    *) echo "FALLO: kamayuk_respaldo es superusuario, omite RLS o no puede conectarse: $atributos" >&2; exit 1 ;;
 esac
-echo "  sgtm_respaldo → rolsuper|rolbypassrls|rolcanlogin = $atributos"
+echo "  kamayuk_respaldo → rolsuper|rolbypassrls|rolcanlogin = $atributos"
 
-if PGPASSWORD="$CLAVE_RESPALDO" psql --username=sgtm_respaldo --dbname=postgres --quiet \
+if PGPASSWORD="$CLAVE_RESPALDO" psql --username=kamayuk_respaldo --dbname=postgres --quiet \
         --command 'CREATE TABLE intento_de_ddl_respaldo (id int)' >/dev/null 2>&1; then
     echo "FALLO: el rol del respaldo puede crear tablas. Respalda leyendo; no escribe" >&2
     exit 1
@@ -213,54 +213,54 @@ fi
 # denied for function pg_backup_start», y el respaldo no llega ni a empezar.
 for funcion in "pg_backup_start(text, boolean)" "pg_backup_stop(boolean)"; do
     [ "$(comoSuperusuario \
-            "SELECT has_function_privilege('sgtm_respaldo', '$funcion', 'EXECUTE')" postgres)" = "t" ] \
-        || { echo "FALLO: sgtm_respaldo no puede ejecutar $funcion; wal-g no podria respaldar" >&2; exit 1; }
+            "SELECT has_function_privilege('kamayuk_respaldo', '$funcion', 'EXECUTE')" postgres)" = "t" ] \
+        || { echo "FALLO: kamayuk_respaldo no puede ejecutar $funcion; wal-g no podria respaldar" >&2; exit 1; }
 done
 [ "$(comoSuperusuario \
-        "SELECT pg_has_role('sgtm_respaldo', 'pg_read_all_settings', 'MEMBER')" postgres)" = "t" ] \
-    || { echo "FALLO: sgtm_respaldo no puede leer data_directory; wal-g no encontraria PGDATA" >&2; exit 1; }
+        "SELECT pg_has_role('kamayuk_respaldo', 'pg_read_all_settings', 'MEMBER')" postgres)" = "t" ] \
+    || { echo "FALLO: kamayuk_respaldo no puede leer data_directory; wal-g no encontraria PGDATA" >&2; exit 1; }
 echo "  puede pg_backup_start/stop y leer la configuracion: lo justo"
 
 # El rol del respaldo NO necesita entrar a la base del padron: pg_backup_start y
 # pg_backup_stop son operaciones del cluster, no de una base.
-[ "$(comoSuperusuario "SELECT has_database_privilege('sgtm_respaldo','sgtm','CONNECT')" postgres)" = "f" ] \
-    || { echo "FALLO: sgtm_respaldo puede conectarse a la base del padron, y no la necesita" >&2; exit 1; }
+[ "$(comoSuperusuario "SELECT has_database_privilege('kamayuk_respaldo','sgtm','CONNECT')" postgres)" = "f" ] \
+    || { echo "FALLO: kamayuk_respaldo puede conectarse a la base del padron, y no la necesita" >&2; exit 1; }
 echo "  y no alcanza la base del padron"
 
 # ── 8. El rol de monitoreo: pg_monitor, y nada mas (issue #156) ──────────────
 #
-# `postgres-exporter` vive en el MISMO pod que el motor, con `sgtm_monitor`. El
+# `postgres-exporter` vive en el MISMO pod que el motor, con `kamayuk_monitor`. El
 # privilegio predefinido de PostgreSQL da lectura sobre las vistas de estadisticas,
 # nunca sobre una tabla del padron: es lo que separa "medir cuantas conexiones hay"
 # de "leer la deuda de un contribuyente".
 echo "· El rol de monitoreo solo tiene pg_monitor"
 atributosDeMonitoreo=$(comoSuperusuario \
-    "SELECT rolsuper, rolbypassrls, rolcanlogin FROM pg_roles WHERE rolname = 'sgtm_monitor'" postgres)
+    "SELECT rolsuper, rolbypassrls, rolcanlogin FROM pg_roles WHERE rolname = 'kamayuk_monitor'" postgres)
 [ -n "$atributosDeMonitoreo" ] \
-    || { echo "FALLO: el rol sgtm_monitor no existe; 50-rol-de-monitoreo.sh no corrio" >&2; exit 1; }
+    || { echo "FALLO: el rol kamayuk_monitor no existe; 50-rol-de-monitoreo.sh no corrio" >&2; exit 1; }
 case "$atributosDeMonitoreo" in
     f\|f\|t) ;;
-    *) echo "FALLO: sgtm_monitor es superusuario, omite RLS o no puede conectarse: $atributosDeMonitoreo" >&2; exit 1 ;;
+    *) echo "FALLO: kamayuk_monitor es superusuario, omite RLS o no puede conectarse: $atributosDeMonitoreo" >&2; exit 1 ;;
 esac
-echo "  sgtm_monitor → rolsuper|rolbypassrls|rolcanlogin = $atributosDeMonitoreo"
+echo "  kamayuk_monitor → rolsuper|rolbypassrls|rolcanlogin = $atributosDeMonitoreo"
 
-if PGPASSWORD="$CLAVE_MONITOREO" psql --username=sgtm_monitor --dbname=postgres --quiet \
+if PGPASSWORD="$CLAVE_MONITOREO" psql --username=kamayuk_monitor --dbname=postgres --quiet \
         --command 'CREATE TABLE intento_de_ddl_monitoreo (id int)' >/dev/null 2>&1; then
     echo "FALLO: el rol de monitoreo puede crear tablas. Solo mide; no escribe" >&2
     exit 1
 fi
 
-[ "$(comoSuperusuario "SELECT pg_has_role('sgtm_monitor', 'pg_monitor', 'MEMBER')" postgres)" = "t" ] \
-    || { echo "FALLO: sgtm_monitor no tiene pg_monitor; postgres-exporter no podria leer nada" >&2; exit 1; }
+[ "$(comoSuperusuario "SELECT pg_has_role('kamayuk_monitor', 'pg_monitor', 'MEMBER')" postgres)" = "t" ] \
+    || { echo "FALLO: kamayuk_monitor no tiene pg_monitor; postgres-exporter no podria leer nada" >&2; exit 1; }
 echo "  tiene pg_monitor: lo justo"
 
-[ "$(comoSuperusuario "SELECT has_database_privilege('sgtm_monitor','sgtm','CONNECT')" postgres)" = "f" ] \
-    || { echo "FALLO: sgtm_monitor puede conectarse a la base del padron, y no la necesita" >&2; exit 1; }
+[ "$(comoSuperusuario "SELECT has_database_privilege('kamayuk_monitor','sgtm','CONNECT')" postgres)" = "f" ] \
+    || { echo "FALLO: kamayuk_monitor puede conectarse a la base del padron, y no la necesita" >&2; exit 1; }
 echo "  y no alcanza la base del padron"
 
 # ── 9. Reiniciar deja los datos donde estaban ────────────────────────────────
 echo "· Reiniciar el motor no pierde datos"
-PGPASSWORD="$CLAVE_OWNER" psql --username=sgtm_owner --dbname=sgtm --quiet \
+PGPASSWORD="$CLAVE_OWNER" psql --username=kamayuk_owner --dbname=sgtm --quiet \
     --command 'CREATE TABLE si_sobrevive (dato text)' \
     --command "INSERT INTO si_sobrevive VALUES ('sobrevivio')" >/dev/null
 
@@ -290,9 +290,9 @@ if [ "$CON_AISLAMIENTO" = "si" ]; then
     #
     # Con Testcontainers eso da igual: cada una levanta su contenedor. Contra un motor
     # externo comparten instancia, y **los roles son objetos del clúster de PostgreSQL,
-    # no de una base**: las dos ejecutan `ALTER ROLE sgtm_owner ... PASSWORD` sobre los
+    # no de una base**: las dos ejecutan `ALTER ROLE kamayuk_owner ... PASSWORD` sobre los
     # mismos roles. El resultado fue un `tuple concurrently updated` en una y un
-    # `password authentication failed for user "sgtm_owner"` en la otra —la clave que
+    # `password authentication failed for user "kamayuk_owner"` en la otra —la clave que
     # acababa de poner se la habia cambiado la vecina—.
     #
     # Desde #698 la carrera esta cerrada en el arnes —la clave se DERIVA del cluster en

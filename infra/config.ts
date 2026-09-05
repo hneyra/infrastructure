@@ -394,7 +394,7 @@ export interface Invariants {
  *
  * **La clave del administrador de Keycloak no está aquí, y antes lo estuvo.** `INF-06`
  * (issue #154) la clasifica como secreto de la *aplicación* —la misma familia que
- * `sgtm_owner` y `sgtm_app`—, así que sale de Pulumi igual que ellos: la genera
+ * `kamayuk_owner` y `kamayuk_app`—, así que sale de Pulumi igual que ellos: la genera
  * `infra/secretos/bootstrap-secretos.sh` y vive solo en el `Secret` de Kubernetes que
  * `Identidad.ts` ya referencia. El campo se retiró de esta interfaz junto con esa
  * decisión; queda la nota para que nadie lo reintroduzca "por comodidad".
@@ -858,7 +858,7 @@ export function checkInvariants(s: Invariants): string[] {
     problems.push(
       `\`generateRolePasswords\` es true en «${s.environment}». ADR-0011 §3: el estado de ` +
         "Pulumi guarda lo que hace falta para crear el mecanismo de secretos, no los secretos " +
-        "del sistema. Las claves de `sgtm_owner` y `sgtm_app` abren el padrón de todas las " +
+        "del sistema. Las claves de `kamayuk_owner` y `kamayuk_app` abren el padrón de todas las " +
         "municipalidades; de dónde salen lo decide el issue #154.",
     );
   }

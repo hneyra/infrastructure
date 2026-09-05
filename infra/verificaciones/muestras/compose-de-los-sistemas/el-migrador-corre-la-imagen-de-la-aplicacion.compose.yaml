@@ -14,7 +14,7 @@ services:
       target: aplicacion
     environment:
       KAMAYUK_DB_URL: jdbc:postgresql://base:5432/mercados
-      KAMAYUK_DB_OWNER_USUARIO: sgtm_owner
+      KAMAYUK_DB_OWNER_USUARIO: kamayuk_owner
       KAMAYUK_DB_OWNER_CLAVE: ${KAMAYUK_CLAVE_OWNER:?falta}
     restart: "no"
 
@@ -26,7 +26,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: batch
       KAMAYUK_DB_URL: jdbc:postgresql://base:5432/mercados
-      KAMAYUK_DB_USUARIO: sgtm_app
+      KAMAYUK_DB_USUARIO: kamayuk_app
       KAMAYUK_DB_CLAVE: ${KAMAYUK_CLAVE_APP:?falta}
     restart: "no"
 
@@ -38,7 +38,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: web
       KAMAYUK_DB_URL: jdbc:postgresql://base:5432/mercados
-      KAMAYUK_DB_USUARIO: sgtm_app
+      KAMAYUK_DB_USUARIO: kamayuk_app
       KAMAYUK_DB_CLAVE: ${KAMAYUK_CLAVE_APP:?falta}
     labels:
       - traefik.enable=true

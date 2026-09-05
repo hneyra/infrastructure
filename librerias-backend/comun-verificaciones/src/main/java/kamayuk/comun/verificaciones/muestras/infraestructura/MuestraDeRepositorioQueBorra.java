@@ -4,7 +4,7 @@ package kamayuk.comun.verificaciones.muestras.infraestructura;
  * Repositorio de muestra que <b>viola a proposito</b> la regla 4: borra de una tabla protegida.
  *
  * <p>RNF-051: no se borra deuda, pagos, recibos, valores, papeletas, asientos ni auditoria. Se
- * anula, se da de baja o se reversa. La barrera final es que {@code sgtm_app} no tiene el
+ * anula, se da de baja o se reversa. La barrera final es que {@code kamayuk_app} no tiene el
  * privilegio {@code DELETE} (V7), pero esa falla en produccion; el escaner de fuentes falla en el
  * build, que es donde cuesta barato.
  *

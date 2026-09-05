@@ -41,7 +41,7 @@ import {
 
 /** Lo que `infrastructure` sabe y el descriptor no: quien mas hay, y donde esta el owner. */
 export interface ContextoDeDescriptores {
-  /** El `Secret` con la clave de `sgtm_owner`, para la auditoria heredada. */
+  /** El `Secret` con la clave de `kamayuk_owner`, para la auditoria heredada. */
   readonly secretoDeOwner: string;
   /** Las bases de TODOS los sistemas. Sin esto, (c) no se puede comprobar. */
   readonly basesDelClustre: readonly string[];

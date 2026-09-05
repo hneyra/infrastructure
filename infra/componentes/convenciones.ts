@@ -32,7 +32,7 @@ import type {
 /**
  * Los `Secret` que estos manifiestos **leen y no crean**.
  *
- * `ADR-0011` §3: las claves de `sgtm_owner`, de `sgtm_app` y del administrador de
+ * `ADR-0011` §3: las claves de `kamayuk_owner`, de `kamayuk_app` y del administrador de
  * Keycloak **no estan en el estado de Pulumi**. Estos manifiestos solo nombran el
  * `Secret` y la clave dentro de el; quien los pone es quien provisiona el ambiente, y
  * de donde salen de verdad lo decide el issue #154.
@@ -46,24 +46,24 @@ import type {
 export interface Secretos {
   /** Superusuario del motor. Solo lo usa el propio contenedor de PostgreSQL. */
   motor: string;
-  /** `sgtm_owner`: DDL. Solo los dos Jobs y el CronJob de respaldo. Jamas el Deployment de la aplicacion. */
+  /** `kamayuk_owner`: DDL. Solo los dos Jobs y el CronJob de respaldo. Jamas el Deployment de la aplicacion. */
   owner: string;
-  /** `sgtm_app`: la aplicacion. Sin DDL, sin `BYPASSRLS`, propietaria de nada. */
+  /** `kamayuk_app`: la aplicacion. Sin DDL, sin `BYPASSRLS`, propietaria de nada. */
   aplicacion: string;
   /** Administrador de arranque de Keycloak, y la clave de su rol en el motor. */
   identidad: string;
   /**
-   * `sgtm_respaldo` (issue #155) y la clave de cifrado de wal-g.
+   * `kamayuk_respaldo` (issue #155) y la clave de cifrado de wal-g.
    *
    * Dos valores en el mismo `Secret`, igual que `identidad`. Ninguno de los dos es
-   * DDL: `sgtm_respaldo` solo puede ejecutar `pg_backup_start`/`pg_backup_stop` —lo
-   * minimo que wal-g necesita, comprobado contra un motor real, no `sgtm_owner` ni
+   * DDL: `kamayuk_respaldo` solo puede ejecutar `pg_backup_start`/`pg_backup_stop` —lo
+   * minimo que wal-g necesita, comprobado contra un motor real, no `kamayuk_owner` ni
    * el superusuario—, y la clave de cifrado nunca sale de este `Secret` y del propio
    * contenedor de PostgreSQL.
    */
   respaldo: string;
   /**
-   * `sgtm_monitor` (issue #156): `pg_monitor`, el rol predefinido de PostgreSQL, y
+   * `kamayuk_monitor` (issue #156): `pg_monitor`, el rol predefinido de PostgreSQL, y
    * nada de DDL. Lo usa el sidecar `postgres-exporter`, en el MISMO pod que el
    * motor —nunca un componente aparte—, asi que no necesita excepcion en
    * `auditoria.ts`.
@@ -112,19 +112,19 @@ export function secretos(environment: Environment): Secretos {
 export const CLAVES = {
   /** Clave del superusuario del motor. */
   superusuario: "clave-superusuario",
-  /** Clave de `sgtm_owner`. */
+  /** Clave de `kamayuk_owner`. */
   owner: "clave-owner",
-  /** Clave de `sgtm_app`. */
+  /** Clave de `kamayuk_app`. */
   aplicacion: "clave-app",
   /** Clave del administrador de arranque de Keycloak. */
   administradorDeIdentidad: "clave-administrador",
   /** Clave del rol de Keycloak en PostgreSQL. */
   baseDeIdentidad: "clave-base",
-  /** Clave de `sgtm_respaldo`. */
+  /** Clave de `kamayuk_respaldo`. */
   respaldo: "clave-respaldo",
   /** Clave simetrica (libsodium, 32 bytes en base64) con que wal-g cifra el respaldo. */
   cifradoDeRespaldo: "clave-cifrado",
-  /** Clave de `sgtm_monitor`. */
+  /** Clave de `kamayuk_monitor`. */
   monitoreo: "clave-monitoreo",
   /** Clave del administrador de Grafana. */
   grafana: "clave-admin",

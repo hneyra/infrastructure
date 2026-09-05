@@ -58,13 +58,13 @@ import type {
  * metricas—, y su `ClusterRole` esta acotado a los recursos que las alertas y el
  * tablero realmente usan, no un `list/watch` de todo.
  *
- * ## sgtm_monitor, no en este archivo
+ * ## kamayuk_monitor, no en este archivo
  *
  * El sidecar `postgres-exporter` vive en `BaseDeDatos.ts`, en el MISMO pod que el
- * motor: comparte su red, se conecta a `localhost`, y usa `sgtm_monitor`
+ * motor: comparte su red, se conecta a `localhost`, y usa `kamayuk_monitor`
  * —`pg_monitor`, nada de DDL, creado por `inicializacion/50-rol-de-monitoreo.sh`—.
  * No es un componente aparte porque no necesita serlo, y porque un `Deployment`
- * distinto tendria que volver a resolver "como llega a la base sin ser sgtm_owner".
+ * distinto tendria que volver a resolver "como llega a la base sin ser kamayuk_owner".
  */
 
 const IMAGEN_DE_PROMETHEUS = "prom/prometheus:v2.55.1";

@@ -21,7 +21,7 @@ package kamayuk.comun.verificaciones.muestras.infraestructura;
  * registrada por error no se borra ni se reescribe —eso dejaria un recibo que estuvo sin efecto sin
  * rastro de haberlo estado—: lo que corresponde es otro acto.
  *
- * <p>La barrera final es que V29 y V30 le retiran a {@code sgtm_app} el privilegio de {@code
+ * <p>La barrera final es que V29 y V30 le retiran a {@code kamayuk_app} el privilegio de {@code
  * UPDATE} sobre las tres tablas, pero eso falla en ejecucion; el escaner de fuentes falla en el
  * build, que es donde cuesta barato.
  *

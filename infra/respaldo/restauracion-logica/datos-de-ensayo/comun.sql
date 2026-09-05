@@ -6,7 +6,7 @@
 -- distinguir «se restauro» de «se restauro lo del inquilino equivocado».
 --
 -- Se inserta como SUPERUSUARIO, que es quien provisiona. Las tablas llevan RLS forzada y
--- `sgtm_owner` tambien queda sujeto a la politica (#537, #545): sembrar como el dueño
+-- `kamayuk_owner` tambien queda sujeto a la politica (#537, #545): sembrar como el dueño
 -- exigiria fijar `app.municipalidad_id` en cada sentencia, que es de la aplicacion y no
 -- del aprovisionamiento.
 INSERT INTO municipalidad (id, ubigeo, nombre, tipo)

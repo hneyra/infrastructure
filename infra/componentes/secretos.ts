@@ -32,7 +32,7 @@ import { entornoDelAmbiente } from "../herramientas/emitir-manifiestos";
 export type Periodicidad = "semestral" | "trimestral" | "anual" | "nunca-desde-el-nodo" | "tras-incidente";
 
 export interface EntradaDeSecreto {
-  /** Identificador corto, el que usan los guiones de bash (`--rol sgtm-app`). */
+  /** Identificador corto, el que usan los guiones de bash (`--rol kamayuk-app`). */
   rol: string;
   /**
    * El espacio de nombres donde vive este `Secret`.
@@ -62,7 +62,7 @@ export interface EntradaDeSecreto {
   rolDePostgres?: string;
   /**
    * El `Deployment` que hay que reprogramar despues de rotar, si alguno lo consume
-   * como pod en marcha. `undefined` cuando nadie lo necesita asi: `sgtm-owner` solo lo
+   * como pod en marcha. `undefined` cuando nadie lo necesita asi: `kamayuk-owner` solo lo
    * leen los dos Jobs, y un Job nuevo ya lee el `Secret` actualizado al crearse — no
    * hay pod en marcha que reprogramar.
    */
@@ -71,7 +71,7 @@ export interface EntradaDeSecreto {
    * La base a la que ese rol se conecta de verdad, y **no siempre es el padron**
    * (issue #435).
    *
-   * `sgtm_respaldo` no tiene `CONNECT` sobre `sgtm` a proposito —`pg_backup_start` y
+   * `kamayuk_respaldo` no tiene `CONNECT` sobre `sgtm` a proposito —`pg_backup_start` y
    * `pg_backup_stop` son operaciones del cluster, no de una base, y una credencial de
    * mas apuntando al padron es una credencial de mas (#155)—, y `keycloak` tiene la
    * suya. Sin este dato, comprobar «¿sirve esta credencial?» conectando a `sgtm` da
@@ -85,7 +85,7 @@ export interface EntradaDeSecreto {
    *
    * ## Por que existe, y por que no son entradas independientes
    *
-   * Los cuatro sistemas se conectan con `sgtm_app` y migran con `sgtm_owner`, y esos son roles
+   * Los cuatro sistemas se conectan con `kamayuk_app` y migran con `kamayuk_owner`, y esos son roles
    * **del clúster**: los crea el `crear-roles.sql` de cada sistema con el mismo nombre, y
    * PostgreSQL le da a un rol **una** contrasena. De modo que `kamayuk-rentas-<amb>-app` y
    * `kamayuk-catastro-<amb>-app` no pueden tener valores distintos: si los tuvieran, a lo sumo
@@ -106,7 +106,7 @@ export interface EntradaDeSecreto {
    * Un espejo **converge a su origen en cada corrida** de `bootstrap-secretos.sh`, no solo
    * cuando falta: el `Secret` de la plataforma es la fuente de verdad y los demas son copias. La
    * consecuencia hay que saberla: tras `rotar-clave.sh` los espejos quedan con el valor viejo
-   * hasta la siguiente corrida del bootstrap, asi que rotar `sgtm-app` o `sgtm-owner` incluye
+   * hasta la siguiente corrida del bootstrap, asi que rotar `kamayuk-app` o `kamayuk-owner` incluye
    * volver a correrlo (INF-06).
    */
   espejoDe?: { secreto: string; clave: string };
@@ -143,22 +143,22 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       rolDePostgres: "postgres",
     },
     {
-      rol: "sgtm-owner",
+      rol: "kamayuk-owner",
       namespace: enLaPlataforma,
       secreto: nombres.owner,
       clave: CLAVES.owner,
       consumidor: "Los dos Jobs: migracion e implantacion. Nunca el Deployment de la aplicacion",
       periodicidad: "trimestral",
-      rolDePostgres: "sgtm_owner",
+      rolDePostgres: "kamayuk_owner",
     },
     {
-      rol: "sgtm-app",
+      rol: "kamayuk-app",
       namespace: enLaPlataforma,
       secreto: nombres.aplicacion,
       clave: CLAVES.aplicacion,
       consumidor: "El Deployment de la aplicacion, perfil web y perfil batch",
       periodicidad: "semestral",
-      rolDePostgres: "sgtm_app",
+      rolDePostgres: "kamayuk_app",
       requiereReinicioDe: servicioDeAplicacion(environment),
     },
     {
@@ -185,17 +185,17 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       requiereReinicioDe: servicioDeIdentidad(environment),
     },
     {
-      rol: "sgtm-respaldo",
+      rol: "kamayuk-respaldo",
       namespace: enLaPlataforma,
       secreto: nombres.respaldo,
       clave: CLAVES.respaldo,
       consumidor: "El CronJob de respaldo base (issue #155): solo pg_backup_start/stop",
       periodicidad: "semestral",
-      rolDePostgres: "sgtm_respaldo",
+      rolDePostgres: "kamayuk_respaldo",
       // `postgres`, no `sgtm`: no tiene CONNECT sobre el padron a proposito (INF-08, #155).
       baseDeDatos: "postgres",
       // Sin Deployment que reiniciar: el CronJob crea un pod nuevo en cada corrida, y
-      // ese pod lee el Secret que este en ese momento — igual que sgtm-owner con sus
+      // ese pod lee el Secret que este en ese momento — igual que kamayuk-owner con sus
       // dos Jobs.
     },
     {
@@ -222,13 +222,13 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       requiereReinicioDe: servicioDeBaseDeDatos(environment),
     },
     {
-      rol: "sgtm-monitor",
+      rol: "kamayuk-monitor",
       namespace: enLaPlataforma,
       secreto: nombres.monitoreo,
       clave: CLAVES.monitoreo,
       consumidor: "postgres-exporter, el sidecar del motor (issue #156): solo pg_monitor",
       periodicidad: "semestral",
-      rolDePostgres: "sgtm_monitor",
+      rolDePostgres: "kamayuk_monitor",
       // `pg_monitor` son vistas del cluster; el exportador se conecta a `postgres`.
       baseDeDatos: "postgres",
       // El sidecar vive en el MISMO pod que postgres: reiniciar el motor lo
@@ -253,11 +253,11 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       consumidor: "Solo los Jobs de carga de parametros (infra/carga-de-datos/publicar-parametros.sh, " +
         "publicar-cuadros.sh); nunca el Deployment de la aplicacion",
       // Credencial privilegiada de escritura sobre parametro_tributario y las tablas
-      // de valuacion nacionales, igual que sgtm-owner: trimestral, no semestral.
+      // de valuacion nacionales, igual que kamayuk-owner: trimestral, no semestral.
       periodicidad: "trimestral",
       rolDePostgres: "rol_carga_parametros",
       // Sin requiereReinicioDe: nadie tiene un pod en marcha leyendo esto. Cada Job
-      // es de un solo uso y lee el Secret fresco al crearse, igual que sgtm-owner.
+      // es de un solo uso y lee el Secret fresco al crearse, igual que kamayuk-owner.
     },
     {
       rol: "postgres-ingestor-catastro",
@@ -268,7 +268,7 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
         "Solo el proceso que aplica en `rentas` los eventos de `catastro` (ADR-0027): escribe " +
         "predio_ref, ficha_ref y las dos de valuacion; nunca el Deployment de la aplicacion",
       // Credencial privilegiada de escritura sobre la proyeccion del padron, igual que
-      // sgtm-owner y postgres-carga: trimestral, no semestral.
+      // kamayuk-owner y postgres-carga: trimestral, no semestral.
       periodicidad: "trimestral",
       rolDePostgres: "rol_ingestor_catastro",
       // La base de `rentas`, no la del monolito: lo que escribe es la copia local que

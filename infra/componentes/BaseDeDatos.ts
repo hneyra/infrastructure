@@ -59,7 +59,7 @@ const IMAGEN_DE_POSTGRES_EXPORTER = "prometheuscommunity/postgres-exporter:v0.15
  * Lo que inclina la decision no es la lista: es que **el aislamiento se verifica creando
  * los cuatro roles exactamente como los crea el compose** (`ADR-0011`, alternativas). Un
  * operador que gestiona roles con su propio modelo mete una segunda forma de crear
- * `sgtm_owner` y `sgtm_app`, y entonces lo que verifica `verificarAislamiento` en el
+ * `kamayuk_owner` y `kamayuk_app`, y entonces lo que verifica `verificarAislamiento` en el
  * portatil deja de ser lo que corre en la municipalidad. Con un solo nodo, ademas, el
  * operador no da lo unico que justificaria su costo —conmutacion a una replica—, porque
  * no hay segundo nodo al que conmutar (`INF-01` §1.1).
@@ -72,8 +72,8 @@ const IMAGEN_DE_POSTGRES_EXPORTER = "prometheuscommunity/postgres-exporter:v0.15
  * que el motor arranque (`convenciones.contenedorDeDescargaDeWalg`, compartido con el
  * CronJob de respaldo base en `Respaldo.ts`).
  *
- * El rol que hace el respaldo **no es el superusuario ni `sgtm_owner`**: es
- * `sgtm_respaldo`, con exactamente los dos privilegios que wal-g necesita
+ * El rol que hace el respaldo **no es el superusuario ni `kamayuk_owner`**: es
+ * `kamayuk_respaldo`, con exactamente los dos privilegios que wal-g necesita
  * —`pg_backup_start`/`pg_backup_stop`— y nada de DDL. Ese conjunto se determino
  * ejecutando `wal-g backup-push` contra un PostgreSQL real hasta encontrar el minimo
  * que no falla, no leyendo la documentacion: con solo `REPLICATION` falla el permiso
@@ -362,7 +362,7 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
             },
             // El sidecar de metricas (issue #156): en el MISMO pod, nunca un
             // Deployment aparte. Comparte la red del pod —se conecta por
-            // `localhost`—, y usa `sgtm_monitor`, no el superusuario: solo
+            // `localhost`—, y usa `kamayuk_monitor`, no el superusuario: solo
             // `pg_monitor`, sin DDL. Ver `convenciones.secretos().monitoreo`.
             {
               name: "postgres-exporter",
@@ -372,7 +372,7 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
                   name: "DATA_SOURCE_URI",
                   value: "localhost:5432/postgres?sslmode=disable",
                 },
-                { name: "DATA_SOURCE_USER", value: "sgtm_monitor" },
+                { name: "DATA_SOURCE_USER", value: "kamayuk_monitor" },
                 {
                   name: "DATA_SOURCE_PASS",
                   valueFrom: { secretKeyRef: { name: secreto.monitoreo, key: CLAVES.monitoreo } },

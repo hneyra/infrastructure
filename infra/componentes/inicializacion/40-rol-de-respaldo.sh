@@ -1,7 +1,7 @@
 #!/bin/bash
 # Crea el rol de respaldo, con lo minimo que wal-g necesita (issue #155).
 #
-# Ni el superusuario ni sgtm_owner: un rol propio, sin DDL, sin BYPASSRLS, que solo
+# Ni el superusuario ni kamayuk_owner: un rol propio, sin DDL, sin BYPASSRLS, que solo
 # puede ejecutar `pg_backup_start`/`pg_backup_stop` y leer la configuracion del motor
 # (`data_directory`, que wal-g necesita para encontrar `PGDATA`). Es el conjunto de
 # privilegios que se determino EJECUTANDOLO contra un PostgreSQL real, no leyendo la
@@ -30,25 +30,25 @@ psql -v ON_ERROR_STOP=1 \
      --username "$POSTGRES_USER" \
      --dbname postgres \
      -v claveRespaldo="$KAMAYUK_CLAVE_RESPALDO" <<'SQL'
-SELECT format('CREATE ROLE sgtm_respaldo LOGIN')
- WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sgtm_respaldo') \gexec
+SELECT format('CREATE ROLE kamayuk_respaldo LOGIN')
+ WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'kamayuk_respaldo') \gexec
 
-ALTER ROLE sgtm_respaldo NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION
+ALTER ROLE kamayuk_respaldo NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION
       LOGIN PASSWORD :'claveRespaldo';
 
 -- wal-g pregunta `data_directory` para encontrar PGDATA. Sin esto: «permission
 -- denied to examine "data_directory"», y el respaldo no llega a empezar.
-GRANT pg_read_all_settings TO sgtm_respaldo;
+GRANT pg_read_all_settings TO kamayuk_respaldo;
 
 -- Lo unico que wal-g necesita para tomar un respaldo consistente sin ser
 -- superusuario. Sin estos dos: «permission denied for function pg_backup_start».
-GRANT EXECUTE ON FUNCTION pg_backup_start(text, boolean) TO sgtm_respaldo;
-GRANT EXECUTE ON FUNCTION pg_backup_stop(boolean)        TO sgtm_respaldo;
+GRANT EXECUTE ON FUNCTION pg_backup_start(text, boolean) TO kamayuk_respaldo;
+GRANT EXECUTE ON FUNCTION pg_backup_stop(boolean)        TO kamayuk_respaldo;
 SQL
 
 # Se conecta a la base `postgres`, no a la del padron: `pg_backup_start`/`stop` son
 # operaciones del cluster entero, no de una base, y conectarse a `postgres` evita
 # tener que tocar el REVOKE CONNECT que 30-base-de-keycloak.sh le hace a PUBLIC sobre
-# la base del padron —sgtm_respaldo no necesita, y por tanto no tiene, CONNECT ahi—.
+# la base del padron —kamayuk_respaldo no necesita, y por tanto no tiene, CONNECT ahi—.
 
-echo "Rol sgtm_respaldo listo: solo pg_backup_start/stop, nada de DDL."
+echo "Rol kamayuk_respaldo listo: solo pg_backup_start/stop, nada de DDL."

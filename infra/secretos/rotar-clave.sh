@@ -34,7 +34,7 @@
 # declaro con un valor (los manifiestos solo REFERENCIAN el Secret por nombre).
 #
 #   uso: secretos/rotar-clave.sh --ambiente stg|prod \
-#        --rol sgtm-app|sgtm-owner|keycloak-base|sgtm-respaldo|sgtm-monitor|postgres-carga \
+#        --rol kamayuk-app|kamayuk-owner|keycloak-base|kamayuk-respaldo|kamayuk-monitor|postgres-carga \
 #        [--namespace sgtm-stg]
 set -euo pipefail
 
@@ -51,8 +51,8 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$AMBIENTE" ] || { echo "Falta --ambiente (stg o prod)." >&2; exit 2; }
 [ -n "$ROL" ] || {
-    echo "Falta --rol. Los admitidos: sgtm-app, sgtm-owner, keycloak-base, sgtm-respaldo," \
-         "sgtm-monitor, postgres-carga." >&2
+    echo "Falta --rol. Los admitidos: kamayuk-app, kamayuk-owner, keycloak-base, kamayuk-respaldo," \
+         "kamayuk-monitor, postgres-carga." >&2
     exit 2
 }
 NAMESPACE=${NAMESPACE:-sgtm-$AMBIENTE}

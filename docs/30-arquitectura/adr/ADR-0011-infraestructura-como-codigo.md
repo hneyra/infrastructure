@@ -74,7 +74,7 @@ El costo —un segundo `yarn.lock` en el repositorio— está en las consecuenci
 |---|---|
 | Estado de los stacks | **Pulumi Cloud** |
 | Secretos de arranque de la infraestructura (kubeconfig, clave SSH, credenciales ACME) | Configuración cifrada de Pulumi, en `Pulumi.<stack>.yaml` |
-| Secretos de la aplicación (claves de `sgtm_owner`, `sgtm_app`, administrador de Keycloak) | **No están en Pulumi.** Ver `INF-06`, issue #154 |
+| Secretos de la aplicación (claves de `kamayuk_owner`, `kamayuk_app`, administrador de Keycloak) | **No están en Pulumi.** Ver `INF-06`, issue #154 |
 
 Pulumi Cloud da bloqueo de concurrencia, historial y detección de deriva sin operar un backend
 propio, que para un equipo de este tamaño es exactamente el trabajo que no hay quien haga.
@@ -227,7 +227,7 @@ siguiente—.
 - **Un PostgreSQL gestionado del proveedor**, en vez de dentro del clúster. Quita de encima
   respaldos, PITR y actualizaciones menores, que es justo el trabajo más delicado. Se descarta por
   dos razones: el aislamiento entre municipalidades se verifica creando roles y ejecutando
-  `verificarAislamiento` **contra la instancia real** como `sgtm_app` (issue #149), y eso exige
+  `verificarAislamiento` **contra la instancia real** como `kamayuk_app` (issue #149), y eso exige
   control sobre los roles del motor; y el costo mensual de un gestionado con PITR es comparable al
   del VPS entero. Se reabre si el padrón crece o si aparece una segunda municipalidad.
 - **Terraform u OpenTofu.** Ecosistema más amplio. Descartada por la preselección de Pulumi y porque

@@ -30,7 +30,7 @@ import { commonLabels, loadSettings, namespaceName, resourceName } from "./confi
  *    de la fase B. Es una función pura: no crea recursos, no habla con el clúster.
  * 3. `auditarManifiestos()` los revisa contra las convenciones de `INF-01` §4 —sondas
  *    con `timeoutSeconds`, límites de recursos, `Recreate` sobre volumen, el `Secret`
- *    de `sgtm_owner` fuera del Deployment— y **lanza antes de crear nada**. Un `up` que
+ *    de `kamayuk_owner` fuera del Deployment— y **lanza antes de crear nada**. Un `up` que
  *    falla al principio es mejor que uno que deja el ingreso a medias.
  *
  * Las mismas dos funciones las llaman las pruebas de `verificaciones/`, sin Pulumi y sin
@@ -48,8 +48,8 @@ import { commonLabels, loadSettings, namespaceName, resourceName } from "./confi
  *
  * ## Lo que este archivo NO crea: los `Secret` de la aplicación
  *
- * Ninguno. Las claves de `sgtm_owner`, de `sgtm_app`, del superusuario del motor, del
- * administrador de Keycloak y las de `sgtm_respaldo`/cifrado de wal-g **no están en el
+ * Ninguno. Las claves de `kamayuk_owner`, de `kamayuk_app`, del superusuario del motor, del
+ * administrador de Keycloak y las de `kamayuk_respaldo`/cifrado de wal-g **no están en el
  * estado de Pulumi** (`ADR-0011` §3): los manifiestos los referencian por nombre y
  * `secretos/bootstrap-secretos.sh` los pone (issue #154).
  *

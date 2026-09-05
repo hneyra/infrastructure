@@ -17,9 +17,9 @@ package kamayuk.comun.verificaciones.muestras.infraestructura;
  * cierre que V3 le habia puesto —decian ABIERTO para siempre— y el estado del turno se deriva de
  * sus movimientos. Si el acta ya no se puede tocar, la tentacion siguiente es tocar el turno.
  *
- * <p>La barrera final es que V32 le retira a {@code sgtm_app} el privilegio de {@code UPDATE} sobre
- * las tres tablas, pero eso falla en ejecucion; el escaner de fuentes falla en el build, que es
- * donde cuesta barato.
+ * <p>La barrera final es que V32 le retira a {@code kamayuk_app} el privilegio de {@code UPDATE}
+ * sobre las tres tablas, pero eso falla en ejecucion; el escaner de fuentes falla en el build, que
+ * es donde cuesta barato.
  *
  * <p>Vive en {@code src/test} a proposito: el escaner solo recorre {@code src/main}, asi que esta
  * clase no puede romper el build por accidente. La revisa {@link

@@ -269,7 +269,7 @@ describe("#149 · la base de datos", () => {
     const datos = (buscar(ms, "ConfigMap", "postgres-inicializacion") as { data: Record<string, string> })
       .data;
     const sql = datos["10-crear-roles.sql"] ?? "";
-    for (const rol of ["sgtm_owner", "sgtm_app", "sgtm_readonly", "rol_carga_parametros"]) {
+    for (const rol of ["kamayuk_owner", "kamayuk_app", "kamayuk_readonly", "rol_carga_parametros"]) {
       expect(sql, `falta el rol ${rol}`).toContain(rol);
     }
     expect(sql).toContain("NOSUPERUSER");
@@ -334,7 +334,7 @@ describe("#149 · la demostracion: la auditoria se pone roja", () => {
 // #150 — Migracion e implantacion como Jobs
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("#150 · sgtm_owner no entra en el Deployment", () => {
+describe("#150 · kamayuk_owner no entra en el Deployment", () => {
   const ms = manifiestosDe(AMBIENTE);
   const secretoDeOwner = secretos(AMBIENTE).owner;
 
@@ -345,7 +345,7 @@ describe("#150 · sgtm_owner no entra en el Deployment", () => {
         .map(({ donde }) => donde),
     );
 
-    // El motor es la excepcion, y es donde `sgtm_owner` se crea: el guion de
+    // El motor es la excepcion, y es donde `kamayuk_owner` se crea: el guion de
     // inicializacion le asigna la clave, y para asignarla tiene que conocerla. Ese
     // contenedor ya guarda ademas la del superusuario. El CronJob de respaldo (#155)
     // es la segunda excepcion: escribe el estado en la tabla `respaldo` (RF-126), tal
@@ -360,10 +360,10 @@ describe("#150 · sgtm_owner no entra en el Deployment", () => {
     ]);
   });
 
-  it("la aplicacion se conecta como sgtm_app, y solo como sgtm_app", () => {
+  it("la aplicacion se conecta como kamayuk_app, y solo como kamayuk_app", () => {
     for (const { c } of contenedoresDeTodo(ms)) {
       const usuario = variablesDe(c).get("KAMAYUK_DB_USUARIO");
-      if (usuario !== undefined) expect(usuario).toBe("sgtm_app");
+      if (usuario !== undefined) expect(usuario).toBe("kamayuk_app");
     }
   });
 
@@ -414,19 +414,19 @@ describe("#150 · sgtm_owner no entra en el Deployment", () => {
 });
 
 describe("#150 · la demostracion: la auditoria se pone roja", () => {
-  it("cambiando en el Deployment el usuario de base por sgtm_owner", () => {
+  it("cambiando en el Deployment el usuario de base por kamayuk_owner", () => {
     const ms = manifiestosDe(AMBIENTE);
     const aplicacion = buscar(ms, "Deployment", "aplicacion") as {
       spec: { template: { spec: { containers: Contenedor[] } } };
     };
     const env = aplicacion.spec.template.spec.containers[0]?.env ?? [];
     const usuario = env.find((e) => e.name === "KAMAYUK_DB_USUARIO");
-    if (usuario) usuario.value = "sgtm_owner";
+    if (usuario) usuario.value = "kamayuk_owner";
 
     expect(auditar(ms)).toContainEqual(expect.stringContaining("se conecta a la base como"));
   });
 
-  it("dandole al Deployment el Secret de sgtm_owner", () => {
+  it("dandole al Deployment el Secret de kamayuk_owner", () => {
     const ms = manifiestosDe(AMBIENTE);
     const aplicacion = buscar(ms, "Deployment", "aplicacion") as {
       spec: { template: { spec: { containers: Contenedor[] } } };
@@ -436,7 +436,7 @@ describe("#150 · la demostracion: la auditoria se pone roja", () => {
       valueFrom: { secretKeyRef: { name: secretos(AMBIENTE).owner, key: "clave-owner" } },
     });
 
-    expect(auditar(ms)).toContainEqual(expect.stringContaining("el Secret de sgtm_owner"));
+    expect(auditar(ms)).toContainEqual(expect.stringContaining("el Secret de kamayuk_owner"));
   });
 
   it("quitando la espera: la aplicacion arrancaria sobre una base vacia", () => {
@@ -1715,17 +1715,17 @@ describe("#155 · el respaldo", () => {
     expect(respaldo.spec.concurrencyPolicy).toBe("Forbid");
   });
 
-  it("el respaldo lo hace sgtm_respaldo, no sgtm_owner ni el superusuario", () => {
+  it("el respaldo lo hace kamayuk_respaldo, no kamayuk_owner ni el superusuario", () => {
     const contenedor = contenedorDelCronJob(ms, "respaldo");
     const guion = (contenedor.args ?? []).join(" ");
-    expect(guion).toContain("PGUSER=sgtm_respaldo");
+    expect(guion).toContain("PGUSER=kamayuk_respaldo");
     expect(secretosDe(contenedor)).toContain(secretos(AMBIENTE).respaldo);
   });
 
-  it("el CronJob escribe el estado en la tabla respaldo, como sgtm_owner (RF-126)", () => {
+  it("el CronJob escribe el estado en la tabla respaldo, como kamayuk_owner (RF-126)", () => {
     const contenedor = contenedorDelCronJob(ms, "respaldo");
     const guion = (contenedor.args ?? []).join(" ");
-    expect(guion).toContain("PGUSER=sgtm_owner");
+    expect(guion).toContain("PGUSER=kamayuk_owner");
     expect(guion).toContain("INSERT INTO respaldo");
     expect(guion).toContain("UPDATE respaldo");
   });
@@ -1743,7 +1743,7 @@ describe("#155 · el respaldo", () => {
     }
   });
 
-  it("las tres claves nuevas —sgtm_respaldo, cifrado y credenciales— no se repiten entre si", () => {
+  it("las tres claves nuevas —kamayuk_respaldo, cifrado y credenciales— no se repiten entre si", () => {
     const contenedor = contenedorDelCronJob(ms, "respaldo");
     const nombres = secretosDe(contenedor);
     expect(new Set(nombres).size).toBeGreaterThanOrEqual(2);
@@ -1771,7 +1771,7 @@ describe("#155 · la demostracion: la auditoria se pone roja", () => {
     expect(auditar(ms)).toContainEqual(expect.stringContaining("texto plano"));
   });
 
-  it("dandole al CronJob de lote el Secret de sgtm_owner, la auditoria lo sigue rechazando", () => {
+  it("dandole al CronJob de lote el Secret de kamayuk_owner, la auditoria lo sigue rechazando", () => {
     const ms = manifiestosDe(AMBIENTE);
     const contenedor = contenedorDelCronJob(ms, "lote");
     (contenedor.env ??= []).push({
@@ -1781,7 +1781,7 @@ describe("#155 · la demostracion: la auditoria se pone roja", () => {
 
     // La excepcion de #155 es del CronJob de respaldo, no de «cualquier CronJob»: el
     // de lote —la MISMA imagen que la aplicacion— sigue sin poder llevar esta clave.
-    expect(auditar(ms)).toContainEqual(expect.stringContaining("el Secret de sgtm_owner"));
+    expect(auditar(ms)).toContainEqual(expect.stringContaining("el Secret de kamayuk_owner"));
   });
 });
 
@@ -1814,10 +1814,10 @@ function contenedorDe(ms: Manifiesto[], kindDeployment: string, contiene: string
 describe("#156 · observabilidad", () => {
   const ms = manifiestosDe(AMBIENTE);
 
-  it("el motor lleva su sidecar de metricas, con sgtm_monitor y nunca el superusuario", () => {
+  it("el motor lleva su sidecar de metricas, con kamayuk_monitor y nunca el superusuario", () => {
     const exportador = contenedorDe(ms, "Deployment", "postgres", "postgres-exporter");
     const variables = variablesDe(exportador);
-    expect(variables.get("DATA_SOURCE_USER")).toBe("sgtm_monitor");
+    expect(variables.get("DATA_SOURCE_USER")).toBe("kamayuk_monitor");
     expect(secretosDe(exportador)).toContain(secretos(AMBIENTE).monitoreo);
     expect(secretosDe(exportador)).not.toContain(secretos(AMBIENTE).motor);
   });
@@ -2473,13 +2473,13 @@ describe("#558 · la restauracion verificada queda escrita", () => {
     expect(migracion()).toContain("respaldo_verificacion_exitosa_ck");
   });
 
-  it("como sgtm_owner, que es el unico rol que la politica de escritura nombra (V8)", () => {
+  it("como kamayuk_owner, que es el unico rol que la politica de escritura nombra (V8)", () => {
     const guion = simulacro();
     const bloque = guion.slice(
       guion.indexOf("Dejando constancia"),
       guion.indexOf("RETURNING id;"),
     );
-    expect(bloque).toContain("--username=sgtm_owner");
+    expect(bloque).toContain("--username=kamayuk_owner");
     expect(bloque).not.toContain("--username=postgres");
   });
 

@@ -21,7 +21,7 @@ volúmenes del orden de terabytes.
 - **Particionado por lista sobre `ejercicio`** en las tablas de movimiento:
   `cuenta_corriente_asiento` y `determinacion`.
 - **`numeric`** para todo importe. Nunca coma flotante.
-- **Flyway** para las migraciones, ejecutadas por `sgtm_owner`.
+- **Flyway** para las migraciones, ejecutadas por `kamayuk_owner`.
 
 Los tipos del dominio se declaran como `DOMAIN` de PostgreSQL —`dinero`, `alicuota`, `area_m2`,
 `ejercicio`— para que la restricción viaje con la columna y no dependa de que alguien la repita.

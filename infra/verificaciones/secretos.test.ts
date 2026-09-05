@@ -115,8 +115,8 @@ describe("C-17 §4 · lo que se declara es lo que se monta", () => {
   /**
    * Los ocho de `app`/`owner` son **espejos**, y su origen es el `Secret` de la plataforma.
    *
-   * El motivo esta en `EntradaDeSecreto.espejoDe` y es de PostgreSQL, no de gusto: `sgtm_app` y
-   * `sgtm_owner` son roles del CLUSTER —los crea el `crear-roles.sql` de cada sistema con el
+   * El motivo esta en `EntradaDeSecreto.espejoDe` y es de PostgreSQL, no de gusto: `kamayuk_app` y
+   * `kamayuk_owner` son roles del CLUSTER —los crea el `crear-roles.sql` de cada sistema con el
    * mismo nombre— y un rol tiene UNA contrasena. Ocho valores generados por separado dejarian a
    * siete de los ocho sin poder conectarse.
    */
@@ -149,7 +149,7 @@ describe("C-17 §4 · lo que se declara es lo que se monta", () => {
    * Ningun espejo lleva `rolDePostgres`, y eso es lo que hace correcto a `asignar-claves.sh`.
    *
    * Ese guion recorre las entradas con `rolDePostgres` y hace un `ALTER ROLE`. Con los espejos
-   * dentro haria cinco sobre `sgtm_app` —uno por copia— con valores que tienen que ser el mismo,
+   * dentro haria cinco sobre `kamayuk_app` —uno por copia— con valores que tienen que ser el mismo,
    * y el ultimo decidiria. Quien manda es el `Secret` de la plataforma.
    */
   it("un espejo no es una credencial que asignar: no lleva rol de PostgreSQL", () => {

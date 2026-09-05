@@ -42,7 +42,7 @@ SQL
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<SQL
 REVOKE CONNECT ON DATABASE "$POSTGRES_DB" FROM PUBLIC;
 GRANT  CONNECT ON DATABASE "$POSTGRES_DB"
-    TO sgtm_owner, sgtm_app, sgtm_readonly, rol_carga_parametros;
+    TO kamayuk_owner, kamayuk_app, kamayuk_readonly, rol_carga_parametros;
 REVOKE CONNECT ON DATABASE keycloak FROM PUBLIC;
 GRANT  CONNECT ON DATABASE keycloak TO keycloak;
 SQL

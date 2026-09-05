@@ -15,7 +15,7 @@ import { SISTEMAS_CON_APLICACION, exigidasPor, variablesSinOmision } from "./var
  * ## Todo pod que corra la imagen de la APLICACION, y hay que decir por que
  *
  * Hasta C-14 esto miraba **solo** los `Deployment`, y no por comodidad: los `Job` de migracion de
- * los cuatro sistemas corrian la MISMA imagen que el `Deployment` con `KAMAYUK_DB_USUARIO=sgtm_owner`
+ * los cuatro sistemas corrian la MISMA imagen que el `Deployment` con `KAMAYUK_DB_USUARIO=kamayuk_owner`
  * y sin `SPRING_PROFILES_ACTIVE`, o sea que arrancaban la aplicacion sin migrar nada. Incluirlos
  * habria puesto esta guarda roja por un defecto que no era el que mide.
  *

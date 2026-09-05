@@ -35,12 +35,12 @@ import type { Contenedor, Job, Manifiesto, VariableDeEntorno } from "./tipos";
  * > hacen las nueve comprobaciones de `despliegue.yml`, que leen las credenciales del
  * > proceso en marcha y no del archivo del compose.
  *
- * Ademas no necesita credenciales nuevas: la espera se hace con las de `sgtm_app`, que
+ * Ademas no necesita credenciales nuevas: la espera se hace con las de `kamayuk_app`, que
  * el pod que espera ya tiene.
  *
- * ## `sgtm_owner` no entra en el Deployment
+ * ## `kamayuk_owner` no entra en el Deployment
  *
- * El `Secret` con la clave de `sgtm_owner` se monta **solo** en estos dos Jobs. La
+ * El `Secret` con la clave de `kamayuk_owner` se monta **solo** en estos dos Jobs. La
  * auditoria de `auditoria.ts` lo exige leyendo los manifiestos, y la comprobacion 7 del
  * despliegue lo comprueba contra el proceso en marcha: con las credenciales que el
  * contenedor tiene de verdad, `CREATE TABLE` tiene que fallar. Su traslado esta en
@@ -92,7 +92,7 @@ export function sufijoDeVersion(version: string): string {
  * El contenedor que espera a que el esquema este aplicado.
  *
  * `flyway_schema_history` con al menos una fila y ninguna fallida. La consulta se hace
- * como `sgtm_app`, que **no puede crear la tabla**: si la ve, la creo el migrador.
+ * como `kamayuk_app`, que **no puede crear la tabla**: si la ve, la creo el migrador.
  */
 export function esperaDeMigracion(args: {
   environment: Environment;
@@ -192,7 +192,7 @@ function contenedorDeEspera(args: {
         // exactamente el estado que hay que ver. Un contenedor que se rinde y deja
         // arrancar al de al lado convertiria un despliegue incompleto en un servicio
         // que responde mal.
-        `until psql --username=sgtm_app --dbname=${BASE_DEL_PADRON} --host=${servicio} ` +
+        `until psql --username=kamayuk_app --dbname=${BASE_DEL_PADRON} --host=${servicio} ` +
           `--quiet --tuples-only --no-align --command "${args.consulta}" >/dev/null 2>&1; do`,
         "  sleep 3",
         "done",
@@ -250,7 +250,7 @@ export function manifiestosDeMigracion(args: MigracionArgs): Manifiesto[] {
               image: `${imageRepository}/sgtm-migrador:${version}`,
               env: [
                 { name: "KAMAYUK_DB_URL", value: urlDelPadron(environment) },
-                { name: "KAMAYUK_DB_OWNER_USUARIO", value: "sgtm_owner" },
+                { name: "KAMAYUK_DB_OWNER_USUARIO", value: "kamayuk_owner" },
                 // El unico sitio, con el Job de al lado, donde entra esta clave.
                 {
                   name: "KAMAYUK_DB_OWNER_CLAVE",
@@ -271,7 +271,7 @@ export function manifiestosDeMigracion(args: MigracionArgs): Manifiesto[] {
   const variablesDeImplantacion: VariableDeEntorno[] = [
     { name: "SPRING_PROFILES_ACTIVE", value: "batch" },
     { name: "KAMAYUK_DB_URL", value: urlDelPadron(environment) },
-    { name: "KAMAYUK_DB_USUARIO", value: "sgtm_app" },
+    { name: "KAMAYUK_DB_USUARIO", value: "kamayuk_app" },
     {
       name: "KAMAYUK_DB_CLAVE",
       valueFrom: { secretKeyRef: { name: secreto.aplicacion, key: CLAVES.aplicacion } },

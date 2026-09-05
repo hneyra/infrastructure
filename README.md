@@ -30,7 +30,7 @@ infra/observabilidad/verificar-tableros.sh                   # cada panel del ta
 infra/verificaciones/motor/verificar-el-motor.sh --ambiente stg --con-aislamiento
 infra/verificaciones/ambiente/verificar-el-ambiente.sh --ambiente prod
 infra/secretos/bootstrap-secretos.sh --ambiente stg
-infra/secretos/rotar-clave.sh --ambiente stg --rol sgtm-app
+infra/secretos/rotar-clave.sh --ambiente stg --rol kamayuk-app
 ```
 
 Los tres que más cuestan de operar y más valen, con lo que cada uno demuestra:
@@ -167,7 +167,7 @@ running /docker-entrypoint-initdb.d/20-asignar-claves.sh
 |---|---|
 | Las cuatro bases | `caja`, `catastro`, `normativa`, `rentas` |
 | Las extensiones **en cada una** | `btree_gist pg_trgm postgis unaccent`, las cuatro |
-| Los cuatro roles | `sgtm_owner`, `sgtm_app`, `rol_carga_parametros` y `sgtm_readonly`, todos con `super=false bypassrls=false`; `sgtm_readonly` **sin login** |
+| Los cuatro roles | `kamayuk_owner`, `kamayuk_app`, `rol_carga_parametros` y `kamayuk_readonly`, todos con `super=false bypassrls=false`; `kamayuk_readonly` **sin login** |
 | Keycloak con **los dos realms** | `Realm 'sgtm' imported`, `Realm 'sgtm-ciudadano' imported` |
 | Y que son **dos emisores**, no dos clientes de uno | `/realms/sgtm` y `/realms/sgtm-ciudadano` responden con `public_key` propia |
 | El **enrutado por prefijo** de ADR-0030 §2 | `/catastro/predios` → `catastro-web`, `/rentas/contribuyentes` → `rentas-web`, `/normativa/conjuntos` → **404** porque nadie lo reclama |
@@ -202,7 +202,7 @@ ejercita porque allí Keycloak corre en `start-dev`; el reparto es correcto y ah
 cuatro roles lo que ese mismo guion revoca de `PUBLIC`— la deja en rojo con el mensaje exacto:
 
 ```
-FALLO: sgtm_owner no puede conectarse a la base del padron: 30-base-de-keycloak.sh revoca
+FALLO: kamayuk_owner no puede conectarse a la base del padron: 30-base-de-keycloak.sh revoca
        el CONNECT de PUBLIC y tiene que volver a concederselo a los cuatro roles
 ```
 

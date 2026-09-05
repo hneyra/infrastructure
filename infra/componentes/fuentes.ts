@@ -199,7 +199,7 @@ export function ciudadanosJson(): FuenteDeMunicipalidad[] {
  *
  * **Los mismos archivos que monta el compose**, no copias. El primero crea las cuatro bases del
  * producto y las extensiones que cada una DECLARA en su propio `crear-roles.sql`; el segundo
- * aplica ese archivo entero contra su base, que es lo que le da a `sgtm_owner` el `CREATE` sobre
+ * aplica ese archivo entero contra su base, que es lo que le da a `kamayuk_owner` el `CREATE` sobre
  * `public` sin el cual la migracion muere con «42501 permission denied for schema public»
  * —medido contra PostgreSQL 16.15— y lo que le quita a PUBLIC el `CONNECT` que PostgreSQL le
  * regala al crear una base.

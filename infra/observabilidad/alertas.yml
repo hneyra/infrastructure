@@ -54,7 +54,7 @@ groups:
         # `kube_cronjob_status_last_successful_time` la publica kube-state-metrics,
         # leyendo el estado del propio CronJob -no hace falta que postgres_exporter
         # entre a la tabla `respaldo` (RF-126) para saberlo, y evita darle a
-        # sgtm_monitor un privilegio sobre una tabla de negocio que pg_monitor no
+        # kamayuk_monitor un privilegio sobre una tabla de negocio que pg_monitor no
         # le da por si solo-. `Respaldo.ts` corre a las 06:00 UTC: si a las 08:00 UTC
         # el ultimo exito tiene mas de 26 horas, o no hay ninguno, algo fallo o el
         # CronJob ni siquiera corrio -las dos cosas son la misma emergencia: no hay

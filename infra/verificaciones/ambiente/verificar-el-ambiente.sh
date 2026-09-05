@@ -25,7 +25,7 @@
 #      Medido el 2026-09-01 contra stg: «48 · 48 · OK», con `main` en 61.
 #   2. Lo sembrado por la implantacion (#120): municipalidad, grupo, usuario, miembro y
 #      permiso. `count(*) = 0` es exactamente el sintoma silencioso que el issue nombra.
-#   3. **El aislamiento, como `sgtm_app` y contra esta instancia.** Un superusuario omite
+#   3. **El aislamiento, como `kamayuk_app` y contra esta instancia.** Un superusuario omite
 #      RLS incluso con FORCE ROW LEVEL SECURITY, asi que una comprobacion hecha con el
 #      pasa en verde sin verificar nada; aqui se demuestra en vez de afirmarse, fijando
 #      el mismo contexto con las dos credenciales y exigiendo que **no** vean lo mismo.
@@ -76,17 +76,17 @@ aviso(){ echo "  --   $*"; }
 POD_MOTOR="deployment/sgtm-${AMBIENTE}-postgres"
 
 # Como superusuario: es quien puede leer el catalogo entero y contar sin RLS de por
-# medio. Todo lo que se afirme del AISLAMIENTO, en cambio, se mide con `sgtm_app`.
+# medio. Todo lo que se afirme del AISLAMIENTO, en cambio, se mide con `kamayuk_app`.
 comoSuperusuario() {
     kubectl -n "$NAMESPACE" exec "$POD_MOTOR" -c postgres -- \
         psql -U postgres -d sgtm -tAqc "$1"
 }
 
-# Como `sgtm_app`, con su clave real leida del `Secret` que la aplicacion monta. Es la
+# Como `kamayuk_app`, con su clave real leida del `Secret` que la aplicacion monta. Es la
 # unica credencial cuyo resultado dice algo sobre el aislamiento.
 comoAplicacion() {
     kubectl -n "$NAMESPACE" exec "$POD_MOTOR" -c postgres -- \
-        env PGPASSWORD="$CLAVE_APP" psql -U sgtm_app -h 127.0.0.1 -d sgtm -tAqc "$1"
+        env PGPASSWORD="$CLAVE_APP" psql -U kamayuk_app -h 127.0.0.1 -d sgtm -tAqc "$1"
 }
 
 # Si este ambiente DESPLIEGA el monolito (C-19). Se lee del mismo `Pulumi.<amb>.yaml` que
@@ -204,7 +204,7 @@ for tabla in municipalidad grupo usuario miembro permiso; do
 done
 
 echo
-echo "== 3. El aislamiento, como sgtm_app y contra esta instancia =="
+echo "== 3. El aislamiento, como kamayuk_app y contra esta instancia =="
 
 CLAVE_APP=$(kubectl -n "$NAMESPACE" get secret "sgtm-${AMBIENTE}-postgres-app" \
     -o jsonpath='{.data.clave-app}' 2>/dev/null | base64 -d || true)
@@ -214,11 +214,11 @@ if [ -z "$CLAVE_APP" ]; then
     mal "precisamente lo que no demuestra nada"
 else
     # a. La credencial es la que se dice que es, y no puede saltarse la politica.
-    fila=$(comoSuperusuario "SELECT rolsuper::text || ' ' || rolbypassrls::text FROM pg_roles WHERE rolname = 'sgtm_app'")
+    fila=$(comoSuperusuario "SELECT rolsuper::text || ' ' || rolbypassrls::text FROM pg_roles WHERE rolname = 'kamayuk_app'")
     if [ "$fila" = "false false" ]; then
-        bien "sgtm_app no es superusuario y no tiene BYPASSRLS"
+        bien "kamayuk_app no es superusuario y no tiene BYPASSRLS"
     else
-        mal "sgtm_app tiene privilegios que anulan RLS: rolsuper/rolbypassrls = $fila"
+        mal "kamayuk_app tiene privilegios que anulan RLS: rolsuper/rolbypassrls = $fila"
     fi
 
     # b. Toda tabla con `municipalidad_id` tiene RLS, y FORZADA. Sin `FORCE`, el dueno
@@ -244,7 +244,7 @@ else
     MUNI=$(comoSuperusuario "SELECT id FROM municipalidad ORDER BY id LIMIT 1")
     # La tabla de la medida tiene que cumplir CUATRO cosas, y las cuatro por un motivo:
     # tener filas (si no, «cero filas» no distingue el aislamiento de una tabla vacia),
-    # que `sgtm_app` tenga SELECT sobre ella (si no, el error es de privilegio y no de
+    # que `kamayuk_app` tenga SELECT sobre ella (si no, el error es de privilegio y no de
     # politica), **no ser una particion** —a las particiones no se les concede ningun
     # privilegio a proposito: el acceso directo a una evade la politica del padre, que es
     # el segundo hallazgo de RLS de DAT-01 §0—, y que su `municipalidad_id` sea **NOT
@@ -252,10 +252,10 @@ else
     #
     # LA CUARTA SE PAGO. Sin ella, la primera corrida de este guion en CI —despues de que
     # #438 publicara 492 filas de `depreciacion` en `stg`— eligio esa tabla, que es la
-    # que mas filas tenia, y dio CUATRO comprobaciones en rojo: «sgtm_app no filtra por
+    # que mas filas tenia, y dio CUATRO comprobaciones en rojo: «kamayuk_app no filtra por
     # municipalidad: propias=492, ajenas=492».
     #
-    # Y `sgtm_app` filtraba perfectamente. `depreciacion` es un **catalogo nacional**
+    # Y `kamayuk_app` filtraba perfectamente. `depreciacion` es un **catalogo nacional**
     # (D-13, ADR-0017): su `municipalidad_id` es nulo y su politica de lectura dice
     # `municipalidad_id IS NULL OR municipalidad_id = current_setting(...)`, de modo que
     # todo contexto ve sus 492 filas — que es exactamente lo que un catalogo nacional
@@ -271,7 +271,7 @@ else
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relrowsecurity
           AND NOT c.relispartition
-          AND has_table_privilege('sgtm_app', c.oid, 'SELECT')
+          AND has_table_privilege('kamayuk_app', c.oid, 'SELECT')
           AND EXISTS (SELECT 1 FROM pg_attribute a
                       WHERE a.attrelid = c.oid AND a.attname = 'municipalidad_id'
                         AND NOT a.attisdropped AND a.attnum > 0
@@ -293,18 +293,18 @@ else
         superConAjenas=$(conElContexto comoSuperusuario "$OTRA")
 
         echo "  tabla de la medida: $TABLA · municipalidad $MUNI · contexto ajeno $OTRA"
-        echo "  sgtm_app con su contexto: $propias · con el ajeno: $ajenas · superusuario con el ajeno: $superConAjenas"
+        echo "  kamayuk_app con su contexto: $propias · con el ajeno: $ajenas · superusuario con el ajeno: $superConAjenas"
 
         if [ "${propias:-0}" -gt 0 ] && [ "${ajenas:-x}" = "0" ]; then
-            bien "sgtm_app ve las filas de SU municipalidad y ninguna de la ajena"
+            bien "kamayuk_app ve las filas de SU municipalidad y ninguna de la ajena"
         else
-            mal "sgtm_app no filtra por municipalidad: propias=$propias, ajenas=$ajenas"
+            mal "kamayuk_app no filtra por municipalidad: propias=$propias, ajenas=$ajenas"
         fi
         if [ "${superConAjenas:-0}" -gt 0 ] && [ "${ajenas:-x}" = "0" ]; then
             bien "y el superusuario, con EL MISMO contexto, las ve igual: la medida esta"
             bien "hecha con la credencial que si esta sujeta a la politica"
         else
-            mal "el superusuario ve lo mismo que sgtm_app con el contexto ajeno"
+            mal "el superusuario ve lo mismo que kamayuk_app con el contexto ajeno"
             mal "($superConAjenas vs $ajenas): esta comprobacion no distingue una base con"
             mal "RLS de una sin ella"
         fi

@@ -50,7 +50,7 @@
 #        pueda EJECUTAR sin cluster -que es la unica forma de saber que muerde-.
 #
 # Requiere: psql en el PATH. La conexion se hace como el rol que se le pase; lo que cuenta
-# tiene que ser el usuario de la APLICACION (`sgtm_app`), porque el esquema declara FORCE ROW
+# tiene que ser el usuario de la APLICACION (`kamayuk_app`), porque el esquema declara FORCE ROW
 # LEVEL SECURITY y contar con otro rol mediria otra cosa.
 set -uo pipefail
 

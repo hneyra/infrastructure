@@ -7,7 +7,7 @@
 #
 #   1. Levanta un motor con `archive_mode=on` y `archive_command` de wal-g — la misma
 #      configuracion que `BaseDeDatos.ts` le pone al del cluster, leida del manifiesto.
-#   2. Toma un respaldo base con `sgtm_respaldo`, el rol de `40-rol-de-respaldo.sh`:
+#   2. Toma un respaldo base con `kamayuk_respaldo`, el rol de `40-rol-de-respaldo.sh`:
 #      sin DDL, sin BYPASSRLS, sin ser superusuario.
 #   3. Escribe deuda de DOS municipalidades. Anota el instante: **T_BUENO**.
 #   4. Escribe una tercera fila —la que hay que perder— y fuerza el archivado.
@@ -167,7 +167,7 @@ walg() {
         WALG_LIBSODIUM_KEY="${KAMAYUK_CLAVE_DE_PRUEBA:-$CLAVE_CIFRADO}" \
         WALG_COMPRESSION_METHOD=lz4 \
         PGHOST=127.0.0.1 PGPORT="$PUERTO" PGDATABASE=postgres \
-        PGUSER=sgtm_respaldo PGPASSWORD="$CLAVE_RESPALDO" \
+        PGUSER=kamayuk_respaldo PGPASSWORD="$CLAVE_RESPALDO" \
         "$WALG" "$@"
 }
 
@@ -180,12 +180,12 @@ walg() {
 echo
 echo "· Encendiendo el archivado continuo de WAL"
 
-# `sgtm_respaldo` NO se crea aqui: lo crea `40-rol-de-respaldo.sh`, que la biblioteca
+# `kamayuk_respaldo` NO se crea aqui: lo crea `40-rol-de-respaldo.sh`, que la biblioteca
 # acaba de ejecutar como parte de la inicializacion del manifiesto. Es la mitad que
 # importa de este simulacro: el respaldo lo toma el rol que el CLUSTER tendra, con los
 # privilegios que ese guion le da, no uno preparado a medida para que la prueba pase.
-[ "$(motor_como_superusuario "SELECT 1 FROM pg_roles WHERE rolname='sgtm_respaldo'" postgres)" = "1" ] \
-    || { echo "FALLO: 40-rol-de-respaldo.sh no creo el rol sgtm_respaldo." >&2; exit 1; }
+[ "$(motor_como_superusuario "SELECT 1 FROM pg_roles WHERE rolname='kamayuk_respaldo'" postgres)" = "1" ] \
+    || { echo "FALLO: 40-rol-de-respaldo.sh no creo el rol kamayuk_respaldo." >&2; exit 1; }
 
 DATOS="$TRABAJO/datos"
 cat >> "$DATOS/postgresql.conf" <<EOF
@@ -223,18 +223,18 @@ echo "  archive_mode=on, archive_timeout=5s"
 # 2. El respaldo base, con el rol que NO puede hacer DDL
 # ─────────────────────────────────────────────────────────────────────────────
 echo
-echo "· Respaldo base, como sgtm_respaldo (sin DDL, sin superusuario)"
+echo "· Respaldo base, como kamayuk_respaldo (sin DDL, sin superusuario)"
 
-# Antes de nada: que ese rol no pueda mas de lo que debe. Si `sgtm_respaldo` pudiera
+# Antes de nada: que ese rol no pueda mas de lo que debe. Si `kamayuk_respaldo` pudiera
 # crear tablas, el respaldo dejaria de ser un lector y pasaria a ser otra credencial
 # con escritura sobre el padron.
-if motor_como_su_usuario env PGPASSWORD="$CLAVE_RESPALDO" psql --username=sgtm_respaldo \
+if motor_como_su_usuario env PGPASSWORD="$CLAVE_RESPALDO" psql --username=kamayuk_respaldo \
         --dbname=postgres --quiet --command 'CREATE TABLE intento_de_ddl (id int)' \
         >/dev/null 2>&1; then
-    echo "FALLO: sgtm_respaldo puede crear tablas. El rol del respaldo lee, no escribe." >&2
+    echo "FALLO: kamayuk_respaldo puede crear tablas. El rol del respaldo lee, no escribe." >&2
     exit 1
 fi
-echo "  sgtm_respaldo no puede hacer DDL: correcto"
+echo "  kamayuk_respaldo no puede hacer DDL: correcto"
 
 walg backup-push "$DATOS" >/dev/null 2>&1 \
     || { echo "FALLO: backup-push no completo." >&2; walg backup-push "$DATOS" 2>&1 | tail -20; exit 1; }

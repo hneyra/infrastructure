@@ -14,7 +14,7 @@
 # parametro_tributario (V6/V7) y las tablas de valuacion nacionales (V55), y sin
 # LOGIN esos Jobs no pueden correr contra ningun ambiente real (issue #387).
 #
-# sgtm_readonly se queda NOLOGIN: todavia no hay nada que se conecte con el, y un
+# kamayuk_readonly se queda NOLOGIN: todavia no hay nada que se conecte con el, y un
 # rol que puede iniciar sesion sin que nadie lo use es una credencial mas que
 # rotar y vigilar.
 set -euo pipefail
@@ -32,9 +32,9 @@ psql -v ON_ERROR_STOP=1 \
      -v claveOwner="$KAMAYUK_CLAVE_OWNER" \
      -v claveApp="$KAMAYUK_CLAVE_APP" \
      -v claveCarga="$KAMAYUK_CLAVE_CARGA" <<'SQL'
-ALTER ROLE sgtm_owner            LOGIN PASSWORD :'claveOwner';
-ALTER ROLE sgtm_app              LOGIN PASSWORD :'claveApp';
+ALTER ROLE kamayuk_owner            LOGIN PASSWORD :'claveOwner';
+ALTER ROLE kamayuk_app              LOGIN PASSWORD :'claveApp';
 ALTER ROLE rol_carga_parametros  LOGIN PASSWORD :'claveCarga';
 SQL
 
-echo "Roles sgtm_owner, sgtm_app y rol_carga_parametros habilitados para conexion."
+echo "Roles kamayuk_owner, kamayuk_app y rol_carga_parametros habilitados para conexion."

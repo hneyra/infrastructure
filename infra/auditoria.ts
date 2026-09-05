@@ -37,21 +37,21 @@ const ESPERA_MINIMA = 3;
 const ESPERA_MAXIMA = 5;
 
 /**
- * Los pods que pueden leer la clave de `sgtm_owner` sin ser un Job.
+ * Los pods que pueden leer la clave de `kamayuk_owner` sin ser un Job.
  *
  * `postgres` es el motor de datos, y la excepcion es estrecha a proposito:
- * `sgtm_owner` **se crea ahi**. El guion de inicializacion —el mismo que usa el
+ * `kamayuk_owner` **se crea ahi**. El guion de inicializacion —el mismo que usa el
  * compose— es quien le asigna la clave, y para asignarla tiene que conocerla. Ese
  * contenedor ya guarda ademas la del superusuario, que puede mas que todas las demas
  * juntas: darle tambien esta no amplia nada.
  *
  * `respaldo` es el `CronJob` de `Respaldo.ts` (issue #155): `V8__respaldo.sql`
  * declara que quien escribe el estado del respaldo en la tabla `respaldo` (RF-126) es
- * `sgtm_owner`, «como el proceso de despliegue» — y este `CronJob` es ese proceso. La
+ * `kamayuk_owner`, «como el proceso de despliegue» — y este `CronJob` es ese proceso. La
  * excepcion sigue siendo nombrada y estrecha: el `CronJob` de `lote` en
  * `Aplicacion.ts`, que corre la MISMA imagen de la aplicacion, sigue prohibido.
  *
- * Lo que la regla persigue es otra cosa: que la clave de `sgtm_owner` no acabe en un
+ * Lo que la regla persigue es otra cosa: que la clave de `kamayuk_owner` no acabe en un
  * proceso **expuesto en HTTP**. La aplicacion, la interfaz y las tareas de lote no la
  * tienen ni con excusa (ARQ-03 §4, issue #150). Ninguno de los dos de aqui abre un
  * puerto.
@@ -71,7 +71,7 @@ const COMPONENTES_CON_ACCESO_A_OWNER = [MOTOR, "respaldo"];
 const SIN_NAMESPACE = ["Namespace", "PriorityClass", "ClusterRole", "ClusterRoleBinding"];
 
 export interface ContextoDeAuditoria {
-  /** El `Secret` con la clave de `sgtm_owner`. No puede aparecer fuera de los Jobs. */
+  /** El `Secret` con la clave de `kamayuk_owner`. No puede aparecer fuera de los Jobs. */
   secretoDeOwner: string;
   /** El namespace del ambiente. Todo lo demas tiene que estar dentro. */
   namespace: string;
@@ -405,7 +405,7 @@ function auditarSecretoDeOwner(
     (c.envFrom ?? []).some((e) => e.secretRef.name === contexto.secretoDeOwner);
   if (!usa) return [];
   return [
-    `${donde} monta «${contexto.secretoDeOwner}», el Secret de sgtm_owner. Ese Secret entra ` +
+    `${donde} monta «${contexto.secretoDeOwner}», el Secret de kamayuk_owner. Ese Secret entra ` +
       "SOLO en los dos Jobs, de migracion y de implantacion (issue #150). Ni «para migrar al " +
       "arrancar», ni «para una carga rapida»: darle DDL sobre el padron de todas las " +
       "municipalidades a un proceso expuesto en HTTP es lo que ARQ-03 §4 excluye.",
@@ -427,19 +427,19 @@ function auditarLaAplicacion(
   const problemas: string[] = [];
   const variables = new Map((c.env ?? []).map((e) => [e.name, e.value]));
 
-  // `sgtm_owner` es el unico rol con DDL, y migrar es lo unico que lo necesita. La regla ya lo
+  // `kamayuk_owner` es el unico rol con DDL, y migrar es lo unico que lo necesita. La regla ya lo
   // decia en su mensaje —«solo existen en los dos Jobs»— y no lo comprobaba: miraba el usuario
   // sin mirar la clase del pod, asi que un Job de migracion de un sistema salia rechazado y un
   // Deployment con owner y otro nombre habria salido igual de rechazado por el mismo sitio.
   // Al llegar los descriptores (ADR-0031) los Jobs dejan de ser dos y de llamarse como se
   // llamaban, asi que lo que distingue tiene que ser la CLASE, no el nombre.
   const usuario = variables.get("KAMAYUK_DB_USUARIO");
-  const esMigracion = clase === "Job" && usuario === "sgtm_owner";
-  if (usuario !== undefined && usuario !== "sgtm_app" && !esMigracion) {
+  const esMigracion = clase === "Job" && usuario === "kamayuk_owner";
+  if (usuario !== undefined && usuario !== "kamayuk_app" && !esMigracion) {
     problemas.push(
       `${donde}, contenedor «${c.name}»: se conecta a la base como «${usuario}». La aplicacion ` +
-        "se conecta SIEMPRE como `sgtm_app`: sin DDL, sin BYPASSRLS, sin ser propietaria de " +
-        "las tablas (ARQ-03 §4). Las credenciales de `sgtm_owner` solo valen en un **Job**, " +
+        "se conecta SIEMPRE como `kamayuk_app`: sin DDL, sin BYPASSRLS, sin ser propietaria de " +
+        "las tablas (ARQ-03 §4). Las credenciales de `kamayuk_owner` solo valen en un **Job**, " +
         "que es donde vive la migracion; en un Deployment son DDL al alcance de la peticion " +
         "de cualquiera.",
     );
@@ -449,7 +449,7 @@ function auditarLaAplicacion(
   //
   // El migrador no lee `KAMAYUK_DB_USUARIO`: lee `KAMAYUK_DB_OWNER_USUARIO` y `KAMAYUK_DB_OWNER_CLAVE`
   // —lo dice su `main`, y por eso el Job del monolito las declara asi desde el issue #150—. Hasta
-  // C-14 los cuatro sistemas ponian `KAMAYUK_DB_USUARIO=sgtm_owner` en un Job que corria la imagen de
+  // C-14 los cuatro sistemas ponian `KAMAYUK_DB_USUARIO=kamayuk_owner` en un Job que corria la imagen de
   // la APLICACION, asi que la comprobacion de arriba los veia; con el Job corriendo el migrador de
   // verdad, esa variable desaparece y la regla se quedaria mirando algo que ya no esta. Que la
   // credencial del unico rol con DDL solo pueda aparecer en un `Job` no puede depender de con que
@@ -460,7 +460,7 @@ function auditarLaAplicacion(
     if (variables.has(nombre) && clase !== "Job") {
       problemas.push(
         `${donde}, contenedor «${c.name}»: declara «${nombre}», que es la credencial de ` +
-          "`sgtm_owner` con otro nombre. Solo vale en un **Job**, que es donde vive la migracion; " +
+          "`kamayuk_owner` con otro nombre. Solo vale en un **Job**, que es donde vive la migracion; " +
           "en un Deployment o en un CronJob son DDL sobre el padron de todas las municipalidades " +
           "al alcance de un proceso de larga vida (ARQ-03 §4).",
       );

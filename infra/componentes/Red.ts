@@ -204,8 +204,8 @@ function permitirIngresoPostgres(environment: Environment, namespace: string): N
     policyTypes: ["Ingress"],
     ingress: [
       {
-        // Los cuatro procesos que de verdad se conectan como `sgtm_app`,
-        // `sgtm_owner`, `keycloak` o `sgtm_respaldo` — nunca la interfaz, que no
+        // Los cuatro procesos que de verdad se conectan como `kamayuk_app`,
+        // `kamayuk_owner`, `keycloak` o `kamayuk_respaldo` — nunca la interfaz, que no
         // tiene ni deberia tener credencial ninguna sobre el motor.
         from: [
           deApp(servicioDeAplicacion(environment)),
@@ -221,8 +221,8 @@ function permitirIngresoPostgres(environment: Environment, namespace: string): N
           // no pasa nunca y `pulumi up` espera—.
           //
           // Sin `podSelector` que lo acompane, a proposito: en el namespace de un sistema TODOS
-          // los pods son de ese sistema, y los cuatro se conectan como `sgtm_app` o —solo en un
-          // Job— como `sgtm_owner`. Quien decide que puede hacer cada credencial es el motor,
+          // los pods son de ese sistema, y los cuatro se conectan como `kamayuk_app` o —solo en un
+          // Job— como `kamayuk_owner`. Quien decide que puede hacer cada credencial es el motor,
           // no esta politica.
           DE_LOS_SISTEMAS,
         ],

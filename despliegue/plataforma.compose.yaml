@@ -56,7 +56,7 @@ services:
       # Y los roles y privilegios de cada sistema, EN SU PROPIA BASE (C-14, punto 2).
       # Hasta C-14 esto no lo hacia nadie —era el hueco 4 de C-10—: las cuatro bases
       # recibian sus extensiones y NO los `GRANT` sobre `public` que su propio
-      # `crear-roles.sql` declara, de modo que `sgtm_owner` no podia migrarlas. Medido
+      # `crear-roles.sql` declara, de modo que `kamayuk_owner` no podia migrarlas. Medido
       # contra PostgreSQL 16.15: sin este guion la migracion de `catastro` muere en la
       # primera sentencia con «42501 permission denied for schema public».
       - ./inicializacion-del-motor/06-roles-de-los-sistemas.sh:/docker-entrypoint-initdb.d/06-roles-de-los-sistemas.sh:ro

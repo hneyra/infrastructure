@@ -59,12 +59,12 @@ describe("completarSecreto", () => {
   });
 
   it("nunca produce dos claves con el mismo valor: lanza si el generador se repite", () => {
-    // La demostracion del issue: "volviendo a poner la misma clave para sgtm_owner y
-    // sgtm_app... esa es la que hay que escribir: claves distintas, comprobado". Aqui
+    // La demostracion del issue: "volviendo a poner la misma clave para kamayuk_owner y
+    // kamayuk_app... esa es la que hay que escribir: claves distintas, comprobado". Aqui
     // se fuerza con un generador roto a proposito, porque con crypto.randomBytes(32)
     // de verdad esto no ocurre nunca.
     expect(() =>
-      completarSecreto(undefined, ["sgtm-owner", "sgtm-app"], generadorDeSecuencia("misma", "misma")),
+      completarSecreto(undefined, ["kamayuk-owner", "kamayuk-app"], generadorDeSecuencia("misma", "misma")),
     ).toThrow(/valor repetido/);
   });
 

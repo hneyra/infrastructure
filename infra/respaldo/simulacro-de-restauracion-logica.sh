@@ -44,7 +44,7 @@
 #
 #   1. Crea la base ORIGEN, la provisiona como el ambiente real —`crear-roles.sql` como
 #      superusuario, que es quien crea las extensiones que ESE sistema declara (C-10)— y
-#      le aplica sus migraciones en orden de version, como `sgtm_owner`.
+#      le aplica sus migraciones en orden de version, como `kamayuk_owner`.
 #   2. Siembra los datos de ensayo (`--sin-datos` los quita). Sin filas, la comparacion de
 #      datos seria «0 = 0» en todas las tablas y no diria nada.
 #   3. Vuelca en los dos formatos: `-Fc` y plano.
@@ -156,12 +156,12 @@ VERIFICAR="$RAIZ/../rentas/docs/40-datos/baselines/verificar"
 
 # El libro de Flyway, para los esquemas que lo NOMBRAN en una migracion (hoy solo el
 # monolito, en su `V21`). Aqui las migraciones las aplica `psql` y no Flyway —Flyway
-# exigiria darle a `sgtm_owner` una clave, y `ALTER ROLE` es del CLUSTER: pisaria la que
+# exigiria darle a `kamayuk_owner` una clave, y `ALTER ROLE` es del CLUSTER: pisaria la que
 # derivan los cuatro bancos de prueba y romperia toda corrida de Gradle que apunte a este
 # mismo motor (#698)—, asi que la tabla la crea este guion con la forma que Flyway 11 usa.
 libro_de_flyway() {
     en "$1" -q -v ON_ERROR_STOP=1 <<'SQL'
-SET ROLE sgtm_owner;
+SET ROLE kamayuk_owner;
 CREATE TABLE flyway_schema_history (
     installed_rank integer NOT NULL,
     version varchar(50),
@@ -213,7 +213,7 @@ for SISTEMA in "${SISTEMAS[@]}"; do
     crear_base "$ORIGEN"
     en "$ORIGEN" -q -v ON_ERROR_STOP=1 -f "$ROLES" >/dev/null
     if rl_necesita_libro_de_flyway "$MIGRACIONES"; then libro_de_flyway "$ORIGEN"; fi
-    ARGS=(-c "SET ROLE sgtm_owner")
+    ARGS=(-c "SET ROLE kamayuk_owner")
     while IFS= read -r archivo; do ARGS+=(-f "$archivo"); done \
         < <(rl_migraciones_en_orden "$MIGRACIONES")
     en "$ORIGEN" -q -v ON_ERROR_STOP=1 "${ARGS[@]}" >/dev/null

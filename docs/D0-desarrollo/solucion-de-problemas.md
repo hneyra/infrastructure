@@ -75,6 +75,6 @@ No es alivio: es un hallazgo. Las causas ya medidas:
 - **El texto que buscas está también en un comentario.** Buscar una sentencia en el guion entero
   pasa en verde con la sentencia quitada, porque la misma cadena vive en el comentario que la
   explica. Acota la búsqueda a la sentencia.
-- **La verificación no medía lo que parecía.** El caso caro: conectar como `sgtm_owner` para
+- **La verificación no medía lo que parecía.** El caso caro: conectar como `kamayuk_owner` para
   demostrar una fuga de aislamiento deja todo en verde, porque con `FORCE ROW LEVEL SECURITY` el
   dueño también queda sujeto a la política. Hay que usar el superusuario del clúster.

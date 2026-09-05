@@ -121,7 +121,7 @@ Eso es trabajo de implantación de un municipio concreto y existiría igual sin 
   seria y hay que darle una respuesta seria: encaja bien con «todo se reconstruye». Se descarta
   por dos motivos concretos de este esquema. Uno, el diff generado no sabe de RLS, de
   privilegios por columna ni de disparadores de inmutabilidad, y aquí esas tres cosas **son** el
-  esquema: `V54` le retira a `sgtm_app` el `UPDATE` sobre una tabla y le concede el de una sola
+  esquema: `V54` le retira a `kamayuk_app` el `UPDATE` sobre una tabla y le concede el de una sola
   columna, y eso no es algo que se quiera ver aparecer y desaparecer en un diff automático.
   Dos, añade una herramienta más que operar para sustituir una que ya está y que nadie ha
   reportado como problema.

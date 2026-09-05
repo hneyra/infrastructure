@@ -15,7 +15,7 @@
 #
 # Y no lo puede arreglar el migrador: `postgis` NO es una extension *trusted*
 # —`SELECT trusted FROM pg_available_extension_versions WHERE name='postgis'` da `f`—,
-# asi que crearla exige un superusuario, y `sgtm_owner` a proposito no lo es.
+# asi que crearla exige un superusuario, y `kamayuk_owner` a proposito no lo es.
 #
 # CI nunca lo ve porque CI siempre parte de un volumen vacio.
 #

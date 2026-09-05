@@ -148,12 +148,12 @@ Y sobre los manifiestos, en `auditoria.ts`:
 | Todo contenedor declara `requests` y `limits`; todo pod, su `priorityClassName` | `INF-01` §4 |
 | Un `Deployment` con volumen persistente usa `Recreate` | `INF-01` §4 |
 | Ningún `Service` fuera de `ClusterIP` | `INF-01` §1.4 |
-| El `Secret` de `sgtm_owner` no entra en ningún proceso expuesto en HTTP | ARQ-03 §4, #150 |
+| El `Secret` de `kamayuk_owner` no entra en ningún proceso expuesto en HTTP | ARQ-03 §4, #150 |
 | El perfil `web` declara `KAMAYUK_OIDC_EMISOR`; el `batch` no abre puertos | ADR-0005, #152 |
 | Keycloak no arranca en `start-dev` | #151 |
 | Toda ruta va por `websecure` con TLS, y `/keycloak/admin` no se publica | #153 |
 | El motor declara `archive_mode=on`; ninguna clave de wal-g va como `value` | RNF-076, #155 |
-| El `Secret` de `sgtm_owner` entra en el CronJob de respaldo (excepción nombrada), y en ningún otro CronJob | RF-126, #155 |
+| El `Secret` de `kamayuk_owner` entra en el CronJob de respaldo (excepción nombrada), y en ningún otro CronJob | RF-126, #155 |
 | El `ClusterRole` de kube-state-metrics no toca `secrets` ni `configmaps`, y solo `list`/`watch` | #156 |
 
 > **Una nota sobre la última fila de `ADR-0011` §5.** El ADR anotaba como costo aceptado
@@ -173,9 +173,9 @@ Todas se ejercen editando archivos reales y viendo el rojo:
 | Ponerle etiqueta a `applicationImageRepository` | `yarn test`, citando `ADR-0011` §5 |
 | Copiar la lectura de configuración a un componente | `yarn lint` |
 | Poner `RollingUpdate` en el `Deployment` de la base, o `timeoutSeconds: 1` en una sonda | `yarn test`, con el motivo entero |
-| Darle al `Deployment` de la aplicación el `Secret` de `sgtm_owner`, o cambiarle el usuario de base | `yarn test` |
+| Darle al `Deployment` de la aplicación el `Secret` de `kamayuk_owner`, o cambiarle el usuario de base | `yarn test` |
 | Quitar `!PathPrefix(/keycloak/admin)` de la ruta de identidad | `yarn test` |
-| Quitar el `GRANT CONNECT` de `30-base-de-keycloak.sh` | `verificar-el-motor.sh`: `sgtm_owner` deja de poder conectarse |
+| Quitar el `GRANT CONNECT` de `30-base-de-keycloak.sh` | `verificar-el-motor.sh`: `kamayuk_owner` deja de poder conectarse |
 | Quitar `archive_mode=on`, o poner la clave de cifrado de wal-g como `value` | `yarn test`, citando RNF-076 |
 | Apagar PostgreSQL sin cablear el receptor de alertas | `verificar-alertas.sh`: la regla se evalúa y el receptor de prueba recibe 0 peticiones |
 | Quitar un panel del tablero de su fuente de datos real | `verificar-tableros.sh`: «No data», nombrando el panel |
@@ -183,7 +183,7 @@ Todas se ejercen editando archivos reales y viendo el rojo:
 | Devolver a `catastro` la función sin cualificar que C-4 arregló | `simulacro-de-restauracion-logica.sh`: **`TABLA via` con nombre**, sus 4 índices, su política de RLS, su secuencia, 5 restricciones y `< FILAS via 3` |
 | Declarar una pérdida que ya no ocurre, o dejar de declarar una que sí | el mismo guion, en las dos direcciones: la lista de `rl_perdidas_conocidas` no puede quedarse rancia |
 | Fiarse del código de salida de la restauración | `yarn test`: `(18 errores, código 0)` es lo que da `psql` sobre un volcado plano con el defecto dentro |
-| Hacer `SUPERUSER` a `sgtm_respaldo`, o darle `CONNECT` al padrón | `verificar-el-motor.sh` y el simulacro |
+| Hacer `SUPERUSER` a `kamayuk_respaldo`, o darle `CONNECT` al padrón | `verificar-el-motor.sh` y el simulacro |
 | Apuntar `applicationBootstrapVersion` a un `sha` con migraciones de menos | `yarn test`, con **las dos cifras** y las migraciones que faltan |
 | Apuntarlo a un `sha` que no está en el clon | `yarn test`: no concluye en vez de contar las del árbol de trabajo, y dice `fetch-depth: 0` |
 | Quitar `db/migration/**` del filtro `paths` de `infra.yml` | `yarn test`: la guarda existiría y no correría al integrar una migración |
@@ -222,7 +222,7 @@ sistemas montaban diez, con **intersección cero**: el guion corría, decía «L
 de los diez, mientras sus pods esperaban en `Pending`.
 
 **Ocho de esos diez son espejos, no valores nuevos.** Los cuatro sistemas se conectan con
-`sgtm_app` y migran con `sgtm_owner`, que son roles del **clúster**, y PostgreSQL le da a un rol
+`kamayuk_app` y migran con `kamayuk_owner`, que son roles del **clúster**, y PostgreSQL le da a un rol
 **una** contraseña: no se pueden generar por separado sin dejar a tres de cada cuatro sin poder
 conectarse. Se copian del `Secret` de la plataforma —en base64, sin decodificar y sin pasar por
 `argv`— en **cada** corrida, de modo que tras `rotar-clave.sh` hay que volver a correr este guion
@@ -231,7 +231,7 @@ para que los espejos alcancen al origen.
 **Las claves de los roles del motor se asignan una sola vez**, cuando el volumen está
 vacío: el guion de inicialización las lee del `Secret` y hace el `ALTER ROLE`. Cambiar el
 `Secret` después **no cambia la clave del rol** — eso es rotación:
-`infra/secretos/rotar-clave.sh --ambiente prod --rol sgtm-app`, contra la base en
+`infra/secretos/rotar-clave.sh --ambiente prod --rol kamayuk-app`, contra la base en
 marcha, sin reiniciar nada (`INF-06` §3).
 
 Sin estos `Secret`, `pulumi up` crea los objetos y los pods se quedan esperando, con el

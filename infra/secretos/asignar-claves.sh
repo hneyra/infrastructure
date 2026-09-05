@@ -30,7 +30,7 @@
 # `bootstrap-secretos.sh`, y rotarlas es de `rotar-clave.sh`. Aqui el `Secret` es la
 # fuente de verdad y la base converge a el.
 #
-# `sgtm_readonly` NO entra, por lo mismo que no entra en `20-asignar-claves.sh`: no se
+# `kamayuk_readonly` NO entra, por lo mismo que no entra en `20-asignar-claves.sh`: no se
 # conecta nadie con el, y un rol que puede iniciar sesion sin que nadie lo use es una
 # credencial mas que rotar y vigilar. Tampoco entran las entradas que no son roles del
 # motor —el administrador de Keycloak, la clave de cifrado del respaldo—: el inventario
@@ -74,7 +74,7 @@ CLAVE_SUPER=$(kubectl -n "$NAMESPACE" get secret "$SECRETO_SUPER" \
 
 # El inventario, una linea por rol de PostgreSQL: «rol secreto clave rolDePostgres base».
 #
-# La base sale del inventario y **no se supone `sgtm`**: `sgtm_respaldo` no tiene
+# La base sale del inventario y **no se supone `sgtm`**: `kamayuk_respaldo` no tiene
 # `CONNECT` sobre el padron a proposito (#155) y `keycloak` tiene la suya, asi que
 # sondearlos contra `sgtm` daria un rojo falso justo en los dos roles cuyo aislamiento
 # es deliberado — paso al escribir este guion, y el rojo era indistinguible del de un
@@ -85,7 +85,7 @@ inventario=$(yarn --silent secretos --ambiente "$AMBIENTE" | node -e '
   const filas = datos
     // Los ESPEJOS no entran, y no es un olvido (C-17, punto 4): un espejo es el MISMO valor de
     // un rol del cluster publicado en el namespace de quien lo consume, no una credencial mas.
-    // Con ellos dentro, este guion haria cinco `ALTER ROLE sgtm_app` seguidos —uno por copia—
+    // Con ellos dentro, este guion haria cinco `ALTER ROLE kamayuk_app` seguidos —uno por copia—
     // con valores que tienen que ser el mismo, y el ultimo decidiria. Quien manda es el `Secret`
     // de la plataforma, que es de donde `bootstrap-secretos.sh` los copia.
     .filter((e) => e.rolDePostgres && e.espejoDe === undefined)

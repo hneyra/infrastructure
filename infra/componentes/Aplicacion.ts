@@ -82,11 +82,11 @@ export function manifiestosDeAplicacion(args: AplicacionArgs): Manifiesto[] {
 
   const credencialesDeLaBase = [
     { name: "KAMAYUK_DB_URL", value: urlDelPadron(environment) },
-    // `sgtm_app` y solo `sgtm_app`. La clave de `sgtm_owner` no entra en este
+    // `kamayuk_app` y solo `kamayuk_app`. La clave de `kamayuk_owner` no entra en este
     // Deployment: darle DDL sobre el padron de todas las municipalidades a un proceso
     // expuesto en HTTP es exactamente lo que ARQ-03 §4 excluye, y la auditoria de
     // `auditoria.ts` se pone roja si el `Secret` de owner aparece por aqui.
-    { name: "KAMAYUK_DB_USUARIO", value: "sgtm_app" },
+    { name: "KAMAYUK_DB_USUARIO", value: "kamayuk_app" },
     {
       name: "KAMAYUK_DB_CLAVE",
       valueFrom: { secretKeyRef: { name: secreto.aplicacion, key: CLAVES.aplicacion } },

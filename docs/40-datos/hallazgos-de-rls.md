@@ -30,8 +30,8 @@ puestas.
 - La aplicación no se conecta como propietario de las tablas.
 - **Una prueba de aislamiento escrita sobre la conexión por omisión de Testcontainers —que es de
   superusuario— pasa en verde sin verificar nada.** Por eso `AislamientoMultiTenantTest` crea el
-  rol `sgtm_app` en su arranque y lo usa para todo, y lo demuestra: con el mismo contexto fijado,
-  el superusuario ve las dos municipalidades y `sgtm_app` una.
+  rol `kamayuk_app` en su arranque y lo usa para todo, y lo demuestra: con el mismo contexto fijado,
+  el superusuario ve las dos municipalidades y `kamayuk_app` una.
 
 ### Hallazgo 2 — Una partición no hereda la política del padre
 
@@ -58,7 +58,7 @@ por un mensaje de error, filas de otra municipalidad. Así que el `LIKE` se qued
 después del recorrido, y el índice sobra.
 
 Medido contra PostgreSQL 16 con 30 000 filas, misma tabla, mismo índice, mismos datos y el rol
-`sgtm_app` sujeto a la política:
+`kamayuk_app` sujeto a la política:
 
 | Cómo se escribe el prefijo | Plan | Coste |
 |---|---|---|
@@ -85,7 +85,7 @@ que se evalúa como filtro de todos modos.
 
 `ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY` lanza, para validar, **una consulta** sobre la tabla.
 Esa consulta queda sujeta a la política, la política lee `app.municipalidad_id`, y el migrador corre
-como `sgtm_owner` **sin contexto de tenant** —correctamente: migrar no es atender la petición de
+como `kamayuk_owner` **sin contexto de tenant** —correctamente: migrar no es atender la petición de
 ninguna municipalidad—. El resultado es que la migración entera se cae con
 
 ```
@@ -162,7 +162,7 @@ El motivo es el mismo: `geography_overlaps` **no es *leakproof*** — y tampoco 
 que PostgreSQL no lo evalúa antes de la política.
 
 **Y aquí el síntoma engaña más que en el `LIKE`, porque el plan dice «Index».** Medido contra
-PostgreSQL 16 con PostGIS 3.5, 60 000 lotes repartidos en dos municipalidades, como `sgtm_app`:
+PostgreSQL 16 con PostGIS 3.5, 60 000 lotes repartidos en dos municipalidades, como `kamayuk_app`:
 
 ```
 Bitmap Heap Scan on predio  (cost=329.74..3399.28 rows=404)
@@ -214,7 +214,7 @@ tampoco es la correcta —el marco medido contiene unas 440 filas—, así que q
 del mismo predicado y se retiró.
 
 La otra salida —`ALTER FUNCTION geography_overlaps(geography,geography) LEAKPROOF`— se descartó: es
-un acto de superusuario que no cabe en una migración (`sgtm_owner` a propósito no lo es), y sobre
+un acto de superusuario que no cabe en una migración (`kamayuk_owner` a propósito no lo es), y sobre
 todo es **afirmar** que ningún error de una función en C de un tercero puede revelar la fila de otra
 municipalidad. `float8le` es *leakproof* en el catálogo de PostgreSQL, que es una afirmación que ya
 está verificada.

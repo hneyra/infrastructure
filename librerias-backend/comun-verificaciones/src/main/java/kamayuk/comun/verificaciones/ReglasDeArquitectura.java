@@ -335,11 +335,11 @@ public final class ReglasDeArquitectura {
      * Nada que siembre datos corre en el perfil por omision: solo en {@code batch} (E-6, #202).
      *
      * <p>La siembra de un tenant de demostracion —y la implantacion de cualquier municipalidad—
-     * escribe en {@code municipalidad}, que solo {@code sgtm_owner} puede escribir. {@link
+     * escribe en {@code municipalidad}, que solo {@code kamayuk_owner} puede escribir. {@link
      * org.springframework.boot.ApplicationRunner} es el mecanismo por el que algo corre <b>al
      * arrancar</b>: uno sin perfil corre tambien en el proceso web, y entonces el contenedor que
-     * atiende peticiones necesita las credenciales de {@code sgtm_owner} para arrancar. Eso no es
-     * una siembra de mas: es el camino mas corto entre una peticion HTTP y el alta de una
+     * atiende peticiones necesita las credenciales de {@code kamayuk_owner} para arrancar. Eso no
+     * es una siembra de mas: es el camino mas corto entre una peticion HTTP y el alta de una
      * municipalidad.
      *
      * <p>Es el tercer criterio de aceptacion de #202 —«poner la siembra en el perfil por omision
@@ -357,7 +357,7 @@ public final class ReglasDeArquitectura {
                     .should(new ConPerfilBatch())
                     .because(
                             "sembrar escribe en municipalidad, y esa tabla solo la escribe"
-                                    + " sgtm_owner: un proceso de arranque sin perfil le exige esa"
+                                    + " kamayuk_owner: un proceso de arranque sin perfil le exige esa"
                                     + " credencial al contenedor que atiende peticiones (#202)");
 
     /**

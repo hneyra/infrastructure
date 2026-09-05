@@ -6,7 +6,7 @@
 # entrada desde el cluster, y exige que todos sean distintos entre si — dentro de un
 # ambiente y entre ambientes. Es la comprobacion que el issue pide explicitamente:
 #
-#   "volviendo a poner la misma clave para sgtm_owner y sgtm_app: la comprobacion de
+#   "volviendo a poner la misma clave para kamayuk_owner y kamayuk_app: la comprobacion de
 #   que la aplicacion no puede crear una tabla sigue en verde —porque el rol es otro—
 #   pero cualquiera con la clave de la aplicacion tiene DDL. Esa es la que hay que
 #   escribir: claves distintas, comprobado."

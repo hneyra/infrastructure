@@ -126,7 +126,7 @@ rl_migraciones_en_orden() {
 
 # Si alguna migracion nombra el libro de Flyway FUERA de un comentario.
 #
-# `V21` del monolito hace `GRANT SELECT ON flyway_schema_history TO sgtm_app`, asi que su
+# `V21` del monolito hace `GRANT SELECT ON flyway_schema_history TO kamayuk_app`, asi que su
 # esquema no se puede aplicar con `psql` a secas: falta la tabla que normalmente crea
 # Flyway. Se DERIVA en vez de escribir «si el sistema es sgtm», por lo mismo que C-10 no
 # escribio la lista de extensiones: el dia que otro esquema la nombre, esto ya lo sabe.

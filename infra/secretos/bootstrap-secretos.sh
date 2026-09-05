@@ -35,7 +35,7 @@
 #
 # LOS ESPEJOS
 # ------------------------------------------------------------------------------
-# Ocho de esos diez son la clave de `sgtm_app` o de `sgtm_owner`, que son roles del CLUSTER: los
+# Ocho de esos diez son la clave de `kamayuk_app` o de `kamayuk_owner`, que son roles del CLUSTER: los
 # cuatro sistemas los crean con el mismo nombre y PostgreSQL le da a un rol UNA contrasena. No
 # son ocho secretos nuevos: son el MISMO valor publicado en el namespace de quien lo consume.
 # Generarlos por separado dejaria a tres de cada cuatro sin poder conectarse, con un

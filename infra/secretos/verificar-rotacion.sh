@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Que rotar la clave de sgtm_app no exige parar la base (issue #154, criterio de
+# Que rotar la clave de kamayuk_app no exige parar la base (issue #154, criterio de
 # aceptacion).
 #
 # La mecanica que demuestra esto es la de PostgreSQL, no la de Kubernetes: `ALTER ROLE
@@ -12,7 +12,7 @@
 # Levanta el motor con los mismos guiones que `verificar-el-motor.sh` (issue #149), via
 # `lib-motor-local.sh`, y sobre el:
 #
-#   1. Abre una conexion como sgtm_app con la clave ACTUAL, y la deja abierta.
+#   1. Abre una conexion como kamayuk_app con la clave ACTUAL, y la deja abierta.
 #   2. Rota la clave con el mismo `ALTER ROLE ... PASSWORD :'nueva'` que ejecuta
 #      `secretos/rotar-clave.sh`, escrito aqui inline: este guion corre sin cluster,
 #      asi que no hay Secret que actualizar ni paso de Kubernetes que dar.
@@ -20,17 +20,17 @@
 #   4. Comprueba que una conexion NUEVA con la clave VIEJA falla.
 #   5. Comprueba que una conexion NUEVA con la clave NUEVA funciona.
 #
-# **El rol se elige** (issue #435). Por omision `sgtm_app`, que es el caso del issue
+# **El rol se elige** (issue #435). Por omision `kamayuk_app`, que es el caso del issue
 # #154; `rol_carga_parametros` es el otro rol del inventario con `LOGIN` y una clave que
 # rotar, y hasta #435 la mecanica no se habia ejercitado nunca sobre el. No es que se
 # espere que se comporte distinto —`ALTER ROLE` es `ALTER ROLE`—: es que «la rotacion se
 # verifica contra un motor real» pedia correrla, no razonar sobre ella.
 #
-#   uso: secretos/verificar-rotacion.sh [--ambiente stg] [--rol sgtm_app|rol_carga_parametros]
+#   uso: secretos/verificar-rotacion.sh [--ambiente stg] [--rol kamayuk_app|rol_carga_parametros]
 set -euo pipefail
 
 AMBIENTE=stg
-ROL=sgtm_app
+ROL=kamayuk_app
 while [ $# -gt 0 ]; do
     case "$1" in
         --ambiente) AMBIENTE=${2:?falta el valor de --ambiente}; shift 2 ;;
@@ -50,9 +50,9 @@ source "$INFRA/verificaciones/motor/lib-motor-local.sh"
 
 # La clave inicial del rol es la que `lib-motor-local.sh` le puso al levantar el motor.
 case "$ROL" in
-    sgtm_app) CLAVE_INICIAL=$CLAVE_APP ;;
+    kamayuk_app) CLAVE_INICIAL=$CLAVE_APP ;;
     rol_carga_parametros) CLAVE_INICIAL=$CLAVE_CARGA ;;
-    *) echo "FALLO: --rol admite sgtm_app o rol_carga_parametros; llego «$ROL»." >&2; exit 2 ;;
+    *) echo "FALLO: --rol admite kamayuk_app o rol_carga_parametros; llego «$ROL»." >&2; exit 2 ;;
 esac
 
 echo

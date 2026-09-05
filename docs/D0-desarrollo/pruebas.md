@@ -131,7 +131,7 @@ infra/verificaciones/raiz-sellada/verificar-raiz-sellada.sh
 Tres cosas de esa lista no son un detalle:
 
 - **El aislamiento se verifica contra el motor que levanta ese guion, nunca contra uno en
-  servicio.** La prueba provisiona, y `ALTER ROLE` sobre `sgtm_owner` y `sgtm_app` vale para
+  servicio.** La prueba provisiona, y `ALTER ROLE` sobre `kamayuk_owner` y `kamayuk_app` vale para
   **todas** las bases del clúster. Apuntarla a `prod` deja fuera a la aplicación.
 - **`verificar-el-ambiente.sh` compara el ambiente desplegado con la versión declarada**, no con
   el árbol de trabajo. Si `Pulumi.<ambiente>.yaml` apunta a una revisión que no está en el clon,

@@ -6,8 +6,8 @@
 #
 # El motor crea los roles al inicializarse, porque un rol no puede crearse a si
 # mismo y las politicas de V6__rls.sql los nombran. El migrador aplica el esquema
-# como sgtm_owner y TERMINA. Solo entonces arranca la aplicacion, que se conecta
-# como sgtm_app y no tiene DDL (ARQ-03 §4).
+# como kamayuk_owner y TERMINA. Solo entonces arranca la aplicacion, que se conecta
+# como kamayuk_app y no tiene DDL (ARQ-03 §4).
 #
 # Un esquema a medias con la aplicacion ya sirviendo peticiones es el estado que
 # este orden existe para impedir.
@@ -126,7 +126,7 @@ services:
         condition: service_healthy
     environment:
       KAMAYUK_DB_URL: jdbc:postgresql://base:5432/sgtm
-      KAMAYUK_DB_OWNER_USUARIO: sgtm_owner
+      KAMAYUK_DB_OWNER_USUARIO: kamayuk_owner
       KAMAYUK_DB_OWNER_CLAVE: ${KAMAYUK_CLAVE_OWNER:?falta KAMAYUK_CLAVE_OWNER en .env}
     # Corre y termina. Si se reinicia, vuelve a comprobar el ambiente y no aplica
     # nada: el migrador es idempotente y tiene su prueba que lo demuestra.
@@ -165,11 +165,11 @@ services:
       KAMAYUK_PORTAL_OIDC_EMISOR: ${KAMAYUK_OIDC_EMISOR:-http://localhost:8180}/realms/sgtm-ciudadano
       KAMAYUK_PORTAL_OIDC_JWKS: http://identidad:8080/realms/sgtm-ciudadano/protocol/openid-connect/certs
       KAMAYUK_DB_URL: jdbc:postgresql://base:5432/sgtm
-      # sgtm_app y solo sgtm_app. Poner aqui las credenciales de sgtm_owner
+      # kamayuk_app y solo kamayuk_app. Poner aqui las credenciales de kamayuk_owner
       # —«para que migre al arrancar», «para una carga rapida»— le daria DDL sobre
       # el padron de todas las municipalidades a un proceso expuesto en HTTP. La
       # verificacion de despliegue comprueba exactamente esto y se pone roja.
-      KAMAYUK_DB_USUARIO: sgtm_app
+      KAMAYUK_DB_USUARIO: kamayuk_app
       KAMAYUK_DB_CLAVE: ${KAMAYUK_CLAVE_APP:?falta KAMAYUK_CLAVE_APP en .env}
     ports:
       - "${KAMAYUK_PUERTO:-8080}:8080"
@@ -185,9 +185,9 @@ services:
   # con el perfil batch, asi que no abre puerto ninguno.
   #
   # Es el unico sitio, ademas del migrador, donde entran las credenciales de
-  # sgtm_owner: las necesita para UNA sentencia sobre `municipalidad`, que es la
-  # unica tabla que sgtm_app no puede escribir. Todo lo demas lo hace como
-  # sgtm_app y con su auditoria.
+  # kamayuk_owner: las necesita para UNA sentencia sobre `municipalidad`, que es la
+  # unica tabla que kamayuk_app no puede escribir. Todo lo demas lo hace como
+  # kamayuk_app y con su auditoria.
   implantacion:
     build:
       context: ..
@@ -199,7 +199,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: batch
       KAMAYUK_DB_URL: jdbc:postgresql://base:5432/sgtm
-      KAMAYUK_DB_USUARIO: sgtm_app
+      KAMAYUK_DB_USUARIO: kamayuk_app
       KAMAYUK_DB_CLAVE: ${KAMAYUK_CLAVE_APP:?falta KAMAYUK_CLAVE_APP en .env}
       KAMAYUK_IMPLANTACION_UBIGEO: ${KAMAYUK_UBIGEO:?falta KAMAYUK_UBIGEO en .env}
       KAMAYUK_IMPLANTACION_NOMBRE: ${KAMAYUK_MUNICIPALIDAD:?falta KAMAYUK_MUNICIPALIDAD en .env}
@@ -221,7 +221,7 @@ services:
       #
       # Solo se aplica al ALTA: relanzar el despliegue con `false` no le quita la marca
       # a una municipalidad ya implantada. Quitarla es un UPDATE deliberado de
-      # sgtm_owner, que deja rastro de quien lo hizo.
+      # kamayuk_owner, que deja rastro de quien lo hizo.
       KAMAYUK_IMPLANTACION_ESDEMOSTRACION: ${KAMAYUK_ES_DEMOSTRACION:-true}
       KAMAYUK_IMPLANTACION_URL: jdbc:postgresql://base:5432/sgtm
       # OWNERCLAVE sin guion bajo: en una variable de entorno el `_` se traduce a

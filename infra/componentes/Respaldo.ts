@@ -29,23 +29,23 @@ import type { CronJob, Manifiesto } from "./tipos";
  * el motor: un proceso aparte que se ejecuta, termina, y no vuelve a correr hasta la
  * proxima vez.
  *
- * ## Por que `sgtm_owner`, y no solo `sgtm_respaldo`, en este CronJob
+ * ## Por que `kamayuk_owner`, y no solo `kamayuk_respaldo`, en este CronJob
  *
  * `V8__respaldo.sql` (RF-126) ya declara qué escribe el estado del respaldo:
- * `sgtm_owner`, «como el proceso de despliegue». Este CronJob **es** ese proceso, asi
+ * `kamayuk_owner`, «como el proceso de despliegue». Este CronJob **es** ese proceso, asi
  * que usa la misma credencial que los dos Jobs de `Migracion.ts` para dejar
  * registrado el resultado en la tabla `respaldo` — es lo que hace que RF-126 («Consultar
  * el estado de las copias de seguridad») muestre algo real y no una pantalla vacia.
  *
- * Eso significa que la excepcion de `auditoria.ts` a «`sgtm_owner` solo en los dos
+ * Eso significa que la excepcion de `auditoria.ts` a «`kamayuk_owner` solo en los dos
  * Jobs» crece en uno: el `CronJob` de respaldo. Sigue siendo estrecha y nombrada —
  * `COMPONENTES_CON_ACCESO_A_OWNER` en `auditoria.ts`—, no una regla que se abre para
  * cualquier `CronJob` futuro. El de `lote` en `Aplicacion.ts` sigue prohibido.
  *
  * ## Por que NO es el mismo credential que hace el respaldo
  *
- * El respaldo en si —`pg_backup_start`/`pg_backup_stop`— lo hace `sgtm_respaldo`, el
- * rol de `40-rol-de-respaldo.sh`, no `sgtm_owner`. Dos credenciales, dos proposito:
+ * El respaldo en si —`pg_backup_start`/`pg_backup_stop`— lo hace `kamayuk_respaldo`, el
+ * rol de `40-rol-de-respaldo.sh`, no `kamayuk_owner`. Dos credenciales, dos proposito:
  * una para lo que wal-g necesita del motor, otra para lo que RF-126 necesita de la
  * tabla. Ninguna de las dos es DDL sobre el padron.
  *
@@ -120,7 +120,7 @@ export function manifiestosDeRespaldo(args: RespaldoArgs): Manifiesto[] {
     // sin sustituir y `syntax error at or near ":"`. Por `stdin` (heredoc) si
     // interpola; las tres consultas de este guion pasan por ahi en vez de
     // `--command`.
-    'respaldoId=$(PGUSER=sgtm_owner PGPASSWORD="$CLAVE_OWNER" psql --host="$PGHOST" ' +
+    'respaldoId=$(PGUSER=kamayuk_owner PGPASSWORD="$CLAVE_OWNER" psql --host="$PGHOST" ' +
       `--dbname=${BASE_DEL_PADRON} --quiet --tuples-only --no-align -v destino="$DESTINO" <<'SQL'`,
     "INSERT INTO respaldo (inicio, resultado, destino) VALUES (now(), 'EN_CURSO', :'destino') RETURNING id;",
     "SQL",
@@ -131,26 +131,26 @@ export function manifiestosDeRespaldo(args: RespaldoArgs): Manifiesto[] {
     "fi",
     'echo "Respaldo #$respaldoId iniciado hacia $DESTINO."',
     "",
-    "# 2. El respaldo en si. sgtm_respaldo, nunca sgtm_owner ni el superusuario.",
+    "# 2. El respaldo en si. kamayuk_respaldo, nunca kamayuk_owner ni el superusuario.",
     "#    PGDATABASE=postgres explicito: backup-push llama a pg_backup_start/stop,",
     "#    que si necesita una conexion real -a diferencia de wal-push/wal-fetch, que",
     "#    solo hablan con el almacenamiento de objetos-, y sin PGDATABASE libpq usa",
     "#    el nombre del usuario como base y falla porque esa base no existe. NO es",
-    `#    ${BASE_DEL_PADRON}: sgtm_respaldo no tiene CONNECT ahi a proposito`,
+    `#    ${BASE_DEL_PADRON}: kamayuk_respaldo no tiene CONNECT ahi a proposito`,
     "#    (40-rol-de-respaldo.sh) -pg_backup_start/stop son del cluster entero, no",
     "#    de una base, y postgres alcanza- (confirmado contra un cluster real, issue #158).",
-    `if PGUSER=sgtm_respaldo PGDATABASE=postgres PGPASSWORD="$CLAVE_RESPALDO" "${WALG_BINARIO}" backup-push "$PGDATA_RESPALDO" ` +
+    `if PGUSER=kamayuk_respaldo PGDATABASE=postgres PGPASSWORD="$CLAVE_RESPALDO" "${WALG_BINARIO}" backup-push "$PGDATA_RESPALDO" ` +
       "> /tmp/walg.log 2>&1; then",
-    `    PGUSER=sgtm_respaldo PGPASSWORD="$CLAVE_RESPALDO" "${WALG_BINARIO}" delete retain "$RETENCION" ` +
+    `    PGUSER=kamayuk_respaldo PGPASSWORD="$CLAVE_RESPALDO" "${WALG_BINARIO}" delete retain "$RETENCION" ` +
       "--confirm >> /tmp/walg.log 2>&1 || true",
-    '    PGUSER=sgtm_owner PGPASSWORD="$CLAVE_OWNER" psql --host="$PGHOST" ' +
+    '    PGUSER=kamayuk_owner PGPASSWORD="$CLAVE_OWNER" psql --host="$PGHOST" ' +
       `--dbname=${BASE_DEL_PADRON} --quiet -v id="$respaldoId" <<'SQL'`,
     "UPDATE respaldo SET fin = now(), resultado = 'EXITOSO' WHERE id = :id;",
     "SQL",
     '    echo "Respaldo #$respaldoId EXITOSO."',
     "else",
     "    detalle=$(tail -c 480 /tmp/walg.log | tr '\\n' ' ' | tr -d \"'\")",
-    '    PGUSER=sgtm_owner PGPASSWORD="$CLAVE_OWNER" psql --host="$PGHOST" ' +
+    '    PGUSER=kamayuk_owner PGPASSWORD="$CLAVE_OWNER" psql --host="$PGHOST" ' +
       `--dbname=${BASE_DEL_PADRON} --quiet -v id="$respaldoId" -v detalle="$detalle" <<'SQL'`,
     "UPDATE respaldo SET fin = now(), resultado = 'FALLIDO', detalle = :'detalle' WHERE id = :id;",
     "SQL",

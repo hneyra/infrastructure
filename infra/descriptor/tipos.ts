@@ -288,7 +288,7 @@ export interface DescriptorDeSistema {
    * del mismo `Dockerfile` y dos imagenes publicadas: la aplicacion arranca con
    * `spring.flyway.enabled: false` a proposito (ARQ-03 §4), asi que un Job que corriera la imagen
    * de la aplicacion **no migraria** — arrancaria el proceso web con las credenciales de
-   * `sgtm_owner`, que es lo peor de las dos cosas.
+   * `kamayuk_owner`, que es lo peor de las dos cosas.
    */
   migracion(entorno: EntornoDelDescriptor): Manifiesto[];
   /**

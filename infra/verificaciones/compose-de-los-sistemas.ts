@@ -268,7 +268,7 @@ export function desajustes(
       anotar(
         proceso,
         `«${declarado.servicio}» construye el objetivo «${objetivo ?? "(ninguno)"}» y tenia que ` +
-          `construir «${declarado.objetivo}». Las credenciales de \`sgtm_owner\` existen durante ` +
+          `construir «${declarado.objetivo}». Las credenciales de \`kamayuk_owner\` existen durante ` +
           "la migracion y desaparecen con ella: cruzarlos le da DDL sobre el padron a un proceso " +
           "de larga vida expuesto en HTTP.",
       );

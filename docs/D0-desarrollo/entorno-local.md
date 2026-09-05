@@ -105,7 +105,7 @@ psql -h 127.0.0.1 -U postgres -d postgres -tAc \
 psql -h 127.0.0.1 -U postgres -d postgres -tAc \
   "select rolname, rolsuper, rolbypassrls, rolcanlogin from pg_roles
     where rolname ~ '^(sgtm|rol_)' order by 1"
-#   rol_carga_parametros|f|f|t · sgtm_app|f|f|t · sgtm_owner|f|f|t · sgtm_readonly|f|f|f
+#   rol_carga_parametros|f|f|t · kamayuk_app|f|f|t · kamayuk_owner|f|f|t · kamayuk_readonly|f|f|f
 
 # Las extensiones, que van EN CADA BASE y no en el cluster
 psql -h 127.0.0.1 -U postgres -d catastro -tAc "select extname from pg_extension order by 1"
@@ -119,7 +119,7 @@ curl -s http://localhost:8180/realms/sgtm-ciudadano/.well-known/openid-configura
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/rentas
 ```
 
-`sgtm_readonly` sale con `rolcanlogin = f`, y es correcto: un rol de lectura sin `LOGIN` no se usa
+`kamayuk_readonly` sale con `rolcanlogin = f`, y es correcto: un rol de lectura sin `LOGIN` no se usa
 hasta que alguien decida darle credencial.
 
 ### 4.2 `--wait` vuelve antes de que Keycloak sirva
@@ -162,7 +162,7 @@ nombres distintos la firma valida, el emisor no cuadra, y el 401 no dice por qu�
 
 No se versiona, y si alguna vez aparece en un diff, la clave que lleve deja de ser una clave: hay
 que **rotarla**, no borrarla del commit. Una clave **distinta por rol**: si el superusuario,
-`sgtm_owner` y `sgtm_app` comparten clave, la separación de privilegios entera es decorativa.
+`kamayuk_owner` y `kamayuk_app` comparten clave, la separación de privilegios entera es decorativa.
 
 **Ningún secreto de la aplicación vive en el estado de Pulumi** (ADR-0011 §3): los genera
 `infra/secretos/bootstrap-secretos.sh` hablando con el API de Kubernetes por `kubectl`.

@@ -5,7 +5,7 @@ package kamayuk.comun.verificaciones.muestras.infraestructura;
  *
  * <p>Asi es como se incumple. El contribuyente presento dos veces por error, o ventanilla registro
  * la DJ contra el predio equivocado, y la salida corta es que la fila desaparezca. Compila, y en
- * una base que le concediera {@code DELETE} a {@code sgtm_app} funcionaria.
+ * una base que le concediera {@code DELETE} a {@code kamayuk_app} funcionaria.
  *
  * <p>Las dos sentencias son las dos formas en que el defecto aparece:
  *
@@ -23,11 +23,11 @@ package kamayuk.comun.verificaciones.muestras.infraestructura;
  * <p><b>Por que aqui no hay ningun {@code UPDATE}, y es deliberado.</b> {@code declaracion_jurada}
  * entra en {@code TABLAS_PROTEGIDAS} y <b>no</b> en {@code TABLAS_INMUTABLES}: su columna {@code
  * estado} si se actualiza en el sitio —observar, anular y sustituir son eso—, y quien lo permite es
- * V54, que le retira a {@code sgtm_app} el {@code UPDATE} sobre la tabla y le concede el de esa
+ * V54, que le retira a {@code kamayuk_app} el {@code UPDATE} sobre la tabla y le concede el de esa
  * columna y solo esa. Las demas columnas —numero, fecha, tipo, predio, contribuyente, fuera de
  * plazo— no las protege este escaner sino el motor, y eso se comprueba ejecutando: {@code
- * RegistrarDeclaracionJuradaTest} lanza el {@code UPDATE} por SQL directo como {@code sgtm_app} y
- * exige un {@code 42501}.
+ * RegistrarDeclaracionJuradaTest} lanza el {@code UPDATE} por SQL directo como {@code kamayuk_app}
+ * y exige un {@code 42501}.
  *
  * <p>Vive en {@code src/test}: el escaner solo recorre {@code src/main}, asi que no puede romper el
  * build por accidente. La revisa {@link

@@ -158,11 +158,11 @@ spec:
               value: batch
             - name: KAMAYUK_DB_URL
               value: jdbc:postgresql://sgtm-${AMBIENTE}-postgres:5432/sgtm
-            # sgtm_app basta: conjunto_parametros y conjunto_parametro_detalle son tablas que
+            # kamayuk_app basta: conjunto_parametros y conjunto_parametro_detalle son tablas que
             # la aplicacion escribe (V7). Publicar un valor normativo si exigiria
             # rol_carga_parametros, y este proceso no publica ninguno.
             - name: KAMAYUK_DB_USUARIO
-              value: sgtm_app
+              value: kamayuk_app
             - name: KAMAYUK_DB_CLAVE
               valueFrom:
                 secretKeyRef:

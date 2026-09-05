@@ -15,7 +15,7 @@
 # extensiones del archivo y las crea una a una (C-10). Las otras tres no las hacia nadie —quedo
 # escrito como hueco 4 de C-10—, con dos consecuencias que no se parecen entre si:
 #
-#   * `sgtm_owner` no tiene `CREATE` sobre `public` de esas bases, asi que **la migracion falla**
+#   * `kamayuk_owner` no tiene `CREATE` sobre `public` de esas bases, asi que **la migracion falla**
 #     en la primera sentencia que cree una tabla;
 #   * y `CONNECT` sigue concedido a PUBLIC, de modo que TODO rol del cluster puede abrir una
 #     sesion contra la base de cualquier sistema. No veria filas —RLS esta forzada— pero seria
