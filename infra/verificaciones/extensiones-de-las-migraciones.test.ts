@@ -126,8 +126,11 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
     expect(cuantas).toEqual({
       "infrastructure (copia del esquema del monolito)": 68,
       sgtm: 68,
-      rentas: 11,
-      catastro: 4,
+      // rentas 12 y catastro 5 desde C-8: el buzon de salida del emisor y la cola de muertos
+      // del ingestor. Cuando esto se ponga rojo lo que hay que hacer NO es actualizar el numero:
+      // es mirar que migracion entro y comprobar que declaro las extensiones que usa.
+      rentas: 12,
+      catastro: 5,
       normativa: 1,
       caja: 2,
     });

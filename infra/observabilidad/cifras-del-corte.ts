@@ -123,11 +123,13 @@ export const CIFRAS_DEL_CORTE: readonly CifraDelCorte[] = [
                                 AND v.predio_id = p.predio_id
                                 AND v.ejercicio = :ejercicio)`,
     fuente: {
-      clase: "sin-emisor",
-      motivo:
-        "ni `predio_ref` ni `valuacion_predio` tienen escritor en produccion: `INSERT INTO` " +
-        "sobre las dos aparece solo en pruebas y fixtures, y `catastro` no emite ningun evento",
-      loCierra: "el ingestor de eventos (P5C hueco 3, P5E hueco 4)",
+      clase: "viva",
+      escritor:
+        "el ingestor de C-8: `catastro` publica `PREDIO_PROYECTADO` y `VALUACION_PUBLICADA` a su " +
+        "outbox transaccional (`catastro_evento`, su `V5`) y `CorrerElIngestor` los aplica " +
+        "conectado como `rol_ingestor_catastro`, que es el unico rol que puede escribir las dos " +
+        "tablas. Medido de extremo a extremo: los hechos que la prueba de ingestion aplica los " +
+        "emitio `catastro` de verdad, contra su propia base",
     },
     responsable: "Responsable de Catastro (padron y valuacion)",
     runbook: "docs/B0-operacion/runbooks/la-valuacion-del-ejercicio-no-llego.md",
@@ -143,12 +145,11 @@ export const CIFRAS_DEL_CORTE: readonly CifraDelCorte[] = [
     // `CorrerLaAntiEntropia`, que es el trabajo por lotes de P6 punto 4.
     sql: "-- la produce `CorrerLaAntiEntropia` comparando dos sistemas; no es una consulta",
     fuente: {
-      clase: "sin-emisor",
-      motivo:
-        "el mecanismo existe desde P6 y la proyeccion contra la que compara no la alimenta " +
-        "nadie: hoy la comparacion diria «todos los sectores faltan en la proyeccion», que es " +
-        "cierto y no es lo que esta cifra quiere decir",
-      loCierra: "el ingestor de eventos, igual que la anterior",
+      clase: "viva",
+      escritor:
+        "`CorrerLaAntiEntropia` compara las huellas por sector de `catastro` contra `predio_ref`, " +
+        "y desde C-8 esa proyeccion la alimenta el ingestor. Hasta C-8 la comparacion decia " +
+        "«todos los sectores faltan», que era cierto y no era lo que esta cifra quiere decir",
     },
     responsable: "Responsable de Catastro (padron y valuacion)",
     runbook: "docs/B0-operacion/runbooks/la-proyeccion-de-catastro-no-cuadra.md",

@@ -55,17 +55,20 @@ describe("las seis cifras del corte", () => {
    * <p>Cuando esto se ponga rojo, lo que hay que hacer NO es actualizar el numero: es leer que
    * cifra cambio de lado y por que.
    */
-  it("y cuatro tienen emisor y dos no, medido y no supuesto", () => {
+  it("y desde C-8 las SEIS tienen emisor, medido y no supuesto", () => {
     expect(cifrasVivas().map((cifra) => cifra.id)).toEqual([
       "retraso-del-outbox",
+      "valuacion-que-falta",
+      "huellas-discrepantes",
       "eventos-muertos",
       "turnos-con-diferencia",
       "determinaciones-de-otro-conjunto",
     ]);
-    expect(cifrasSinEmisor().map((cifra) => cifra.id)).toEqual([
-      "valuacion-que-falta",
-      "huellas-discrepantes",
-    ]);
+    // Las dos que faltaban las cierra C-8: `catastro` publica a un outbox transaccional y el
+    // ingestor de `rentas` lo aplica con `rol_ingestor_catastro`. Lo que ESTA prueba fija es el
+    // censo; que el emisor exista de verdad lo miden las dos baterias de C-8, contra PostgreSQL
+    // real y con los hechos que el otro repositorio emitio.
+    expect(cifrasSinEmisor()).toEqual([]);
   });
 
   it("cada una dice quien la escribe, o por que no la escribe nadie y quien lo cierra", () => {
