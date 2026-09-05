@@ -1,7 +1,8 @@
 # C-9a — El CI no puede clonar repositorios hermanos
 
-> **Estado: cerrado, con tres huecos declarados en §6** —el tercero es un rojo ANTERIOR a esto,
-> de C-7, que aparecio al medir el criterio 4—. Los **diez** `path: ../` de los cinco
+> **Estado: el defecto de C-9a esta cerrado y COMPROBADO contra el CI de verdad; el flujo
+> `Infraestructura` sigue rojo por una causa DISTINTA que este arreglo destapo, y que no se puede
+> cerrar desde aqui (§7, hueco 4). Cuatro huecos declarados en §6 y §7.** Los **diez** `path: ../` de los cinco
 > repositorios estan arreglados, y lo que decide donde estan los clones **deja de poder
 > equivocarse en silencio**: una guarda nueva lee los flujos de los **seis** clones y se pone roja
 > si un `actions/checkout` apunta fuera del espacio de trabajo, nombrando el archivo y la linea.
@@ -195,6 +196,8 @@ Se recorrieron todos los sitios que resuelven una raiz, y dos no son del corte:
 
 ## 6. Huecos declarados
 
+> El cuarto —el token de los clones privados— esta en §7, junto a la medida que lo destapo.
+
 1. **Los cuatro repositorios de sistema quedan arreglados y SIN PUBLICAR.** La unica publicacion
    autorizada era `infrastructure`. Asi que de los diez sitios, los cinco de aqui estan
    **comprobados contra el CI de verdad** y los cuatro de alla estan comprobados **solo contra la
@@ -228,3 +231,60 @@ Se recorrieron todos los sitios que resuelven una raiz, y dos no son del corte:
    meterlo dentro de este commit esconderia un hallazgo real en un cambio que no es el suyo. Queda
    dicho aqui para que sea el siguiente, y **es la misma leccion que C-9a**: el unico sintoma
    estaba del otro lado del `push`.
+
+---
+
+## 7. Lo que dijo el CI de verdad, tras publicar
+
+`infrastructure` se empujo a `main` (`9b100ff`) y corrieron los dos flujos.
+
+### «Librerias de backend» — **verde**
+
+Run `33950853544`, `success`. Era el otro rojo de la primera publicacion, el de `spotlessCheck`
+(§4), y queda cerrado.
+
+### «Infraestructura» — **rojo, y por otra cosa**
+
+Run `33950853560`. El paso a paso lo dice todo:
+
+```
+X Lint, tipos y pruebas in 38s
+  ✓ Run actions/checkout@v4     ← este repositorio, en `path: infrastructure`
+  ✓ Run actions/checkout@v4     ← `hneyra/sgtm`, en `path: sgtm`
+  X Run actions/checkout@v4     ← `hneyra/rentas`
+```
+
+**El defecto de C-9a esta cerrado, y esto lo demuestra**: antes el flujo moria en 9 segundos en el
+segundo checkout, con «Repository path … is not under …», y ahora ese mismo checkout **entra**.
+Los `path` ya no se rechazan: el error de ahora ni siquiera es de rutas.
+
+Lo que falla es lo siguiente, y es una barrera distinta:
+
+```
+Working directory is '/home/runner/work/infrastructure/infrastructure/rentas'
+...
+Retrieving the default branch name
+Not Found - https://docs.github.com/rest/repos/repos#get-a-repository
+##[error]Not Found - …
+```
+
+**`hneyra/rentas` existe y es PRIVADO** —comprobado con `gh repo view`: los cinco del corte son
+privados y solo `hneyra/sgtm` es publico—, y el `GITHUB_TOKEN` de un flujo **solo alcanza al
+repositorio que lo ejecuta**. Por eso `sgtm` entra y `rentas` no; el «Not Found» no es que falte,
+es que el token no lo ve.
+
+**No se puede cerrar desde aqui.** El repositorio no tiene ni un secreto declarado
+(`gh secret list` devuelve vacio), y crear la credencial es del dueño. Se deja preparado, y se dice
+exactamente que se comprobo y que no:
+
+- los cuatro checkouts pasan a pedir `token: ${{ secrets.CLONES_TOKEN || github.token }}`. Un
+  secreto sin declarar vale la cadena vacia, asi que **hoy esa linea no cambia nada**: se sigue
+  usando `github.token` y el fallo es el mismo, en el mismo sitio. Eso es lo unico que se puede
+  verificar hoy, y se verifica **corriendolo**;
+- el dia que exista `CLONES_TOKEN` —un PAT de solo lectura sobre los cuatro, o un token de GitHub
+  App— el flujo lo usa sin tocar una linea.
+
+**Lo que NO se hizo, y por que**: poner `continue-on-error` en esos checkouts dejaria el flujo en
+verde y las guardas mirando un clon que no esta. Es exactamente lo que `clonDe` se niega a hacer
+desde #675 —«un ambiente cuya deriva no se puede medir es el estado que esto existe para
+impedir»—, y seria cambiar un rojo honesto por un verde falso.

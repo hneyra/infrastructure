@@ -202,25 +202,42 @@ jobs:
       #
       # `fetch-depth: 1` a proposito, al reves que los dos de arriba: aqui no se cuenta
       # nada en el arbol de git de otro commit; se leen los archivos del arbol de trabajo.
+      #
+      # **Y los cuatro son repositorios PRIVADOS**, al reves que `hneyra/sgtm`. El
+      # `GITHUB_TOKEN` de un flujo solo alcanza al repositorio que lo ejecuta, asi que
+      # sin credencial estos cuatro checkouts mueren con un `404 Not Found` al buscar la
+      # rama por omision — medido en la corrida `33950853560`, donde `infrastructure` y
+      # `sgtm` (publico) entraron y `rentas` no—.
+      #
+      # `secrets.CLONES_TOKEN` es la credencial de lectura sobre los cuatro. **Hoy no
+      # existe**, y por eso esta escrito con repliegue: un secreto sin declarar vale la
+      # cadena vacia, asi que `|| github.token` deja EXACTAMENTE el comportamiento
+      # actual y no lo cambia hasta que alguien cree el secreto. Las dos salidas son
+      # crear ese secreto (un PAT de solo lectura, o un token de GitHub App) o hacer
+      # publicos los cuatro repositorios; la segunda es una decision que no es de CI.
       - uses: actions/checkout@v4
         with:
           repository: hneyra/rentas
           path: rentas
+          token: ${{ secrets.CLONES_TOKEN || github.token }}
 
       - uses: actions/checkout@v4
         with:
           repository: hneyra/catastro
           path: catastro
+          token: ${{ secrets.CLONES_TOKEN || github.token }}
 
       - uses: actions/checkout@v4
         with:
           repository: hneyra/normativa
           path: normativa
+          token: ${{ secrets.CLONES_TOKEN || github.token }}
 
       - uses: actions/checkout@v4
         with:
           repository: hneyra/caja
           path: caja
+          token: ${{ secrets.CLONES_TOKEN || github.token }}
 
       - uses: actions/setup-node@v4
         with:
