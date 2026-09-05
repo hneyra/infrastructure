@@ -167,6 +167,23 @@ Medido sobre el manifiesto: las **14** cargas de los cuatro sistemas —cuatro `
 funciona porque los paquetes son públicos. El día que se hagan privados, los catorce quedan en
 `ImagePullBackOff`.
 
+**Y «sin credencial» no es «su `spec` no declara `imagePullSecrets`».** Creerlo daba un falso
+positivo sobre el monolito, y CI lo enseñó: la credencial de `ghcr.io` no vive en ningún pod.
+`index.ts` crea el `Secret` `<amb>-registro-credenciales` y **parchea el `ServiceAccount`
+`default`** del espacio de nombres de la plataforma, de donde la heredan todos sus pods —ninguno
+declara `serviceAccountName`— (issue #257). Comprobado contra `prod`:
+
+```
+$ kubectl -n sgtm-prod get sa default -o jsonpath='{.imagePullSecrets}'
+[{"name":"sgtm-prod-registro-credenciales"}]
+```
+
+Así que el monolito **sí** puede traerse sus tres imágenes privadas. Lo que no puede es ninguno de
+los cuatro sistemas: desde ADR-0031 cada uno vive en **su** espacio de nombres, y ni el `Secret` ni
+el parche llegan allí. Esa exención está atada al código —`espaciosConCredencialDeRegistro()` lee
+`index.ts`— y no escrita a mano: apuntar el parche a `kamayuk-rentas-stg` pone la prueba roja
+(«expected `['"kamayuk-rentas-stg"']` to deeply equal `['namespace']`»).
+
 Las dos cosas juntas son una sola condición, y el guion la mide y la dice en cada línea:
 
 ```

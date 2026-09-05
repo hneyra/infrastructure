@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { ENVIRONMENTS, SISTEMAS_CON_IMAGEN, claveDeVersion } from "../config";
 import { SISTEMAS } from "../descriptor/sistemas";
 import {
+  espaciosConCredencialDeRegistro,
   etiquetasQueNoIdentifican,
+  podsSinCredencial,
   imagenesPedidas,
   imagenesQuePublica,
   loQueNadiePublica,
@@ -161,5 +163,41 @@ describe("la lista de sistemas con version declarada es la de los descriptores",
       "versionDeNormativa",
       "versionDeCaja",
     ]);
+  });
+});
+
+describe("quien puede traerse una imagen privada", () => {
+  /**
+   * La credencial de `ghcr.io` no vive en ningun `spec`: `index.ts` parchea el `ServiceAccount`
+   * `default` del espacio de nombres de LA PLATAFORMA (#257). Esta prueba ata esa exencion al
+   * codigo — la usa `comprobar-imagenes.sh` para no acusar al monolito de no poder traerse sus
+   * tres imagenes privadas, que si puede.
+   */
+  it("el parche llega a UN espacio de nombres, y es el de la plataforma", () => {
+    expect(espaciosConCredencialDeRegistro()).toEqual(["namespace"]);
+  });
+
+  /**
+   * Y la otra mitad, que es el hueco: los cuatro sistemas viven en el suyo desde ADR-0031, y ni
+   * el `Secret` ni el parche llegan alli. Hoy funciona porque sus paquetes son publicos; hacerlos
+   * privados —que es lo que deberian ser— deja sus catorce cargas en `ImagePullBackOff`.
+   *
+   * Esta prueba NO fosiliza el estado: exige que, mientras ningun pod de un sistema declare
+   * credencial propia, el manifiesto no contenga ninguna — de modo que quien la anada tenga que
+   * venir aqui y decidir si el hueco queda cerrado.
+   */
+  it.each(ENVIRONMENTS)("y a ninguno de los cuatro sistemas, en «%s»", (ambiente) => {
+    const sin = podsSinCredencial(ambiente);
+    // Las CATORCE cargas de los cuatro sistemas: cuatro Deployment, ocho Job y dos CronJob.
+    expect(sin).toHaveLength(14);
+    expect([...new Set(sin.map((p) => p.espacio))].sort()).toEqual([
+      `kamayuk-caja-${ambiente}`,
+      `kamayuk-catastro-${ambiente}`,
+      `kamayuk-normativa-${ambiente}`,
+      `kamayuk-rentas-${ambiente}`,
+    ]);
+    // Y ninguna es de la plataforma: los tres del monolito heredan la credencial del
+    // `ServiceAccount` `default`, que es lo que la prueba de arriba ata a `index.ts`.
+    expect(sin.filter((p) => p.espacio === `kamayuk-${ambiente}`)).toEqual([]);
   });
 });

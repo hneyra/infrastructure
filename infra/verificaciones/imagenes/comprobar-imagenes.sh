@@ -61,14 +61,27 @@ fi
 
 # Las referencias las emite el mismo codigo que compone el manifiesto: preguntar por una lista
 # escrita a mano seria preguntar por otra cosa. Y de paso se anota, POR REFERENCIA, si algun pod
-# que la trae lo hace **sin credencial de registro** (`imagePullSecrets`): esa es la mitad de la
-# pregunta que decide si el pod arranca cuando la imagen es privada, y no se puede contestar sin
-# mirar el manifiesto.
+# que la trae lo hace **sin credencial de registro**: esa es la mitad de la pregunta que decide si
+# el pod arranca cuando la imagen es privada, y no se puede contestar sin mirar el manifiesto.
+#
+# «Sin credencial» NO es «su `spec` no declara `imagePullSecrets`», y creerlo daba un falso
+# positivo sobre el monolito. La credencial de `ghcr.io` no vive en ningun pod: `index.ts` crea el
+# `Secret` `<amb>-registro-credenciales` y **parchea el `ServiceAccount` `default`** del espacio de
+# nombres de la plataforma, que es de donde la heredan todos sus pods —ninguno declara
+# `serviceAccountName`— (issue #257). Asi que un pod de la plataforma la tiene aunque su `spec` no
+# diga nada.
+#
+# Lo que NO la tiene son los cuatro sistemas: desde ADR-0031 cada uno vive en **su** espacio de
+# nombres, y ni el `Secret` ni el parche llegan alli. Hoy sus imagenes son publicas y por eso
+# funciona; el dia que se hagan privadas, sus catorce cargas quedan en `ImagePullBackOff`. Esa
+# pareja de hechos es lo que esta columna mide.
 REFERENCIAS=$(cd "$INFRA" && yarn --silent manifiestos --ambiente "$AMBIENTE" | python3 -c '
 import json, sys
 
 d = json.load(sys.stdin)
 sin_credencial = {}
+# El espacio de nombres cuyo ServiceAccount `default` lleva la credencial, puesta por `index.ts`.
+plataforma = "kamayuk-" + sys.argv[1]
 
 def especificaciones(m):
     k = m.get("kind")
@@ -80,8 +93,9 @@ def especificaciones(m):
         yield m["spec"]
 
 for m in d["items"]:
+    espacio = m.get("metadata", {}).get("namespace", "")
     for spec in especificaciones(m):
-        credencial = bool(spec.get("imagePullSecrets"))
+        credencial = bool(spec.get("imagePullSecrets")) or espacio == plataforma
         for c in list(spec.get("containers", [])) + list(spec.get("initContainers", [])):
             imagen = c.get("image", "")
             if not imagen.startswith("ghcr.io/"):
@@ -90,7 +104,7 @@ for m in d["items"]:
 
 for imagen in sorted(sin_credencial):
     print(imagen, "sin-credencial" if sin_credencial[imagen] else "con-credencial")
-')
+' "$AMBIENTE")
 
 if [ -z "$REFERENCIAS" ]; then
   echo "NO SE PUEDE COMPROBAR: el manifiesto de «${AMBIENTE}» no pide ninguna imagen de ghcr.io." >&2
@@ -131,10 +145,12 @@ while IFS=' ' read -r referencia credencial; do
       echo "OK        $referencia  [$visibilidad, $credencial]"
       if [ "$visibilidad" = "privada" ] && [ "$credencial" = "sin-credencial" ]; then
         echo "FALTA CREDENCIAL $referencia" >&2
-        echo "          La imagen es privada y algun pod que la trae no declara" >&2
-        echo "          \`imagePullSecrets\`: ese pod no puede bajarla y queda en" >&2
-        echo "          ImagePullBackOff. Remedio: darle al namespace su Secret de tipo" >&2
-        echo "          dockerconfigjson y referenciarlo, o publicar el paquete." >&2
+        echo "          La imagen es privada y algun pod que la trae vive en un espacio de" >&2
+        echo "          nombres sin credencial de registro: ni su \`spec\` declara" >&2
+        echo "          \`imagePullSecrets\` ni es el de la plataforma, cuyo ServiceAccount" >&2
+        echo "          \`default\` la lleva (issue #257). Ese pod no puede bajarla y queda en" >&2
+        echo "          ImagePullBackOff. Remedio: replicar el Secret dockerconfigjson en ese" >&2
+        echo "          espacio de nombres y parchear su ServiceAccount, o publicar el paquete." >&2
         FALLO=1
       fi
       ;;

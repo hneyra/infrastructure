@@ -251,3 +251,95 @@ export function etiquetasQueNoIdentifican(pedidas: readonly ImagenPedida[]): str
         "reconstrucciones del mismo stack dan dos sistemas distintos.",
     );
 }
+
+/**
+ * Los espacios de nombres cuyos pods tienen credencial para `ghcr.io`, y de donde sale el dato.
+ *
+ * **No es «los que declaran `imagePullSecrets` en el pod»**, y creerlo daba un falso positivo
+ * sobre el monolito: la credencial no vive en ningun `spec`. `index.ts` crea el `Secret`
+ * `<amb>-registro-credenciales` y **parchea el `ServiceAccount` `default`** del espacio de nombres
+ * de la plataforma, de donde la heredan todos sus pods —ninguno declara `serviceAccountName`—
+ * (issue #257).
+ *
+ * Y ese parche llega a **uno** solo. Desde ADR-0031 cada sistema vive en el suyo, y ahi no hay ni
+ * `Secret` ni parche: hoy funciona porque sus paquetes son publicos.
+ *
+ * Se lee del propio `index.ts` en vez de escribirse aqui, porque esta es justo la clase de
+ * exencion que se queda rancia: el dia que alguien replique la credencial en los cuatro espacios,
+ * esta funcion tiene que enterarse.
+ */
+export function espaciosConCredencialDeRegistro(): string[] {
+  const fuente = readFileSync(join(raizDelRepositorio(), "infra", "index.ts"), "utf8");
+  const patch = /new k8s\.core\.v1\.ServiceAccountPatch\(([\s\S]*?)\n\);/g;
+  const espacios: string[] = [];
+  for (const [, cuerpo] of fuente.matchAll(patch)) {
+    if (cuerpo === undefined) continue;
+    if (!cuerpo.includes("imagePullSecrets")) continue;
+    // `namespace,` a secas es el de la plataforma: `index.ts` lo tiene en una constante con ese
+    // nombre. Cualquier otra forma se devuelve tal cual para que la prueba la nombre en vez de
+    // darla por buena.
+    const casa = /^\s*namespace(,|:\s*(?<valor>[^,\n]+),)/m.exec(cuerpo);
+    espacios.push(casa?.groups?.["valor"]?.trim() ?? "namespace");
+  }
+  return espacios;
+}
+
+/** Un pod que trae una imagen del producto sin credencial propia, y donde vive. */
+export interface PodSinCredencial {
+  espacio: string;
+  donde: string;
+  imagenes: string[];
+}
+
+/**
+ * Las cargas que traen una imagen del producto **fuera** del espacio de nombres de la plataforma
+ * y sin `imagePullSecrets` propio: exactamente las que no podrian bajarla si el paquete fuera
+ * privado.
+ */
+export function podsSinCredencial(ambiente: Environment): PodSinCredencial[] {
+  const plataforma = `kamayuk-${ambiente}`;
+  const salida: PodSinCredencial[] = [];
+
+  for (const m of manifiestosDelAmbiente(invariantesDe(ambiente))) {
+    const manifiesto = m as unknown as Record<string, unknown>;
+    const meta = manifiesto["metadata"] as { namespace?: string; name?: string } | undefined;
+    const espacio = meta?.namespace ?? "";
+    if (espacio === plataforma) continue;
+
+    const spec = manifiesto["spec"] as Record<string, unknown> | undefined;
+    const plantilla =
+      manifiesto["kind"] === "CronJob"
+        ? (
+            (
+              (spec?.["jobTemplate"] as { spec?: { template?: { spec?: unknown } } } | undefined)
+                ?.spec ?? {}
+            ).template as { spec?: unknown } | undefined
+          )?.spec
+        : manifiesto["kind"] === "Deployment" ||
+            manifiesto["kind"] === "Job" ||
+            manifiesto["kind"] === "StatefulSet"
+          ? (spec?.["template"] as { spec?: unknown } | undefined)?.spec
+          : manifiesto["kind"] === "Pod"
+            ? spec
+            : undefined;
+
+    const pod = plantilla as
+      | {
+          imagePullSecrets?: unknown[];
+          containers?: { image?: string }[];
+          initContainers?: { image?: string }[];
+        }
+      | undefined;
+    if (pod === undefined) continue;
+    if ((pod.imagePullSecrets ?? []).length > 0) continue;
+
+    const imagenes = [...(pod.containers ?? []), ...(pod.initContainers ?? [])]
+      .map((c) => c.image ?? "")
+      .filter((i) => i.startsWith(REGISTRO_PROPIO));
+    if (imagenes.length > 0) {
+      salida.push({ espacio, donde: `${String(manifiesto["kind"])}/${meta?.name ?? ""}`, imagenes });
+    }
+  }
+
+  return salida.sort((a, b) => a.donde.localeCompare(b.donde));
+}
