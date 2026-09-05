@@ -1,0 +1,38 @@
+# Viola: un `actions/checkout` que escribe FUERA del espacio de trabajo.
+#
+# Es el estado exacto en que la primera publicacion de `infrastructure` fallo en 9
+# segundos: `path: ../sgtm` resuelve a `/home/runner/work/infrastructure/sgtm`, que no
+# esta bajo `/home/runner/work/infrastructure/infrastructure`, y `actions/checkout` se
+# niega.
+#
+# Se comenta aqui un `path: ../mencionado-en-un-comentario` a proposito: la guarda no
+# puede marcarlo, porque el propio `infra.yml` explica en un comentario por que ya no
+# tiene ninguno.
+name: Muestra que lo viola
+
+on: [push]
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: hneyra/sgtm
+          path: ../sgtm
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          # NO es un checkout: puede apuntar donde quiera.
+          cache-dependency-path: ../otro/yarn.lock
+
+      - uses: actions/cache@v4
+        with:
+          # Tampoco es un checkout.
+          path: ../fuera/del/espacio
+          key: da-igual

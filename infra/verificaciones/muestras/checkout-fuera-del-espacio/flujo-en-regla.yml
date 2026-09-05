@@ -1,0 +1,30 @@
+# EN REGLA: la misma disposicion de hermanos, con el espacio de trabajo haciendo de padre.
+#
+# Es el contraste, y hace falta: una guarda que marcara todo `path:` pasaria la muestra
+# de arriba sin proteger nada.
+name: Muestra en regla
+
+on: [push]
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infrastructure/infra
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: infrastructure
+          fetch-depth: 0
+
+      - uses: actions/checkout@v4
+        with:
+          repository: hneyra/sgtm
+          path: sgtm
+          fetch-depth: 0
+
+      - uses: actions/cache@v4
+        with:
+          path: ../fuera/del/espacio
+          key: da-igual

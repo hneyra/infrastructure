@@ -2,7 +2,6 @@ package kamayuk.comun.verificaciones.contrato;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -38,8 +37,8 @@ import org.junit.jupiter.api.Test;
  *
  * <ul>
  *   <li>un lote <b>sin sector</b>, que fija que el nulo es la cadena vacia;
- *   <li>dos lotes cuyos campos, concatenados sin separador, darian lo mismo — el par que hace
- *       falta para que el separador signifique algo;
+ *   <li>dos lotes cuyos campos, concatenados sin separador, darian lo mismo — el par que hace falta
+ *       para que el separador signifique algo;
  *   <li>un sector con <b>dos</b> lotes, que es el unico caso en que el orden de combinacion se
  *       puede observar: con uno solo, cualquier orden da lo mismo;
  *   <li>una direccion con tildes y una «ñ», que fija que se codifica en UTF-8 y no en la
@@ -63,7 +62,11 @@ public abstract class VectoresDeHuellaTestBase {
 
     /** La implementacion de este repositorio, para un lote. */
     protected abstract String huellaDeUnLote(
-            long predioId, String codRefCatastral, String direccion, String sectorCodigo, String estado);
+            long predioId,
+            String codRefCatastral,
+            String direccion,
+            String sectorCodigo,
+            String estado);
 
     /** La implementacion de este repositorio, para un sector. */
     protected abstract String huellaDeUnSector(List<String> huellasDeSusLotes);
@@ -136,7 +139,8 @@ public abstract class VectoresDeHuellaTestBase {
         alReves.put("huella", huellaDeUnSector(deSc1.reversed()));
         documento.put("sectoresAlReves", List.of(alReves));
 
-        String producido = JSON.writerWithDefaultPrettyPrinter().writeValueAsString(documento) + "\n";
+        String producido =
+                JSON.writerWithDefaultPrettyPrinter().writeValueAsString(documento) + "\n";
         Path destino = archivo();
 
         if (Boolean.getBoolean(REGENERAR) && esQuienPublica()) {
@@ -156,10 +160,10 @@ public abstract class VectoresDeHuellaTestBase {
         assertThat(Files.readString(destino, StandardCharsets.UTF_8))
                 .as(
                         "la huella que calcula este repositorio no es la del archivo de vectores."
-                            + " Los dos lados de la anti-entropia comparan huellas calculadas por"
-                            + " separado: si no son identicas hasta el byte, o todos los sectores"
-                            + " salen discrepantes o ninguno, y las dos cosas se leen como un"
-                            + " problema de datos siendo un problema de codigo.")
+                                + " Los dos lados de la anti-entropia comparan huellas calculadas por"
+                                + " separado: si no son identicas hasta el byte, o todos los sectores"
+                                + " salen discrepantes o ninguno, y las dos cosas se leen como un"
+                                + " problema de datos siendo un problema de codigo.")
                 .isEqualTo(producido);
     }
 
@@ -167,8 +171,8 @@ public abstract class VectoresDeHuellaTestBase {
      * Y el separador tiene que hacer algo.
      *
      * <p>El contraste que impide que los vectores pasen con un algoritmo que concatena a secas: el
-     * par de lotes (4) y (5) da la misma cadena sin separador, asi que sus huellas <b>tienen</b> que
-     * diferir. Sin esta asercion, quitar el separador regeneraria un archivo distinto pero
+     * par de lotes (4) y (5) da la misma cadena sin separador, asi que sus huellas <b>tienen</b>
+     * que diferir. Sin esta asercion, quitar el separador regeneraria un archivo distinto pero
      * internamente coherente, y los dos lados seguirian de acuerdo — en un algoritmo que confunde
      * dos predios.
      */
@@ -219,10 +223,10 @@ public abstract class VectoresDeHuellaTestBase {
 
     private static final String PROCEDENCIA =
             "ARCHIVO GENERADO — no editar a mano. Fija el algoritmo de la huella de la"
-                + " anti-entropia entre `catastro` y `rentas` (P6, punto 4). Lo publica `rentas` y"
-                + " lo reproducen las dos implementaciones, cada una en su propio CI: si dejan de"
-                + " coincidir, la comparacion de sectores da todo discrepante o nada discrepante, y"
-                + " las dos cosas se leen como un problema de datos siendo un problema de codigo.";
+                    + " anti-entropia entre `catastro` y `rentas` (P6, punto 4). Lo publica `rentas` y"
+                    + " lo reproducen las dos implementaciones, cada una en su propio CI: si dejan de"
+                    + " coincidir, la comparacion de sectores da todo discrepante o nada discrepante, y"
+                    + " las dos cosas se leen como un problema de datos siendo un problema de codigo.";
 
     /** Un caso de los vectores. */
     private record Lote(

@@ -1,0 +1,16 @@
+# Viola: una ruta ABSOLUTA tampoco esta bajo el espacio de trabajo.
+#
+# El error de `actions/checkout` es el mismo, y el sintoma tambien: solo aparece al
+# empujar.
+name: Muestra con ruta absoluta
+
+on: [push]
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: hneyra/rentas
+          path: /tmp/rentas

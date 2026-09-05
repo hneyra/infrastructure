@@ -136,11 +136,36 @@ jobs:
     if: github.event_name != 'schedule'
     defaults:
       run:
-        working-directory: infra
+        # `infrastructure/infra` y no `infra`, porque este trabajo se clona a si mismo
+        # DENTRO de un directorio con su nombre. El motivo esta en el comentario del
+        # primer `checkout`, y es el mismo por el que `sgtm/.github/workflows/backend.yml`
+        # ya se clonaba en `path: sgtm` desde P3.
+        working-directory: infrastructure/infra
 
     steps:
+      # ESTE repositorio, y **no** en la raiz del espacio de trabajo (C-9a).
+      #
+      # Las guardas de aqui leen archivos de los otros cinco clones, y los buscan donde
+      # estan en la maquina de quien las escribe: como HERMANOS de este repositorio
+      # (`clonDe` en `verificaciones/deriva-de-migraciones.ts`, `SISTEMAS`). Esa
+      # convencion es la misma que asume `settings.gradle.kts` de los cuatro backends
+      # para `librerias-backend`, y la que asume el `link:` de sus descriptores.
+      #
+      # En CI no se puede reproducir clonando hacia arriba: `actions/checkout` se NIEGA
+      # a escribir fuera de `GITHUB_WORKSPACE`, y la primera publicacion de este
+      # repositorio fallo en 9 segundos por eso —«Repository path
+      # '/home/runner/work/infrastructure/sgtm' is not under
+      # '/home/runner/work/infrastructure/infrastructure'»—. Asi que lo que se mueve es
+      # el ANFITRION: si este repositorio se clona en `<espacio>/infrastructure`, el
+      # padre pasa a ser `<espacio>` y los hermanos caben dentro. Una sola disposicion,
+      # la de siempre, y nada que decidir en tiempo de ejecucion.
+      #
+      # `checkout-en-el-espacio-de-trabajo.test.ts` lo comprueba en los cinco
+      # repositorios, para que el siguiente `path: ../` no vuelva a aparecer solo al
+      # empujar.
       - uses: actions/checkout@v4
         with:
+          path: infrastructure
           # Historial completo, desde #675: `deriva-de-migraciones.test.ts` cuenta las
           # migraciones que trae el `sha` que `applicationBootstrapVersion` declara y las
           # que declara `origin/main`, y las dos se cuentan en el arbol de git de ESE
@@ -157,12 +182,13 @@ jobs:
       # este checkout la prueba **no concluye** —dice que falta el clon y como traerlo—,
       # que es lo que se quiere: un numero plausible y equivocado seria peor.
       #
-      # `path: ../sgtm` porque los clones son hermanos, la misma convencion que
-      # `settings.gradle.kts` de los cuatro backends asume para `librerias-backend`.
+      # `path: sgtm`, hermano de `infrastructure` dentro del espacio de trabajo: la misma
+      # convencion de hermanos de siempre, ahora con el espacio de trabajo haciendo de
+      # padre.
       - uses: actions/checkout@v4
         with:
           repository: hneyra/sgtm
-          path: ../sgtm
+          path: sgtm
           fetch-depth: 0
 
       # Los CUATRO sistemas del corte, desde C-2. `extensiones-de-las-migraciones.ts`
@@ -179,28 +205,28 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: hneyra/rentas
-          path: ../rentas
+          path: rentas
 
       - uses: actions/checkout@v4
         with:
           repository: hneyra/catastro
-          path: ../catastro
+          path: catastro
 
       - uses: actions/checkout@v4
         with:
           repository: hneyra/normativa
-          path: ../normativa
+          path: normativa
 
       - uses: actions/checkout@v4
         with:
           repository: hneyra/caja
-          path: ../caja
+          path: caja
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: yarn
-          cache-dependency-path: infra/yarn.lock
+          cache-dependency-path: infrastructure/infra/yarn.lock
 
       - name: Instalar dependencias
         run: yarn install --frozen-lockfile

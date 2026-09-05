@@ -272,11 +272,19 @@ describe("el flujo corre cuando llega una migracion", () => {
    * un motivo que no es el que miden. Es el mismo reparto que `settings.gradle.kts` de
    * los cuatro backends: el clon hermano se exige, y su ausencia se dice con el comando
    * que la arregla en vez de saltarse la comprobacion.
+   *
+   * `path: sgtm` y no `path: ../sgtm` desde C-9a: `actions/checkout` se niega a escribir
+   * fuera del espacio de trabajo, asi que el hermano se consigue clonando ESTE
+   * repositorio en `path: infrastructure` y dejando que el espacio de trabajo haga de
+   * padre. La disposicion es la misma —hermanos—; lo que se movio es el anfitrion.
    */
-  it("y trae el clon del sistema desplegado", () => {
+  it("y trae el clon del sistema desplegado, como hermano dentro del espacio de trabajo", () => {
     const verificar = trabajoDeVerificar();
     expect(verificar).toContain("repository: hneyra/sgtm");
-    expect(verificar).toContain("path: ../sgtm");
+    expect(verificar).toContain("path: sgtm");
+    expect(verificar, "este repositorio tiene que clonarse en un directorio propio, o el hermano no cabe").toContain(
+      "path: infrastructure",
+    );
   });
 
   function trabajoDeVerificar(): string {
