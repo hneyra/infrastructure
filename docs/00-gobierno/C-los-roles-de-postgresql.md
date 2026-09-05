@@ -336,6 +336,14 @@ Se descartó a propósito la salida cómoda —que `verificar-rotacion.sh` acept
 aviso—: eso es exactamente la guarda que fosiliza el nombre viejo, y esta etapa existe para
 quitarlas.
 
+**Y la línea llegó a estar arreglada, y se deshizo a mano.** El renombrado en bloque no excluía
+`.github/`, así que tocó cinco líneas de `infra.yml` —cuatro comentarios y esa invocación— y con
+ellas H-1 quedaba cerrado. Se revirtió entera con `git checkout -- .github/` porque la instrucción
+es explícita y hay otro agente en ese archivo: un arreglo correcto entregado por el camino
+equivocado es un conflicto de merge para alguien, y un hueco declarado se arregla en una línea. Lo
+que se comprobó al revertir: `git status --short .github/` vacío, `D-plan-del-renombrado-desplegado.md`
+sin tocar, y el repositorio `sgtm` con **cero** cambios.
+
 ### H-2 · El acto sobre los clústeres que ya existen, que es de la etapa D
 
 `stg` y `prod` tienen hoy los roles con el nombre viejo. Este trabajo **no aplicó nada contra
@@ -415,6 +423,28 @@ Las seis cifras del criterio 4 salen **exactas**. Dos avisos sobre cómo se midi
   cuatro builds de Gradle: «Test timed out in 5000ms». Aislada, verde, y el suite entero en 648.
   Es exactamente el fenómeno que ese propio issue documenta —presión de CPU sostenida contra un
   plazo de cliente—, y no tiene nada que ver con este cambio.
+
+### Un hallazgo que no venía en el encargo: `librerias-backend` no la revisa el build de nadie
+
+`infrastructure/librerias-backend` es un **build propio** con su `gradlew`, su Spotless y su
+Checkstyle, y los cuatro backends la consumen como *composite build*. Los cuatro dieron
+`BUILD SUCCESSFUL` con seis archivos suyos —`ReglasDeArquitectura.java` y cinco muestras— ya
+reformateados por el renombrado y **fuera de norma**: un `include`d build compila lo que hace falta
+y **no corre el `check` del incluido**. Corriendo `./gradlew build` allí a mano:
+
+```
+BUILD FAILED in 754ms
+> The following files had format violations:
+      …/MuestraDeRepositorioQueEditaUnCierre.java
+Run './gradlew spotlessApply' to fix all violations.
+```
+
+O sea que **CI se habría puesto rojo en un trabajo distinto de los cinco que este trabajo ejecutó**,
+y las cuatro baterías verdes no lo habrían dicho. Se arregló con `spotlessApply` en la librería y se
+volvieron a construir los cuatro backends contra ella (verdes los cuatro). Queda anotado porque no
+es de esta etapa: **una librería compartida cuyo `check` no corre en el build de ningún consumidor
+es un hueco permanente**, y lo único que hoy la revisa es que alguien se acuerde de entrar a su
+directorio.
 
 ---
 
