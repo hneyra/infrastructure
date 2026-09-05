@@ -549,6 +549,12 @@ jobs:
       # sintoma seria una credencial rotada sin que nadie lo pidiera **en el unico rol
       # que publica cifras normativas**. La lista sale de `yarn secretos`, asi que la
       # siguiente entrada entra sola.
+      #
+      # **Y el namespace sale de la entrada, no del ambiente.** Hasta aqui esto componia
+      # `kamayuk-<ambiente>` para las veintiuna, y diez de ellas viven en el namespace de
+      # su sistema: el paso moria en la primera con un `NotFound`. Es el mismo fosil que
+      # `verificar-claves-distintas.sh` tenia en su `--namespace`, escrito por segunda vez
+      # aqui dentro — que es justo lo que pasa cuando la misma verdad vive en dos sitios.
       - name: Volver a correrlo no cambia nada, en NINGUNA clave del inventario
         working-directory: infrastructure/infra
         run: |
@@ -556,11 +562,15 @@ jobs:
           huellas_de() {
             yarn --silent secretos --ambiente "$1" | node -e '
               const datos = JSON.parse(require("fs").readFileSync(0, "utf8"));
-              process.stdout.write(datos.map((e) => e.secreto + " " + e.clave).join("\n"));
-            ' | while read -r secreto clave; do
+              // Con `join`, la ultima linea sale SIN salto y `while read` la descarta: la
+              // entrada final del inventario no se medía. Cada linea lleva el suyo.
+              for (const e of datos) {
+                process.stdout.write(e.namespace + " " + e.secreto + " " + e.clave + "\n");
+              }
+            ' | while read -r namespace secreto clave; do
               [ -n "$secreto" ] || continue
-              valor=$(kubectl -n "kamayuk-$1" get secret "$secreto" -o jsonpath="{.data.$clave}")
-              echo "$secreto/$clave $(printf '%s' "$valor" | base64 --decode | sha256sum | cut -c1-12)"
+              valor=$(kubectl -n "$namespace" get secret "$secreto" -o jsonpath="{.data.$clave}")
+              echo "$namespace/$secreto/$clave $(printf '%s' "$valor" | base64 --decode | sha256sum | cut -c1-12)"
             done
           }
           huellas_de stg > /tmp/antes.txt
