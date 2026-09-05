@@ -331,11 +331,26 @@ describe("el flujo corre cuando llega una migracion", () => {
    */
   it("y trae el clon del sistema desplegado, como hermano dentro del espacio de trabajo", () => {
     const verificar = trabajoDeVerificar();
-    expect(verificar).toContain("repository: hneyra/sgtm");
-    expect(verificar).toContain("path: sgtm");
     expect(verificar, "este repositorio tiene que clonarse en un directorio propio, o el hermano no cabe").toContain(
       "path: infrastructure",
     );
+    // Desde C-20 el clon no se escribe aqui: se PIDE. `verificar` es uno de los dos
+    // trabajos de todo el repositorio que necesitan el archivo historico, y lo dice en
+    // una linea; los otros trece solo necesitan los cuatro descriptores del corte.
+    expect(verificar).toContain("clonar-los-hermanos");
+    expect(verificar, "sin `con-sgtm` la accion no clona el archivo historico").toContain(
+      "con-sgtm: 'si'",
+    );
+
+    // Y la accion lo clona de verdad, con historial completo. Comprobar solo la linea de
+    // arriba dejaria que la peticion apuntara a una accion que no clona nada.
+    const accion = readFileSync(
+      join(raizDelRepositorio(), ".github/actions/clonar-los-hermanos/action.yml"),
+      "utf8",
+    );
+    expect(accion).toContain("repository: hneyra/sgtm");
+    expect(accion).toContain("path: sgtm");
+    expect(accion).toMatch(/path: sgtm\n\s+fetch-depth: 0/);
   });
 
   function trabajoDeVerificar(): string {

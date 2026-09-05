@@ -1,0 +1,14 @@
+# El defecto de C-20 en miniatura: el trabajo invoca `yarn manifiestos`, que carga
+# `descriptor/sistemas.ts`, y no clona a nadie. En CI muere con «Cannot find module
+# '../../../caja/infrastructure/src/descriptor'».
+name: Sin sus hermanos
+on: push
+jobs:
+  emite-manifiestos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Los dos ambientes
+        working-directory: infra
+        run: yarn --silent manifiestos --ambiente stg

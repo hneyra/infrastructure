@@ -145,37 +145,56 @@ export function checkoutsQueEscapan(fuente: string, archivo: string): CheckoutQu
 }
 
 /**
- * Los flujos de un clon: `.github/workflows/*.yml`, ordenados.
+ * Donde puede haber un `actions/checkout` en un clon: sus flujos y sus acciones locales.
  *
- * Si la carpeta no esta, **lanza diciendo cual y por que**, en vez de devolver la lista
- * vacia. Un clon sin flujos pasaria esta comprobacion en verde sin haber mirado nada, que
- * es el modo de fallo de #188 con `verificar-cuadros.mjs`; y hoy es un estado alcanzable
- * de verdad: los cuatro repositorios del corte existen en GitHub **con un `README.md` y
- * nada mas**, asi que un checkout suyo trae `.git` y ninguna otra cosa.
+ * Las rutas vuelven **relativas a la raiz del clon**, que es como se nombran en el
+ * hallazgo.
+ *
+ * `.github/actions/‹nombre›/action.yml` entra desde C-20, y no es un adorno: los cinco
+ * checkouts de los hermanos se mudaron ahi para tener una sola definicion, y con esta
+ * funcion mirando solo `workflows/` habrian quedado **fuera del alcance de la guarda** —
+ * un `path: ../sgtm` escrito dentro de la accion no lo habria visto nadie, que es
+ * exactamente el estado del que C-9a salio.
+ *
+ * Si no hay ni flujos ni acciones, **lanza diciendo cual y por que**, en vez de devolver
+ * la lista vacia. Un clon sin nada que mirar pasaria esta comprobacion en verde sin haber
+ * mirado nada, que es el modo de fallo de #188 con `verificar-cuadros.mjs`; y hoy es un
+ * estado alcanzable de verdad: los cuatro repositorios del corte existen en GitHub **con
+ * un `README.md` y nada mas**, asi que un checkout suyo trae `.git` y ninguna otra cosa.
  */
 export function flujosDe(raiz: string): string[] {
   const carpeta = join(raiz, ".github", "workflows");
-  if (!existsSync(carpeta)) {
+  const flujos = existsSync(carpeta)
+    ? readdirSync(carpeta)
+        .filter((nombre) => nombre.endsWith(".yml") || nombre.endsWith(".yaml"))
+        .map((nombre) => `.github/workflows/${nombre}`)
+    : [];
+
+  const acciones = join(raiz, ".github", "actions");
+  const compuestas = existsSync(acciones)
+    ? readdirSync(acciones, { withFileTypes: true })
+        .filter((entrada) => entrada.isDirectory())
+        .map((entrada) => `.github/actions/${entrada.name}/action.yml`)
+        .filter((ruta) => existsSync(join(raiz, ruta)))
+    : [];
+
+  const todos = [...flujos, ...compuestas].sort();
+  if (todos.length === 0) {
     throw new Error(
-      `No esta «${carpeta}», asi que no se puede saber si los flujos de ese clon sacan ` +
-        "algun `actions/checkout` fuera del espacio de trabajo.\n" +
+      `No hay ningun flujo ni accion en «${join(raiz, ".github")}», asi que no se puede ` +
+        "saber si ese clon saca algun `actions/checkout` fuera del espacio de trabajo.\n" +
         "  Un clon sin flujos no es «nada que comprobar»: es una comprobacion que no se " +
         "hizo, y en verde no se distingue de una que paso.\n" +
         "  Suele ser un clon vacio o a medias — los cuatro repositorios del corte estan " +
         "hoy publicados con un README.md y nada mas.",
     );
   }
-  return readdirSync(carpeta)
-    .filter((nombre) => nombre.endsWith(".yml") || nombre.endsWith(".yaml"))
-    .sort();
+  return todos;
 }
 
-/** Los `actions/checkout` que escapan, en todos los flujos de un clon. */
+/** Los `actions/checkout` que escapan, en todo lo que un clon declara. */
 export function checkoutsQueEscapanEn(raiz: string): CheckoutQueEscapa[] {
-  return flujosDe(raiz).flatMap((nombre) =>
-    checkoutsQueEscapan(
-      readFileSync(join(raiz, ".github", "workflows", nombre), "utf8"),
-      `.github/workflows/${nombre}`,
-    ),
+  return flujosDe(raiz).flatMap((ruta) =>
+    checkoutsQueEscapan(readFileSync(join(raiz, ruta), "utf8"), ruta),
   );
 }

@@ -76,11 +76,19 @@ jobs:
       github.event.workflow_run.event == 'push'
     defaults:
       run:
-        working-directory: infra
+        working-directory: infrastructure/infra
 
     steps:
+      # `path: infrastructure`, y `sgtm` de hermano: `declarar.ts` cuenta migraciones
+      # con `migracionesDe`, que las busca en el arbol de git del repositorio del sistema
+      # desplegado —hoy `sgtm`, no este— y **se niega a inventar un numero** si el clon no
+      # esta. Este trabajo no ha corrido nunca —dispara por `workflow_run` de
+      # «Infraestructura» en verde, y ese flujo lleva rojo desde el corte—, asi que el
+      # defecto estaba latente: la primera corrida habria muerto en «No esta el clon de
+      # «sgtm»». El porque de la disposicion esta en la accion (C-9a, C-20).
       - uses: actions/checkout@v4
         with:
+          path: infrastructure
           # `main`, no el `sha` de la corrida: lo que se reescribe es la cabeza, y entre
           # una cosa y otra puede haber entrado otro merge. El `sha` que se DECLARA sí es
           # el de la corrida, y esa distinción es justo la que la tercera regla comprueba:
@@ -89,11 +97,16 @@ jobs:
           # Sin historial no se puede contar ninguna de las dos revisiones (#675).
           fetch-depth: 0
 
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
+          con-sgtm: 'si'
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: yarn
-          cache-dependency-path: infra/yarn.lock
+          cache-dependency-path: infrastructure/infra/yarn.lock
 
       - name: Instalar dependencias
         run: yarn install --frozen-lockfile

@@ -1,0 +1,106 @@
+# Los repositorios hermanos, clonados DENTRO del espacio de trabajo.
+#
+# ## Por que existe este archivo, y no cinco `actions/checkout` repetidos
+#
+# Todo este proyecto esta escrito suponiendo que los clones son HERMANOS —`../rentas`,
+# `../sgtm`…—, que es como estan en la maquina de quien lo escribe. Lo asume
+# `descriptor/sistemas.ts` con su `../../../<sistema>/infrastructure/src/descriptor`, lo
+# asume `clonDe` en `deriva-de-migraciones.ts`, lo asume `settings.gradle.kts` de los
+# cuatro backends para `librerias-backend`, y lo asume el `link:` de los descriptores.
+#
+# En CI esa disposicion no se puede reproducir clonando hacia arriba: `actions/checkout`
+# se niega a escribir fuera de `GITHUB_WORKSPACE`. Asi que lo que se mueve es el
+# ANFITRION —este repositorio va a `path: infrastructure`— y el espacio de trabajo pasa a
+# hacer de padre. Eso lo comprueba `checkout-en-el-espacio-de-trabajo.ts` (C-9a).
+#
+# **C-9a movio el anfitrion en UN trabajo y dejo los otros catorce como estaban.** El
+# resultado, medido en la corrida `33969248655` del 2026-09-05: nueve trabajos rojos con
+# el mismo error —«Cannot find module '../../../caja/infrastructure/src/descriptor'»— y
+# cinco mas rotos en silencio, porque sus pasos van detras de un `if` de credenciales que
+# hoy no hay. El defecto no era el patron: era que el patron estaba COPIADO quince veces
+# y se arreglo en una copia. De ahi esta accion: una sola definicion, y quien la use lo
+# dice en una linea que se puede censar.
+#
+# ## Como se usa, y por que en ese orden
+#
+# Una accion local se referencia por su ruta dentro del espacio de trabajo, asi que
+# **solo se puede usar despues de que este repositorio este clonado**:
+#
+#     - uses: actions/checkout@v4
+#       with:
+#         path: infrastructure
+#     - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+#       with:
+#         token: ${{ secrets.GH_CLONE_KEY || github.token }}
+#
+# `clones-de-los-hermanos.ts` comprueba que todo trabajo que necesite los descriptores la
+# use, y que ese `path: infrastructure` este puesto.
+name: Clonar los repositorios hermanos
+description: >-
+  Los cuatro sistemas del corte —y, si se pide, el archivo historico— clonados como
+  hermanos de `infrastructure` dentro del espacio de trabajo.
+
+inputs:
+  token:
+    description: >-
+      Credencial de lectura sobre los CUATRO sistemas, que son repositorios PRIVADOS.
+      El `GITHUB_TOKEN` de un flujo solo alcanza al repositorio que lo ejecuta, asi que
+      sin credencial estos checkouts mueren con un `404 Not Found` al buscar la rama por
+      omision — medido en la corrida `33950853560`, donde `infrastructure` y `sgtm`
+      (publico) entraron y `rentas` no. Se pasa como entrada y no se lee de `secrets`
+      porque una accion compuesta no ve el contexto `secrets`: quien la llama le pasa
+      `${{ secrets.GH_CLONE_KEY || github.token }}`, con el repliegue que deja el
+      comportamiento anterior intacto si el secreto no existiera.
+    required: true
+  con-sgtm:
+    description: >-
+      `si` para clonar ademas `hneyra/sgtm`, el archivo historico. Solo lo necesitan los
+      dos trabajos que cuentan migraciones en SU arbol de git —`verificar`, por
+      `deriva-de-migraciones.test.ts`, y `declarar-version.yml`—; los otros trece solo
+      necesitan los cuatro descriptores. Cuando se pide, va SIEMPRE con historial
+      completo: contar las migraciones de una revision exige tenerla, y con el checkout
+      superficial la comprobacion **no concluye** en vez de dar un numero plausible y
+      equivocado (#675).
+    default: 'no'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+      if: inputs.con-sgtm == 'si'
+      with:
+        repository: hneyra/sgtm
+        path: sgtm
+        fetch-depth: 0
+
+    # `fetch-depth: 1` a proposito, al reves que `sgtm`: de los cuatro no se cuenta nada
+    # en el arbol de git de otro commit; se leen los archivos del arbol de trabajo — el
+    # `src/descriptor` que `descriptor/sistemas.ts` importa, y el `crear-roles.sql` que
+    # `extensiones-de-las-migraciones.ts` lee.
+    - uses: actions/checkout@v4
+      with:
+        repository: hneyra/rentas
+        path: rentas
+        token: ${{ inputs.token }}
+        fetch-depth: 1
+
+    - uses: actions/checkout@v4
+      with:
+        repository: hneyra/catastro
+        path: catastro
+        token: ${{ inputs.token }}
+        fetch-depth: 1
+
+    - uses: actions/checkout@v4
+      with:
+        repository: hneyra/normativa
+        path: normativa
+        token: ${{ inputs.token }}
+        fetch-depth: 1
+
+    - uses: actions/checkout@v4
+      with:
+        repository: hneyra/caja
+        path: caja
+        token: ${{ inputs.token }}
+        fetch-depth: 1

@@ -1,0 +1,18 @@
+# La mitad que no se ve: usa la accion compuesta y deja el anfitrion en la raiz del
+# espacio de trabajo. Entonces los hermanos caen AL LADO del espacio de trabajo, no al
+# lado del repositorio, y `../../../caja/...` sigue sin resolver — ademas de que
+# `./infrastructure/.github/actions/...` no existiria.
+name: Con el anfitrion en la raiz
+on: push
+jobs:
+  emite-manifiestos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
+
+      - name: Los dos ambientes
+        run: yarn --silent manifiestos --ambiente stg

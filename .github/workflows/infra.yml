@@ -175,69 +175,19 @@ jobs:
           # `verificar-el-ambiente.sh` escribio primero.
           fetch-depth: 0
 
-      # El repositorio del sistema que este despliegue MIGRA, que desde el corte ya no es
-      # este (P6). `deriva-de-migraciones.ts` cuenta las migraciones en el arbol de git de
-      # `sgtm`, porque es de ahi de donde sale el `sha` que `applicationBootstrapVersion`
-      # declara y de ahi de donde `publicar-imagenes.yml` construye `sgtm-migrador`. Sin
-      # este checkout la prueba **no concluye** —dice que falta el clon y como traerlo—,
-      # que es lo que se quiere: un numero plausible y equivocado seria peor.
+      # Los cinco hermanos, en UN solo sitio desde C-20: `sgtm` con historial completo
+      # —`deriva-de-migraciones.test.ts` cuenta las migraciones que trae un `sha` en el
+      # arbol de git de ESE commit— y los cuatro del corte con el arbol de trabajo, que es
+      # lo unico que `descriptor/sistemas.ts` y `extensiones-de-las-migraciones.ts` leen.
       #
-      # `path: sgtm`, hermano de `infrastructure` dentro del espacio de trabajo: la misma
-      # convencion de hermanos de siempre, ahora con el espacio de trabajo haciendo de
-      # padre.
-      - uses: actions/checkout@v4
+      # El porque de cada decision —el `token`, la profundidad, y por que el anfitrion se
+      # clona en `path: infrastructure`— esta en la propia accion, que es ahora el unico
+      # sitio donde se declaran estos clones. `clones-de-los-hermanos.ts` comprueba que
+      # todo trabajo que los necesite la use.
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
         with:
-          repository: hneyra/sgtm
-          path: sgtm
-          fetch-depth: 0
-
-      # Los CUATRO sistemas del corte, desde C-2. `extensiones-de-las-migraciones.ts`
-      # comprueba, en cada uno, que la extension que su baseline necesita este declarada
-      # en su `crear-roles.sql`, y para eso tiene que leer los dos archivos — que viven en
-      # su repositorio y no en este. Sin estos checkouts la prueba **no concluye**: dice
-      # que falta el clon y como traerlo, en vez de mirar uno solo y pasar en verde, que
-      # es exactamente el estado en que #742 dejo la guarda y que costo dos aplicaciones
-      # de baseline rotas durante el corte (`rentas` con `geography`, `caja` con
-      # `unaccent`).
-      #
-      # `fetch-depth: 1` a proposito, al reves que los dos de arriba: aqui no se cuenta
-      # nada en el arbol de git de otro commit; se leen los archivos del arbol de trabajo.
-      #
-      # **Y los cuatro son repositorios PRIVADOS**, al reves que `hneyra/sgtm`. El
-      # `GITHUB_TOKEN` de un flujo solo alcanza al repositorio que lo ejecuta, asi que
-      # sin credencial estos cuatro checkouts mueren con un `404 Not Found` al buscar la
-      # rama por omision — medido en la corrida `33950853560`, donde `infrastructure` y
-      # `sgtm` (publico) entraron y `rentas` no—.
-      #
-      # `secrets.GH_CLONE_KEY` es la credencial de lectura sobre los cuatro. **Hoy no
-      # existe**, y por eso esta escrito con repliegue: un secreto sin declarar vale la
-      # cadena vacia, asi que `|| github.token` deja EXACTAMENTE el comportamiento
-      # actual y no lo cambia hasta que alguien cree el secreto. Las dos salidas son
-      # crear ese secreto (un PAT de solo lectura, o un token de GitHub App) o hacer
-      # publicos los cuatro repositorios; la segunda es una decision que no es de CI.
-      - uses: actions/checkout@v4
-        with:
-          repository: hneyra/rentas
-          path: rentas
           token: ${{ secrets.GH_CLONE_KEY || github.token }}
-
-      - uses: actions/checkout@v4
-        with:
-          repository: hneyra/catastro
-          path: catastro
-          token: ${{ secrets.GH_CLONE_KEY || github.token }}
-
-      - uses: actions/checkout@v4
-        with:
-          repository: hneyra/normativa
-          path: normativa
-          token: ${{ secrets.GH_CLONE_KEY || github.token }}
-
-      - uses: actions/checkout@v4
-        with:
-          repository: hneyra/caja
-          path: caja
-          token: ${{ secrets.GH_CLONE_KEY || github.token }}
+          con-sgtm: 'si'
 
       - uses: actions/setup-node@v4
         with:
@@ -258,16 +208,25 @@ jobs:
     if: github.event_name != 'schedule'
 
     steps:
+      # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
+      # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
+      # haga de padre. El porque completo esta en la accion (C-9a, C-20).
       - uses: actions/checkout@v4
+        with:
+          path: infrastructure
+
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: yarn
-          cache-dependency-path: infra/yarn.lock
+          cache-dependency-path: infrastructure/infra/yarn.lock
 
       - name: Instalar dependencias
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: yarn install --frozen-lockfile
 
       # La misma versión que declara `backend/gradle.properties` y que instala
@@ -287,7 +246,7 @@ jobs:
       # leer el manifiesto: un manifiesto correcto no demuestra que sgtm_app no vea las
       # filas de la otra municipalidad.
       - name: verificar-el-motor.sh --con-aislamiento
-        run: infra/verificaciones/motor/verificar-el-motor.sh --ambiente stg --con-aislamiento
+        run: infrastructure/infra/verificaciones/motor/verificar-el-motor.sh --ambiente stg --con-aislamiento
 
       # `verificar-rotacion.sh` existia desde #154 y **no lo corria nadie** —INF-06 lo
       # decia con todas las letras: «corrido a mano (no esta en CI)»—. Una verificacion
@@ -300,8 +259,8 @@ jobs:
       - name: La rotacion, contra un motor real, para los dos roles que rotan
         run: |
           set -euo pipefail
-          infra/secretos/verificar-rotacion.sh --ambiente stg --rol sgtm_app
-          infra/secretos/verificar-rotacion.sh --ambiente stg --rol rol_carga_parametros
+          infrastructure/infra/secretos/verificar-rotacion.sh --ambiente stg --rol sgtm_app
+          infrastructure/infra/secretos/verificar-rotacion.sh --ambiente stg --rol rol_carga_parametros
 
   raiz-sellada:
     name: La raiz sellada arranca, y su /tmp no es decorativo
@@ -310,16 +269,25 @@ jobs:
     if: github.event_name != 'schedule'
 
     steps:
+      # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
+      # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
+      # haga de padre. El porque completo esta en la accion (C-9a, C-20).
       - uses: actions/checkout@v4
+        with:
+          path: infrastructure
+
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: yarn
-          cache-dependency-path: infra/yarn.lock
+          cache-dependency-path: infrastructure/infra/yarn.lock
 
       - name: Instalar dependencias
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: yarn install --frozen-lockfile
 
       # Solo Docker, sin clúster: es el trabajo más barato de los que ejercitan algo de
@@ -334,7 +302,7 @@ jobs:
       # `/tmp`, el contenedor tiene que morir. Si terminara en 0, el caso A no probaría
       # nada.
       - name: verificar-raiz-sellada.sh
-        run: infra/verificaciones/raiz-sellada/verificar-raiz-sellada.sh --ambiente stg
+        run: infrastructure/infra/verificaciones/raiz-sellada/verificar-raiz-sellada.sh --ambiente stg
 
   simulacro:
     name: El respaldo, restaurado de verdad
@@ -343,16 +311,25 @@ jobs:
     if: github.event_name != 'schedule'
 
     steps:
+      # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
+      # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
+      # haga de padre. El porque completo esta en la accion (C-9a, C-20).
       - uses: actions/checkout@v4
+        with:
+          path: infrastructure
+
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: yarn
-          cache-dependency-path: infra/yarn.lock
+          cache-dependency-path: infrastructure/infra/yarn.lock
 
       - name: Instalar dependencias
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: yarn install --frozen-lockfile
 
       # RNF-079: un respaldo que no se ha restaurado no cuenta como respaldo. Este
@@ -381,7 +358,7 @@ jobs:
           sudo apt-get install -y -qq postgresql-16-postgis-3
 
       - name: simulacro-de-restauracion.sh
-        run: infra/respaldo/simulacro-de-restauracion.sh --ambiente stg
+        run: infrastructure/infra/respaldo/simulacro-de-restauracion.sh --ambiente stg
 
       # Y que el simulacro puede fallar, que es lo que lo hace valer algo: sin
       # `recovery_target_time` el WAL se reproduce entero, la escritura posterior al
@@ -390,8 +367,8 @@ jobs:
       - name: Y se demuestra que puede fallar (sin recovery_target_time)
         run: |
           sed -i "s|^recovery_target_time = .*|# quitado a proposito|" \
-              infra/respaldo/simulacro-de-restauracion.sh
-          if infra/respaldo/simulacro-de-restauracion.sh --ambiente stg; then
+              infrastructure/infra/respaldo/simulacro-de-restauracion.sh
+          if infrastructure/infra/respaldo/simulacro-de-restauracion.sh --ambiente stg; then
               echo "::error::El simulacro paso SIN recovery_target_time. No esta verificando el PITR."
               exit 1
           fi
@@ -404,16 +381,25 @@ jobs:
     if: github.event_name != 'schedule'
 
     steps:
+      # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
+      # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
+      # haga de padre. El porque completo esta en la accion (C-9a, C-20).
       - uses: actions/checkout@v4
+        with:
+          path: infrastructure
+
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: yarn
-          cache-dependency-path: infra/yarn.lock
+          cache-dependency-path: infrastructure/infra/yarn.lock
 
       - name: Instalar dependencias
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: yarn install --frozen-lockfile
 
       # `kind` sin desplegar nada: el clúster existe solo para que su API server valide
@@ -440,7 +426,7 @@ jobs:
       # `tipos.ts`, la auditoría y `conformidad-con-kubernetes.test.ts`. Se dice aquí
       # para que nadie lo lea como «esto valida todo».
       - name: Los dos ambientes, aplicados contra el clúster desechable
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: |
           set -euo pipefail
           for ambiente in stg prod; do
@@ -464,16 +450,25 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
+      # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
+      # haga de padre. El porque completo esta en la accion (C-9a, C-20).
       - uses: actions/checkout@v4
+        with:
+          path: infrastructure
+
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: yarn
-          cache-dependency-path: infra/yarn.lock
+          cache-dependency-path: infrastructure/infra/yarn.lock
 
       - name: Instalar dependencias
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: yarn install --frozen-lockfile
 
       - uses: helm/kind-action@v1
@@ -490,11 +485,12 @@ jobs:
       # plataforma: aplicaba los cinco y despues buscaba pods rechazados en uno, asi que
       # podia dar por comprobada la direccion peligrosa habiendo mirado una quinta parte.
       #
-      # ESTE TRABAJO TAMPOCO CLONA LOS CUATRO HERMANOS (hueco 4 de C-14): `yarn manifiestos`
-      # y `yarn capacidad` los necesitan desde ADR-0031 y C-16 respectivamente. Lo mismo que
-      # el trabajo `manifiestos`, y se cierra igual.
+      # Los cuatro hermanos los clona la accion compuesta de arriba (C-20): `yarn
+      # manifiestos` y `yarn capacidad` los necesitan desde ADR-0031 y C-16, y hasta C-20
+      # este trabajo no los tenia — moria en «Cannot find module
+      # '../../../caja/infrastructure/src/descriptor'» antes de mirar un solo pod.
       - name: verificar-contra-el-planificador.sh
-        run: infra/verificaciones/capacidad/verificar-contra-el-planificador.sh
+        run: infrastructure/infra/verificaciones/capacidad/verificar-contra-el-planificador.sh
 
   secretos:
     name: Los secretos se generan solos, y ninguno se repite
@@ -503,16 +499,25 @@ jobs:
     if: github.event_name != 'schedule'
 
     steps:
+      # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
+      # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
+      # haga de padre. El porque completo esta en la accion (C-9a, C-20).
       - uses: actions/checkout@v4
+        with:
+          path: infrastructure
+
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: yarn
-          cache-dependency-path: infra/yarn.lock
+          cache-dependency-path: infrastructure/infra/yarn.lock
 
       - name: Instalar dependencias
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: yarn install --frozen-lockfile
 
       # El mismo truco que `manifiestos`: un clúster desechable solo para tener un API
@@ -523,14 +528,14 @@ jobs:
           cluster_name: secretos
 
       - name: Un despliegue desde cero genera lo que falta, sin que nadie teclee una clave
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: |
           set -euo pipefail
           ./secretos/bootstrap-secretos.sh --ambiente stg
           ./secretos/bootstrap-secretos.sh --ambiente prod
 
       - name: Ninguna clave se repite, ni dentro de un ambiente ni entre los dos
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: |
           ./secretos/verificar-claves-distintas.sh \
               --ambiente stg  --namespace sgtm-stg \
@@ -547,7 +552,7 @@ jobs:
       # que publica cifras normativas**. La lista sale de `yarn secretos`, asi que la
       # siguiente entrada entra sola.
       - name: Volver a correrlo no cambia nada, en NINGUNA clave del inventario
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: |
           set -euo pipefail
           huellas_de() {
@@ -584,7 +589,7 @@ jobs:
       # mismo —`verificar-claves-distintas.sh` recorre el inventario entero—, asi que
       # cambiar la victima no debilita nada y cubre la entrada nueva.
       - name: 'Demostracion: dos claves iguales se detectan'
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: |
           set -euo pipefail
           valor_de_owner=$(kubectl -n sgtm-stg get secret sgtm-stg-postgres-owner \
@@ -614,16 +619,25 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
+      # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
+      # haga de padre. El porque completo esta en la accion (C-9a, C-20).
       - uses: actions/checkout@v4
+        with:
+          path: infrastructure
+
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: yarn
-          cache-dependency-path: infra/yarn.lock
+          cache-dependency-path: infrastructure/infra/yarn.lock
 
       - name: Instalar dependencias
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: yarn install --frozen-lockfile
 
       # El motor, Prometheus y Alertmanager corren de verdad: hace falta un clúster
@@ -638,7 +652,7 @@ jobs:
       # entrega. Hasta ~8 minutos: el `for: 2m` de la regla es real, no acortado
       # para CI.
       - name: verificar-alertas.sh
-        run: infra/observabilidad/verificar-alertas.sh
+        run: infrastructure/infra/observabilidad/verificar-alertas.sh
 
   observabilidad-tableros:
     name: Los tableros muestran datos de verdad
@@ -647,16 +661,25 @@ jobs:
     if: github.event_name != 'schedule'
 
     steps:
+      # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
+      # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
+      # haga de padre. El porque completo esta en la accion (C-9a, C-20).
       - uses: actions/checkout@v4
+        with:
+          path: infrastructure
+
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: yarn
-          cache-dependency-path: infra/yarn.lock
+          cache-dependency-path: infrastructure/infra/yarn.lock
 
       - name: Instalar dependencias
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: yarn install --frozen-lockfile
 
       - uses: helm/kind-action@v1
@@ -667,7 +690,7 @@ jobs:
       # con exportadores reales -y uno sintetico para la JVM, sin imagen publicable
       # aqui-. Falla nombrando el panel si alguno vuelve "No data".
       - name: verificar-tableros.sh
-        run: infra/observabilidad/verificar-tableros.sh
+        run: infrastructure/infra/observabilidad/verificar-tableros.sh
 
   red:
     name: Denegacion por omision, contra un CNI que la aplica de verdad
@@ -676,16 +699,25 @@ jobs:
     if: github.event_name != 'schedule'
 
     steps:
+      # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
+      # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
+      # haga de padre. El porque completo esta en la accion (C-9a, C-20).
       - uses: actions/checkout@v4
+        with:
+          path: infrastructure
+
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: yarn
-          cache-dependency-path: infra/yarn.lock
+          cache-dependency-path: infrastructure/infra/yarn.lock
 
       - name: Instalar dependencias
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: yarn install --frozen-lockfile
 
       # `kindnet`, el CNI por omision de `kind`, no aplica `NetworkPolicy` -por
@@ -695,14 +727,14 @@ jobs:
       - uses: helm/kind-action@v1
         with:
           cluster_name: red
-          config: infra/red/kind-sin-cni.yaml
+          config: infrastructure/infra/red/kind-sin-cni.yaml
 
       # Los dos criterios de aceptacion del issue #157 -la interfaz no llega a
       # PostgreSQL, la aplicacion no llega a un destino de internet fuera de la
       # lista- mas la demostracion que el propio issue pide: quitando la
       # politica de PostgreSQL, la MISMA conexion pasa a conectar.
       - name: verificar-red.sh
-        run: infra/red/verificar-red.sh
+        run: infrastructure/infra/red/verificar-red.sh
 
   # stg y prod son dos VPS con IP distinta, así que un solo túnel no puede llegar a los
   # dos. Antes esto era un solo job reutilizando un túnel para ambos `preview` — bastaba
@@ -721,16 +753,25 @@ jobs:
     environment: stg
 
     steps:
+      # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
+      # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
+      # haga de padre. El porque completo esta en la accion (C-9a, C-20).
       - uses: actions/checkout@v4
+        with:
+          path: infrastructure
+
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: yarn
-          cache-dependency-path: infra/yarn.lock
+          cache-dependency-path: infrastructure/infra/yarn.lock
 
       - name: Instalar dependencias
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: yarn install --frozen-lockfile
 
       # Desde que `componentes/` tiene recursos, el plan se calcula contra lo que hay
@@ -794,7 +835,7 @@ jobs:
       # set` los escribe en la copia efímera de este runner, que muere con el job.
       - name: Configurar los secretos de infraestructura del stack (ADR-0011 §3)
         if: steps.token.outputs.hay == 'si'
-        working-directory: infra
+        working-directory: infrastructure/infra
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           KUBECONFIG_VALUE: ${{ secrets.KUBECONFIG }}
@@ -812,7 +853,7 @@ jobs:
         with:
           command: preview
           stack-name: stg
-          work-dir: infra
+          work-dir: infrastructure/infra
           comment-on-pr: true
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
@@ -828,16 +869,25 @@ jobs:
     environment: prod-preview
 
     steps:
+      # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
+      # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
+      # haga de padre. El porque completo esta en la accion (C-9a, C-20).
       - uses: actions/checkout@v4
+        with:
+          path: infrastructure
+
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: yarn
-          cache-dependency-path: infra/yarn.lock
+          cache-dependency-path: infrastructure/infra/yarn.lock
 
       - name: Instalar dependencias
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: yarn install --frozen-lockfile
 
       - name: ¿Hay credenciales del clúster?
@@ -887,7 +937,7 @@ jobs:
 
       - name: Configurar los secretos de infraestructura del stack (ADR-0011 §3)
         if: steps.token.outputs.hay == 'si'
-        working-directory: infra
+        working-directory: infrastructure/infra
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           KUBECONFIG_VALUE: ${{ secrets.KUBECONFIG }}
@@ -905,7 +955,7 @@ jobs:
         with:
           command: preview
           stack-name: prod
-          work-dir: infra
+          work-dir: infrastructure/infra
           comment-on-pr: true
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
@@ -939,8 +989,10 @@ jobs:
       hay-credenciales: ${{ steps.credenciales.outputs.hay }}
 
     steps:
+      # `path: infrastructure`: ver la accion de al lado (C-9a, C-20).
       - uses: actions/checkout@v4
         with:
+          path: infrastructure
           # Historial completo: `verificar-el-ambiente.sh` compara las migraciones que
           # tiene la base con las que trae el `sha` que `Pulumi.stg.yaml` declara, y para
           # contarlas necesita ese commit en el clon. Con el checkout superficial no esta,
@@ -948,14 +1000,18 @@ jobs:
           # seria otra version, y un numero plausible y equivocado.
           fetch-depth: 0
 
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: yarn
-          cache-dependency-path: infra/yarn.lock
+          cache-dependency-path: infrastructure/infra/yarn.lock
 
       - name: Instalar dependencias
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: yarn install --frozen-lockfile
 
       - name: ¿Hay credenciales del clúster?
@@ -1021,7 +1077,7 @@ jobs:
       # exactamente el despliegue que no cabe (issue #252).
       - name: Lo declarado cabe en el nodo real
         if: steps.credenciales.outputs.hay == 'si'
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: ./vps/comprobar-lo-asignable.sh --ambiente stg
 
       # Y el stack cabe en lo declarado. Este es el paso que impide el colgado del
@@ -1029,17 +1085,15 @@ jobs:
       # empieza espera indefinidamente a que queden `Ready` y nunca lo estaran.
       # `index.ts` solo AVISA cuando la brecha esta declarada -lanzar alli rompe
       # tambien `pulumi preview`, que corre en cada PR-; el bloqueo duro vive aqui.
-      # DESDE C-16 ESTE PASO NECESITA LOS CUATRO CLONES HERMANOS. `yarn capacidad` compone
-      # ahora los cinco espacios de nombres —la plataforma y los cuatro sistemas—, y
+      # DESDE C-16 ESTE PASO NECESITA LOS CUATRO CLONES HERMANOS: `yarn capacidad` compone
+      # los cinco espacios de nombres —la plataforma y los cuatro sistemas—, y
       # `descriptor/sistemas.ts` los importa de `../<sistema>/infrastructure/src/descriptor`.
-      # Este trabajo hace `checkout` solo de este repositorio, asi que hoy el paso no puede
-      # correr: es el hueco 4 de C-14, el mismo que ya tiene el trabajo `manifiestos`, y se
-      # cierra igual —los cuatro `actions/checkout` con `path:` y `GH_CLONE_KEY`, como en
-      # `verificar`—. No se hace aqui porque exige reestructurar el `path` de este trabajo
-      # entero y no hay forma de ejercitarlo sin empujar.
+      # Los trae la accion compuesta de arriba (C-20). Hasta entonces este trabajo clonaba
+      # solo este repositorio, y el paso no podia correr — no salia rojo porque va detras
+      # del `if` de credenciales, que hoy no hay: roto en silencio, que es peor.
       - name: 'El stack cabe en su nodo (issue #252)'
         if: steps.credenciales.outputs.hay == 'si'
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: yarn --silent capacidad --ambiente stg --estricto
 
       # ANTES de `pulumi up`: los Deployment y Job que va a crear referencian estos
@@ -1048,7 +1102,7 @@ jobs:
       # por Pulumi (INF-06, issue #154): las claves no entran a su estado.
       - name: Generar los secretos que falten (INF-06)
         if: steps.credenciales.outputs.hay == 'si'
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: ./secretos/bootstrap-secretos.sh --ambiente stg
 
       # ANTES de `pulumi up`, y por el mismo motivo que el paso de los secretos: el Job
@@ -1074,7 +1128,7 @@ jobs:
         if: steps.credenciales.outputs.hay == 'si'
         run: |
           if kubectl -n sgtm-stg get deployment sgtm-stg-postgres >/dev/null 2>&1; then
-            despliegue/crear-extensiones.sh --ambiente stg
+            infrastructure/despliegue/crear-extensiones.sh --ambiente stg
           else
             echo "Todavia no hay motor en sgtm-stg: el volumen nace vacio y las crea"
             echo "crear-roles.sql desde /docker-entrypoint-initdb.d, que es el camino"
@@ -1083,7 +1137,7 @@ jobs:
 
       - name: Configurar los secretos de infraestructura del stack (ADR-0011 §3)
         if: steps.credenciales.outputs.hay == 'si'
-        working-directory: infra
+        working-directory: infrastructure/infra
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           KUBECONFIG_VALUE: ${{ secrets.KUBECONFIG }}
@@ -1101,7 +1155,7 @@ jobs:
         with:
           command: up
           stack-name: stg
-          work-dir: infra
+          work-dir: infrastructure/infra
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
@@ -1123,11 +1177,11 @@ jobs:
       # ejecutar desde entonces. Una verificacion que nunca se ejecuta no protege nada.
       - name: El ambiente aplicado se comprueba a si mismo (#434)
         if: steps.credenciales.outputs.hay == 'si'
-        run: infra/verificaciones/ambiente/verificar-el-ambiente.sh --ambiente stg
+        run: infrastructure/infra/verificaciones/ambiente/verificar-el-ambiente.sh --ambiente stg
 
       - name: Qué quedó a medias, si algo falló
         if: failure() && steps.credenciales.outputs.hay == 'si'
-        run: .github/diagnostico-del-namespace.sh sgtm-stg
+        run: infrastructure/.github/diagnostico-del-namespace.sh sgtm-stg
 
   aplicar-prod:
     name: pulumi up en prod (con aprobación)
@@ -1160,8 +1214,10 @@ jobs:
     timeout-minutes: 20
 
     steps:
+      # `path: infrastructure`: ver la accion de al lado (C-9a, C-20).
       - uses: actions/checkout@v4
         with:
+          path: infrastructure
           # Historial completo: `verificar-el-ambiente.sh` compara las migraciones que
           # tiene la base con las que trae el `sha` que `Pulumi.prod.yaml` declara, y para
           # contarlas necesita ese commit en el clon. Con el checkout superficial no esta,
@@ -1169,14 +1225,18 @@ jobs:
           # seria otra version, y un numero plausible y equivocado.
           fetch-depth: 0
 
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: yarn
-          cache-dependency-path: infra/yarn.lock
+          cache-dependency-path: infrastructure/infra/yarn.lock
 
       - name: Instalar dependencias
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: yarn install --frozen-lockfile
 
       # Sin la comprobación de "¿hay credenciales?": el `if` del trabajo ya exige que
@@ -1209,7 +1269,7 @@ jobs:
 
       # Ver el mismo paso en `aplicar-stg` (issue #252).
       - name: Lo declarado cabe en el nodo real
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: ./vps/comprobar-lo-asignable.sh --ambiente prod
 
       # Y el stack cabe en lo declarado. Este es el paso que impide el colgado del
@@ -1217,20 +1277,18 @@ jobs:
       # empieza espera indefinidamente a que queden `Ready` y nunca lo estaran.
       # `index.ts` solo AVISA cuando la brecha esta declarada -lanzar alli rompe
       # tambien `pulumi preview`, que corre en cada PR-; el bloqueo duro vive aqui.
-      # DESDE C-16 ESTE PASO NECESITA LOS CUATRO CLONES HERMANOS. `yarn capacidad` compone
-      # ahora los cinco espacios de nombres —la plataforma y los cuatro sistemas—, y
+      # DESDE C-16 ESTE PASO NECESITA LOS CUATRO CLONES HERMANOS: `yarn capacidad` compone
+      # los cinco espacios de nombres —la plataforma y los cuatro sistemas—, y
       # `descriptor/sistemas.ts` los importa de `../<sistema>/infrastructure/src/descriptor`.
-      # Este trabajo hace `checkout` solo de este repositorio, asi que hoy el paso no puede
-      # correr: es el hueco 4 de C-14, el mismo que ya tiene el trabajo `manifiestos`, y se
-      # cierra igual —los cuatro `actions/checkout` con `path:` y `GH_CLONE_KEY`, como en
-      # `verificar`—. No se hace aqui porque exige reestructurar el `path` de este trabajo
-      # entero y no hay forma de ejercitarlo sin empujar.
+      # Los trae la accion compuesta de arriba (C-20). Hasta entonces este trabajo clonaba
+      # solo este repositorio, y el paso no podia correr — no salia rojo porque va detras
+      # del `if` de credenciales, que hoy no hay: roto en silencio, que es peor.
       - name: 'El stack cabe en su nodo (issue #252)'
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: yarn --silent capacidad --ambiente prod --estricto
 
       - name: Generar los secretos que falten (INF-06)
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: ./secretos/bootstrap-secretos.sh --ambiente prod
 
       # El mismo paso que `aplicar-stg`, y por el mismo motivo (ADR-0021): el Job de
@@ -1241,14 +1299,14 @@ jobs:
       - name: Las extensiones que crear-roles.sql declara, en un motor que ya existe (ADR-0021)
         run: |
           if kubectl -n sgtm-prod get deployment sgtm-prod-postgres >/dev/null 2>&1; then
-            despliegue/crear-extensiones.sh --ambiente prod
+            infrastructure/despliegue/crear-extensiones.sh --ambiente prod
           else
             echo "Todavia no hay motor en sgtm-prod: el volumen nace vacio y las crea"
             echo "crear-roles.sql desde /docker-entrypoint-initdb.d."
           fi
 
       - name: Configurar los secretos de infraestructura del stack (ADR-0011 §3)
-        working-directory: infra
+        working-directory: infrastructure/infra
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           KUBECONFIG_VALUE: ${{ secrets.KUBECONFIG }}
@@ -1265,7 +1323,7 @@ jobs:
         with:
           command: up
           stack-name: prod
-          work-dir: infra
+          work-dir: infrastructure/infra
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
@@ -1288,11 +1346,11 @@ jobs:
       # mismo issue #435 encontro en `verificar-rotacion.sh`, escrito en #154 y sin
       # ejecutar desde entonces. Una verificacion que nunca se ejecuta no protege nada.
       - name: El ambiente aplicado se comprueba a si mismo (#434)
-        run: infra/verificaciones/ambiente/verificar-el-ambiente.sh --ambiente prod
+        run: infrastructure/infra/verificaciones/ambiente/verificar-el-ambiente.sh --ambiente prod
 
       - name: Qué quedó a medias, si algo falló
         if: failure()
-        run: .github/diagnostico-del-namespace.sh sgtm-prod
+        run: infrastructure/.github/diagnostico-del-namespace.sh sgtm-prod
 
   deteccion-de-deriva:
     name: Detección de deriva en prod
@@ -1306,21 +1364,27 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      # `path: infrastructure`: ver la accion de al lado (C-9a, C-20).
       - uses: actions/checkout@v4
         with:
+          path: infrastructure
           # Historial completo: el paso «prod, comprobado contra si mismo» de abajo
           # cuenta las migraciones que trae el `sha` declarado, y sin el commit en el clon
           # el guion **no concluye** en vez de contar las del arbol de trabajo (#434).
           fetch-depth: 0
 
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: yarn
-          cache-dependency-path: infra/yarn.lock
+          cache-dependency-path: infrastructure/infra/yarn.lock
 
       - name: Instalar dependencias
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: yarn install --frozen-lockfile
 
       - name: ¿Hay credenciales del clúster?
@@ -1387,7 +1451,7 @@ jobs:
       # lectura de la configuracion.
       - name: Configurar los secretos de infraestructura del stack (ADR-0011 §3)
         if: steps.credenciales.outputs.hay == 'si'
-        working-directory: infra
+        working-directory: infrastructure/infra
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           KUBECONFIG_VALUE: ${{ secrets.KUBECONFIG }}
@@ -1411,7 +1475,7 @@ jobs:
       # de verdad es ese issue, no este.
       - name: pulumi preview --expect-no-changes contra prod
         if: steps.credenciales.outputs.hay == 'si'
-        working-directory: infra
+        working-directory: infrastructure/infra
         run: pulumi preview --stack prod --expect-no-changes --diff --non-interactive
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
@@ -1440,8 +1504,8 @@ jobs:
       # decir lo suyo.
       - name: prod, comprobado contra si mismo (#434, #675)
         if: ${{ !cancelled() && steps.credenciales.outputs.hay == 'si' }}
-        run: infra/verificaciones/ambiente/verificar-el-ambiente.sh --ambiente prod
+        run: infrastructure/infra/verificaciones/ambiente/verificar-el-ambiente.sh --ambiente prod
 
       - name: Qué quedó a medias, si algo falló
         if: failure() && steps.credenciales.outputs.hay == 'si'
-        run: .github/diagnostico-del-namespace.sh sgtm-prod
+        run: infrastructure/.github/diagnostico-del-namespace.sh sgtm-prod

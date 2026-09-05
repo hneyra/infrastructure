@@ -62,6 +62,17 @@ describe("ningun actions/checkout escribe fuera del espacio de trabajo", () => {
   });
 
   /**
+   * Y desde C-20 se mira tambien **dentro de las acciones locales**, que es donde viven
+   * ahora los cinco `actions/checkout` de los hermanos. Con `flujosDe` limitada a
+   * `workflows/`, un `path: ../sgtm` escrito ahi no lo habria visto nadie.
+   */
+  it("las acciones compuestas de este repositorio tambien se miran", () => {
+    expect(flujosDe(raizDelRepositorio())).toContain(
+      ".github/actions/clonar-los-hermanos/action.yml",
+    );
+  });
+
+  /**
    * Y un clon a medias **no concluye**, en vez de decir «cero hallazgos».
    *
    * No es hipotetico: los cuatro repositorios del corte estan hoy en GitHub con un
@@ -139,10 +150,10 @@ describe("y no muerde de mas", () => {
  */
 describe("el limite de la comprobacion sigue sin aplicar", () => {
   it.each(CLONES)("$nombre no usa una expresion como `path` de un checkout", ({ raiz }) => {
-    const conExpresion = flujosDe(raiz()).flatMap((nombre) =>
-      pathsDeCheckout(readFileSync(join(raiz(), ".github", "workflows", nombre), "utf8"))
+    const conExpresion = flujosDe(raiz()).flatMap((ruta) =>
+      pathsDeCheckout(readFileSync(join(raiz(), ruta), "utf8"))
         .filter((p) => p.ruta.includes("${{"))
-        .map((p) => `${nombre}:${p.linea} — ${p.ruta}`),
+        .map((p) => `${ruta}:${p.linea} — ${p.ruta}`),
     );
     expect(conExpresion).toEqual([]);
   });

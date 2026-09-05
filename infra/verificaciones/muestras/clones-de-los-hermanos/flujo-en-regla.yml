@@ -1,0 +1,19 @@
+# Un trabajo que necesita los descriptores y los clona: el anfitrion en su sitio y la
+# accion compuesta detras. Cero hallazgos.
+name: En regla
+on: push
+jobs:
+  emite-manifiestos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: infrastructure
+
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
+
+      - name: Los dos ambientes
+        working-directory: infrastructure/infra
+        run: yarn --silent manifiestos --ambiente stg

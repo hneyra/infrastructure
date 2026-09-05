@@ -1,0 +1,21 @@
+# EL CONTRASTE. Un trabajo que no toca ninguna herramienta ni ningun guion de los que
+# cargan el descriptor: no se le pide nada, y su `checkout` en la raiz esta bien.
+# Sin esta muestra, una guarda que exigiera la accion a TODO trabajo pasaria igual de
+# verde, y de paso obligaria a `librerias-backend.yml` y a `registro.yml` a clonar cuatro
+# repositorios que no leen.
+#
+# El `yarn manifiestos` de aqui abajo esta en un comentario y en un `echo` a proposito:
+# es lo que `loQueEjecuta` tiene que descartar.
+name: No los necesita
+on: push
+jobs:
+  compila-las-librerias:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compilar
+        run: |
+          # esto no es `yarn manifiestos`, es un comentario
+          echo "para los manifiestos, `yarn manifiestos`"
+          ./gradlew build --no-daemon
