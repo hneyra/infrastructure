@@ -377,7 +377,7 @@ public final class RevisorDeEsquema {
      * lleva un {@code default} en cualquier expresion que lo use.
      */
     private static String tipoDe(String resto) {
-        String sinParentesis = resto.replaceAll("\\([^()]*\\)", " ");
+        String sinParentesis = resto.replaceAll("\\([^()]*\\)", "\u0000");
         Matcher corte = MODIFICADOR_DE_COLUMNA.matcher(sinParentesis);
         if (!corte.find()) {
             return resto.strip();

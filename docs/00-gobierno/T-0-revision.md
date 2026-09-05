@@ -43,9 +43,10 @@ evitando: **una verificación en verde que dejó de mirar**.
 | | Cuenta |
 |---|---|
 | Bloqueantes | 1 |
-| Altos | 6 |
+| Altos | 8 |
 | Medios | 9 |
 | Estructurales de CI | 3 |
+| De gobierno / ADR | 7 |
 
 ---
 
@@ -287,6 +288,104 @@ Peor caso medido: una comilla sin cerrar al principio deja `V1__baseline.sql` de
 composición **cuente las sentencias que ningún patrón reconoció**, con la prueba exigiéndolo **por
 migración** y no globalmente.
 
+### 3.5. ALTO — `RevisorDeEsquema.java` llevaba un byte NUL: era invisible para `rg`
+
+**CONFIRMADO, y arreglado en esta rama.** La línea 380 escribía el centinela como un `NUL` **crudo**
+dentro del literal:
+
+```java
+String sinParentesis = resto.replaceAll("\\([^()]*\\)", "\0");   // el byte 0x00, literal
+```
+
+Eso convierte el archivo en binario a ojos de las herramientas de texto:
+
+```console
+$ file -b …/RevisorDeEsquema.java              →  data
+$ rg -n "MODIFICADOR_DE_COLUMNA" librerias-backend/   →  (NADA)
+$ grep -rn "MODIFICADOR_DE_COLUMNA" librerias-backend/ →  «binary file matches», sin la linea
+```
+
+No rompe el build. **El daño es otro, y es exactamente el modo de fallo del registro: este proyecto
+renombra en bloque con `grep`/`sed`** —R-N (668 archivos), C (1 801 menciones), R-A/B (517+435
+variables), D (89 ids de plugin)—, y un archivo que `rg` no ve queda fuera de **todos** esos
+barridos, en silencio. Es un fósil esperando su renombrado.
+
+El centinela **tiene** que ser de un solo carácter (`posicionReal` cuenta uno por grupo de
+paréntesis), así que el arreglo es escribirlo como escape en vez de crudo:
+
+```java
+String sinParentesis = resto.replaceAll("\\([^()]*\\)", "\\u0000");
+```
+
+Mismo valor en ejecución, archivo de texto otra vez. **Verificado**: `file` → `Java source, UTF-8
+text`, `rg` lo encuentra, `./gradlew build` de la librería **BUILD SUCCESSFUL**, y
+`verificarArquitectura` de `catastro` con `--rerun-tasks` **BUILD SUCCESSFUL**.
+
+---
+
+## 3 bis. Gobierno: siete incoherencias, y dos son de una clase ya pagada
+
+### G1. ALTO — «los cinco entran en Propuesto, como los ADR 0024–0032»: los 0024–0032 están **Aceptado**
+
+**CONFIRMADO, leído de los ficheros.** `ADR-0024`, `0027`, `0029`, `0031` y `0032` dicen
+`| Estado | **Aceptado** |`. Pasaron a Aceptado al contestar D-22, y `verificar-reparto-adr.py` lo
+tiene declarado entrada por entrada en `DIVERGEN_A_PROPOSITO`.
+
+Esto no es una errata: **cambia el argumento de ADR-0033.** ADR-0029 no es un «Propuesto» más —es
+Aceptado— y su decisión literal es *«Cuatro sistemas, cuatro repositorios, cuatro despliegues,
+cuatro bases de datos»*. ADR-0033 abre con *«Cinco sistemas, no cuatro y no doce»*. Su defensa de
+que **el criterio** de 0029 («quién es dueño del número») queda intacto es correcta y está bien
+argumentada; pero **la cardinalidad de un ADR aceptado sí se está revisando**, y la forma honesta no
+es «no revierte» sino *«extiende ADR-0029 y sustituye su cardinalidad»* — que es exactamente lo que
+ADR-0030 hizo con 0009 («Reemplaza … **en su cláusula** "una sola aplicación por ahora"»). El
+precedente ya está escrito en este repositorio.
+
+Y el índice `docs/30-arquitectura/adr/README.md` lleva «Propuesto» para 0024–0032 desde entonces:
+es un fósil **anterior** a este PR, pero el PR **añade filas a esa tabla rancia y repite su premisa
+falsa como justificación** en vez de cazarla.
+
+### G2. ALTO — el nombre `seguridad` colisiona con dos cosas, y ADR-0029 evitó esta misma trampa
+
+**CONFIRMADO.** Los cuatro sistemas ya tienen módulo y paquete `seguridad` —el de autorización—:
+`kamayuk-rentas-seguridad`, `kamayuk-catastro-seguridad`, `kamayuk-normativa-seguridad`,
+`kamayuk-caja-seguridad`. Y peor: **en el vocabulario de la regla 11, «seguridad» ya significa *lo
+replicado***. `ConfiguracionDeLasVerificaciones.java:105-107`: *«Las transversales y las de
+seguridad, que se replican en los cuatro, se declaran con `SISTEMA_REPLICADO`»* — y
+`SISTEMA_REPLICADO` significa «no está a ningún lado de la frontera», o sea **deja de revisarse, en
+verde**, que es la lección de R-N.
+
+**ADR-0029 se negó a llamar `valores` al repositorio de normativa por este mismísimo razonamiento**
+(«en este dominio *valores* ya significa orden de pago, resolución de determinación y resolución de
+multa»). ADR-0033 comete lo que 0029 evitó, y sin medirlo. Es barato de arreglar **ahora**, porque
+el sistema no existe todavía: `serenazgo`, `ciudadania` o `patrullaje` no chocan con nada.
+
+### Y cinco más, medias
+
+| # | Hallazgo |
+|---|---|
+| G3 | La tabla **«Los 32»** del índice gana cinco filas (0033–0037) con un valor en la columna **«Estado en `sgtm`»** — y `sgtm` no tiene esos ADR (`ls …/adr/ \| grep -E "003[3-7]"` → vacío). Además el apartado 3 de `verificar-reparto-adr.py` itera sobre los ADR de `sgtm`, así que **esas cinco filas no las mira nadie**. Una tabla cuyo valor entero es «esto lo verifica una máquina» acaba de ganar cinco filas falsas que la máquina no puede leer. Y sigue titulada «Los 32» con 37 filas |
+| G4 | **ADR-0029 no gana ninguna referencia hacia 0033.** El enlace es unidireccional. La convención existe y el proyecto la aplicó en el caso simétrico: cuando 0029 reemplazó a 0003, **se editó 0003** (hoy dice «Obsoleto — lo reemplaza ADR-0029»). Quien lea ADR-0029 —«Cuatro sistemas separados», Aceptado— no tiene forma de enterarse. Y `rentas/…/adr/README.md` **no enlaza 0033**, aunque 0033 §3 y §4 decidan sobre `rentas` |
+| G5 | `allowEmptyShould(true)` está escrito **dentro** de `NINGUN_HALLAZGO_CORRIGE_LA_FICHA` (`:578`), y `ArquitecturaTestBase.java:118-123` dice literalmente por qué no se hace así: *«El permiso se da AQUI y no en cada regla a proposito … **Escrito en cada regla, seguiria puesto el dia que llegue el codigo**»*. Los otros dos permisos en-regla sí caducan porque el censo los cubre por ámbito; éste **no introduce un ámbito**, así que nada lo caduca |
+| G6 | **D-10 se da por contestada con un ADR `Propuesto`, y GOB-02 —el registro maestro— sigue diciendo «Abierta»**. Además GOB-02 la atribuye a «Catastro del piloto» (el cliente) y ADR-0036 dice «Decide: Dirección del proyecto». Y como `sgtm` «no se borra ni se modifica», **hoy no hay ningún sitio declarado donde registrar una decisión contestada después del corte**. Éste es el primer caso y no será el último: hay que decidir dónde vive ese registro |
+| G7 | ADR-0033 §Consecuencias dice «**las tres pruebas** que exigen que esas listas coincidan». Son **seis** los archivos que consumen `SISTEMAS_DEL_PRODUCTO` (`compose-de-los-sistemas`, `despliegue-de-los-sistemas`, `enlace-del-contrato`, `prefijo-de-la-implantacion`, `secretos`, `sondas-contra-la-cadena`). Una cifra no medida, en un proyecto cuyo lema es «medido y no supuesto» |
+
+### La documentación de las barreras se quedó rancia
+
+El PR añade dos reglas y tres escáneres y **no toca ninguno** de los documentos que
+`CLAUDE.md` §«Antes de escribir código, leer» señala como lectura obligatoria para tocarlas:
+
+| Archivo | Dice | Es |
+|---|---|---|
+| `librerias-backend/README.md:14,19` | «18 reglas», «40 clases de muestra» | 20; y sin los tres escáneres nuevos en su tabla |
+| `docs/00-gobierno/P3-safeguards.md:59,63` | «18 reglas», «las 40 clases de muestra» | 20 |
+| `docs/D0-desarrollo/pruebas.md:97` | «las 18 reglas y sus 40 muestras» | 20 |
+| `ArquitecturaTestBase.java:114` | «las **dieciocho** pasan» | 20 |
+| `rentas/CLAUDE.md` y sus `pruebas.md` / `entorno-local.md` | «`verificarArquitectura` corre **130 pruebas**» | **173**, medido |
+| `infrastructure/CLAUDE.md:18` | «Hoy da **366 verdes y 0 rojas**» | 680, y el PR editó las líneas de al lado sin tocarla |
+
+Medido en esta revisión, `:aplicacion:test`: **rentas 173 · catastro 104 · normativa 97 · caja 98**,
+0 fallos los cuatro.
+
 ---
 
 ## 4. Huecos estructurales de CI
@@ -329,6 +428,17 @@ cuatro en rojo, y la causa está en otro repositorio.
 **Arreglo:** un trabajo en `librerias-backend.yml` que clone los cuatro hermanos y corra su
 `verificarArquitectura` contra la librería **del PR**. Es lo que convierte «cinco backends la
 consumen» en una afirmación comprobada.
+
+### 4.4. Los verificadores de ADR no están cableados en CI
+
+`grep -rn "verificar-enlaces\|reparto-adr\|indices-adr" .github/` → **0 resultados**. Los tres son
+guiones manuales. Conviene decirlo al valorar que salgan verdes: **hoy no habrían frenado nada**, y
+G3 —cinco filas falsas en la tabla que ellos verifican— es justo lo que se cuela por ahí.
+
+Ejecutados a mano en esta revisión: `verificar-reparto-adr.py` apartado 4 **OK en los cinco** (el
+índice coincide con el disco en todos), y `verificar-enlaces.py` sobre los ADR nuevos y T-0,
+**«91 enlaces resueltos, ninguno roto»**. Los 11 rotos de `verificar-enlaces-adr.py` son
+preexistentes y **ninguno** pertenece a 0033–0037.
 
 ---
 
@@ -420,12 +530,20 @@ mitad del SNCP, o se implementa §1 en esta fase.
    marco *comparado* y no *mencionado* (§3.3). Las tres son de una a diez líneas, y las tres
    necesitan su muestra nueva o el arreglo se puede deshacer en verde.
 4. **El recorrido léxico de `RevisorDeEsquema`** y el censo de sentencias no reconocidas (§3.4).
-5. **Los tres huecos de CI** (§4). El más barato y el que más compra: añadir `librerias-backend/**`
-   a las `paths` de `infra.yml`.
-6. **Decidir** las dos contradicciones —el GiST y su ADR (A2), y D-10 con ADR-0036 §1 (M9)—: no se
-   arreglan editando, se arreglan eligiendo.
-7. **Escribir en `V6`** si `frente_predio` se versiona o no (A1).
-8. Lo demás, por severidad.
+5. **Los cuatro huecos de CI** (§4). El más barato y el que más compra: añadir
+   `librerias-backend/**` a las `paths` de `infra.yml`.
+6. **El nombre `seguridad`** (G2), ahora que el sistema no existe y cambiarlo es gratis. Después
+   cuesta lo que costó R-N.
+7. **Decidir**, no editar: el GiST y su ADR (A2); la cardinalidad de ADR-0029 con el precedente de
+   ADR-0030 sobre 0009 (G1, G4); y dónde se registra una decisión contestada después del corte,
+   que D-10 es el primer caso (G6, M9).
+8. **Escribir en `V6`** si `frente_predio` se versiona o no (A1).
+9. **Las cifras rancias** de `librerias-backend/README.md`, P3, los `pruebas.md` y `CLAUDE.md:18`.
+   Son las que alguien leerá mañana antes de tocar las barreras.
+10. Lo demás, por severidad.
+
+> **Ya hecho en esta rama**, con su verificación: el censo C-2 (§2.1, `680/680`) y el byte NUL de
+> `RevisorDeEsquema` (§3.5, `BUILD SUCCESSFUL` en la librería y en `catastro --rerun-tasks`).
 
 Y una recomendación de método, porque es la que habría evitado §2.1 y la mitad de §3:
 
