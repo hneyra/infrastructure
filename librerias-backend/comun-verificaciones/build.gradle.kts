@@ -99,9 +99,13 @@ tasks.test {
 //
 // Si esto se quita, `FuenteDeMuestra` falla nombrando el recurso que falta. Es a proposito: una
 // demostracion que no encuentra su muestra tiene que ponerse roja, no pasar.
+// Y las migraciones de muestra, que no son Java: `RevisorDeEsquema` se demuestra sobre SQL
+// (ADR-0034 regla 1), y una de sus muestras solo existe repartida en DOS archivos —la tabla
+// nace sin geometria y la recibe tres migraciones despues—, que es la forma en que ese defecto
+// llega de verdad. Sin empaquetarlas, `FuenteDeMuestra` falla nombrando el recurso que falta.
 tasks.processResources {
     from("src/main/java/kamayuk/comun/verificaciones/muestras") {
-        include("**/*.java")
+        include("**/*.java", "**/*.sql")
         into("fuentes-de-muestra")
     }
 }

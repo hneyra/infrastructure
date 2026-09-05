@@ -1,0 +1,21 @@
+-- ============================================================================
+--  La muestra que solo se puede escribir con DOS migraciones, y la razon por la
+--  que `RevisorDeEsquema` compone el esquema entero en vez de revisar archivo
+--  por archivo.
+--
+--  `establecimiento_de_muestra` nace en V902 —arriba, en el orden de version—
+--  SIN geometria, y por tanto en regla: una tabla de tenant sin poligono no
+--  tiene por que llevar marco. La geometria le llega AQUI, tres migraciones
+--  despues, con un `ALTER TABLE ... ADD COLUMN`.
+--
+--  Un escaner que mirara cada archivo por separado daria por buenos los dos: el
+--  primero porque no tiene geometria, el segundo porque no tiene tabla. Y el
+--  defecto vive justo en la suma. Es la forma en que este defecto va a llegar de
+--  verdad —nadie crea la tabla con el poligono el primer dia; lo anade cuando
+--  hay plano que cargar—, asi que es la que la regla tiene que ver.
+--
+--  El hallazgo apunta a ESTA migracion y no a la que creo la tabla: es la que
+--  hay que abrir para arreglarlo.
+-- ============================================================================
+
+ALTER TABLE establecimiento_de_muestra ADD COLUMN geometria geography(Point,4326);

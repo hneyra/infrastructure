@@ -229,6 +229,27 @@ public interface ConfiguracionDeLasVerificaciones {
     Set<String> componenElAreaAManoConMotivo();
 
     /**
+     * Las clases que buscan texto libre con {@code LIKE '%…%'} sobre una tabla de tenant, cada una
+     * con su motivo (ADR-0034 §3, tercer hallazgo de RLS).
+     *
+     * <p>Un comodin por delante no es una busqueda por prefijo y <b>no tiene forma de rango</b>: no
+     * llega a ningun indice b-tree, con RLS o sin ella, asi que recorre el padron del inquilino por
+     * construccion. El dominio ya lo dice por escrito en {@code FiltroDePredios} y {@code
+     * FiltroDeFichas} —«la busqueda apunta a una columna, no a cualquier cosa»— y esta lista es lo
+     * que impide que la frase siga siendo solo una frase.
+     *
+     * <p>Se nombra por clase y no por paquete, como {@link #componenElAreaAManoConMotivo()}: anadir
+     * una tiene que ser una linea visible en el diff, con quien la escribe teniendo que decir por
+     * que. Y como aquella, <b>la lista ES la lista de trabajo pendiente</b>: no es una puerta
+     * abierta, es un censo de lo que hay que cerrar.
+     *
+     * <p>Vacia por omision, que es lo correcto: quien no tenga ninguna no declara nada.
+     */
+    default Set<String> busquedasDeTextoLibreConMotivo() {
+        return Set.of();
+    }
+
+    /**
      * Si este repositorio todavia no tiene <b>ningun contexto acotado</b>: solo infraestructura.
      *
      * <p>No dice «no hay codigo»: los cuatro repositorios nuevos tienen desde el primer dia su

@@ -363,6 +363,88 @@ public final class RevisorDeCodigoFuente {
                     CONFIG.componenElAreaAManoConMotivo(),
                     Set.of(CLASE_DE_MUESTRA_QUE_COMPONE_EL_AREA));
 
+    /**
+     * ADR-0034 regla 2: un predicado espacial de PostGIS en el SQL de la aplicacion.
+     *
+     * <p>Bajo RLS ninguno de estos es <i>leakproof</i>, asi que PostgreSQL no los promueve por
+     * encima de la politica: el indice GiST no se usa, el plan <b>sigue diciendo «Index»</b> —el de
+     * la politica— y la consulta lee el padron entero del inquilino para devolver mil doscientos
+     * lotes. Medido: 4 530 bloques contra los 347 del marco.
+     *
+     * <p>El defecto no avisa: la respuesta es CORRECTA. Solo se paga.
+     */
+    private static final Pattern PREDICADO_ESPACIAL =
+            Pattern.compile(
+                    "(?i)\\bst_(intersects|within|contains|containsproperly|coveredby|covers"
+                            + "|overlaps|crosses|touches|dwithin|dfullywithin|relate)\\s*\\(");
+
+    /**
+     * El operador de solapamiento, {@code &&}.
+     *
+     * <p><b>Va acompanado de una condicion y no solo, y el motivo es que esta sobrecargado</b>:
+     * {@code daterange && daterange} es solapamiento TEMPORAL y es legitimo —es como {@code
+     * ficha_catastral} y {@code titularidad} impiden que dos vigencias se pisen—. Marcarlo siempre
+     * pondria roja la mitad del esquema el primer dia, y una comprobacion que grita el primer dia
+     * se silencia (#437). Se marca solo cuando en la misma sentencia hay geometria, que es cuando
+     * significa lo que ADR-0034 prohibe.
+     */
+    private static final Pattern OPERADOR_DE_SOLAPAMIENTO = Pattern.compile("&&");
+
+    /**
+     * La condicion de marco en la misma sentencia, que es lo que exime al operador espacial.
+     *
+     * <p>ADR-0034 regla 2 lo admite «solo como refinado exacto despues del marco». Sin esto la
+     * regla seria absoluta y no habria forma de escribir el caso en que la respuesta si exige el
+     * poligono de verdad —un {@code ST_Contains} para decir en que zona cae ESTE lote—, que es
+     * legitimo mientras el marco vaya delante acotando las filas.
+     */
+    private static final Pattern MENCIONA_EL_MARCO =
+            Pattern.compile("(?i)\\bmarco_(oeste|sur|este|norte)\\b");
+
+    /** Lo que hace que un {@code &&} sea espacial y no temporal. */
+    private static final Pattern MENCIONA_GEOMETRIA =
+            Pattern.compile(
+                    "(?i)\\b(geometria|geography|geometry|st_[a-z]+|box2d|box3d|envelope|geom)\\b");
+
+    /**
+     * El tercer hallazgo de RLS: una busqueda por prefijo escrita con {@code LIKE}.
+     *
+     * <p>Bajo la politica, {@code textlike} tampoco es <i>leakproof</i>: un {@code LIKE 'prefijo%'}
+     * no llega nunca al indice {@code text_pattern_ops} y recorre el padron. La forma que si
+     * funciona es el RANGO —{@code ~>=~ 'prefijo' AND ~<~ 'prefijp'}—, y esta escrita una vez en
+     * {@code RangoDePrefijo}.
+     */
+    private static final Pattern BUSQUEDA_CON_LIKE =
+            Pattern.compile("(?i)\\b(i?like)\\b\\s*(:\\w+|\\?|'[^']*')");
+
+    /**
+     * La forma correcta, la que exime al {@code LIKE} de repliegue. Ver {@link #revisarPrefijo}.
+     */
+    private static final Pattern OPERADOR_DE_RANGO = Pattern.compile("~>=~|~<~");
+
+    /**
+     * El comodin de «contiene» antepuesto en Java: un literal {@code "%"} suelto.
+     *
+     * <p>{@code parametros.put("texto", "%" + criterio.texto() + "%")} deja el SQL diciendo {@code
+     * ILIKE :texto} —que se lee igual que una busqueda por prefijo— y el {@code %} en el otro lado.
+     * Sin esto, las dos consultas de texto libre de {@code rentas} se diagnosticaban como prefijos
+     * y se les pedia un rango que <b>no pueden tener</b>: un comodin por delante no llega a ningun
+     * indice b-tree, con RLS o sin ella.
+     *
+     * <p>No lo confunde el {@code " || \'%\'"} de {@code RangoDePrefijo}, que es otro literal.
+     */
+    private static final Pattern COMODIN_ANTEPUESTO_EN_JAVA = Pattern.compile("(?m)^\"%\"$");
+
+    /**
+     * Las clases que buscan texto libre con el comodin por delante, y dicen por que.
+     *
+     * <p>Es la lista de {@link ConfiguracionDeLasVerificaciones#busquedasDeTextoLibreConMotivo()},
+     * y como la del area se declara por clase para que anadir una se vea en el diff. La muestra NO
+     * entra: tiene que seguir detectandose, o la regla dejaria de poder demostrarse.
+     */
+    public static final Set<String> BUSCAN_TEXTO_LIBRE_CON_MOTIVO =
+            CONFIG.busquedasDeTextoLibreConMotivo();
+
     private static final Pattern COMENTARIO_SQL_DE_LINEA = Pattern.compile("--[^\\n]*");
     private static final Pattern COMENTARIO_DE_BLOQUE = Pattern.compile("(?s)/\\*.*?\\*/");
 
@@ -382,6 +464,143 @@ public final class RevisorDeCodigoFuente {
         hallazgos.addAll(revisarRedondeo(archivo, contenido));
         hallazgos.addAll(revisarValoresTributarios(archivo, contenido));
         hallazgos.addAll(revisarAreas(archivo, contenido));
+        hallazgos.addAll(revisarEspacial(archivo, contenido));
+        hallazgos.addAll(revisarPrefijo(archivo, contenido));
+        return hallazgos;
+    }
+
+    /**
+     * ADR-0034 regla 2: ningun operador espacial en el SQL de aplicacion.
+     *
+     * <p>Mira los literales de cadena y los bloques de texto, que es donde vive el SQL de un
+     * repositorio JDBC — y no el codigo, porque en Java {@code &&} es el «y» logico y estaria en
+     * cada condicion de cada clase—. Los comentarios quedan fuera por lo de siempre: este mismo
+     * archivo explica la prohibicion escribiendola.
+     *
+     * <p><b>No se aplica a las migraciones y es deliberado.</b> Un {@code EXCLUDE USING gist (…
+     * &amp;&amp;)} es exactamente como el esquema impide que dos vigencias se pisen, y ahi el
+     * operador va donde tiene que ir: en una restriccion que el motor evalua al escribir, no en un
+     * {@code WHERE} que el planificador tiene que resolver bajo la politica. Lo que ADR-0034
+     * prohibe es el SEGUNDO caso, y por eso el escaner de SQL —{@link #revisarSql}— no lo llama.
+     *
+     * <p>Lo que la regla admite: el operador como <b>refinado exacto detras del marco</b> (ADR-0034
+     * regla 2). Sin esa salida, la consulta que si necesita el poligono de verdad —en que zona cae
+     * ESTE lote— no se podria escribir.
+     *
+     * <p><b>La unidad es la SENTENCIA de Java, no el literal ni el archivo</b>, y las dos mitades
+     * de esa frase estan medidas. No el literal: el SQL de un repositorio JDBC se compone
+     * concatenando cadenas, asi que la condicion de marco y el refinado casi nunca caen en el mismo
+     * —el contraste de esta regla fallo justamente por eso la primera vez—. Y no el archivo: {@code
+     * CatastroRepositoryJdbc} nombra {@code marco_oeste} en otra consulta suya (el {@code min()}
+     * que compone el rectangulo de lo levantado), asi que con el archivo entero por unidad,
+     * devolver la consulta de la tesela al operador {@code &&} —el defecto exacto que {@code V65}
+     * arreglo— pasaba en VERDE.
+     *
+     * <p>Es una unidad distinta de la de {@link #revisarPrefijo}, y a proposito: alli el repliegue
+     * vive en la OTRA rama de un {@code if}, o sea en otra sentencia, y exigir que estuviera en la
+     * misma pondria rojo el unico codigo correcto que hay.
+     */
+    public static List<Hallazgo> revisarEspacial(String archivo, String contenido) {
+        List<Hallazgo> hallazgos = new ArrayList<>();
+
+        for (String sentenciaJava : sentenciasDeJava(contenido)) {
+            String sentencia = literalesDeCadena(sentenciaJava);
+            if (sentencia.isBlank() || MENCIONA_EL_MARCO.matcher(sentencia).find()) {
+                continue;
+            }
+
+            Matcher predicado = PREDICADO_ESPACIAL.matcher(sentencia);
+            while (predicado.find()) {
+                hallazgos.add(
+                        new Hallazgo(
+                                archivo,
+                                "ADR-0034 regla 2: bajo RLS ningun predicado espacial es leakproof,"
+                                        + " asi que no se promueve por encima de la politica y el"
+                                        + " indice GiST no sirve: la consulta es CORRECTA y lee el"
+                                        + " padron entero del inquilino, con el plan diciendo"
+                                        + " «Index». Se filtra por marco_oeste/sur/este/norte, y"
+                                        + " el operador solo detras, como refinado exacto",
+                                predicado.group()));
+            }
+
+            if (MENCIONA_GEOMETRIA.matcher(sentencia).find()
+                    && OPERADOR_DE_SOLAPAMIENTO.matcher(sentencia).find()) {
+                hallazgos.add(
+                        new Hallazgo(
+                                archivo,
+                                "ADR-0034 regla 2: «&&» sobre geometria es geography_overlaps, que"
+                                        + " tampoco es leakproof. Medido: 4 530 bloques contra los"
+                                        + " 347 del marco, y las dos respuestas son la misma",
+                                sentencia.replaceAll("\\s+", " ").strip()));
+            }
+        }
+        return hallazgos;
+    }
+
+    /**
+     * Tercer hallazgo de RLS: toda busqueda por prefijo se escribe como rango.
+     *
+     * <p><b>El {@code LIKE} de repliegue no se marca, y esa es la mitad que hace util la regla.</b>
+     * {@code RangoDePrefijo.condicion} calcula el sucesor del prefijo y, cuando no existe —el
+     * prefijo acaba en {@code ~}, o trae un caracter fuera del rango imprimible—, cae a {@code
+     * LIKE} porque no hay rango que escribir. Marcar eso pondria en rojo cuatro archivos correctos
+     * en tres repositorios el primer dia, y una comprobacion que grita el primer dia se silencia
+     * (#437).
+     *
+     * <p>El criterio es mecanico y no una lista de excepciones: <b>si el mismo archivo escribe
+     * tambien la forma de rango, el {@code LIKE} es el repliegue</b>; si no la escribe, es la unica
+     * forma que hay y es el defecto. Una lista de clases eximidas se habria quedado vieja al primer
+     * renombrado, como la de {@code SISTEMA_DEL_MODULO} en R-N.
+     *
+     * <p><b>El limite, dicho:</b> la unidad es el ARCHIVO y no el metodo, porque distinguir el
+     * metodo exigiria un analizador de Java y no una expresion regular. O sea que un repositorio
+     * que ya escriba un rango en otra consulta puede esconder ahi un {@code LIKE} suelto. Lo que la
+     * regla si garantiza es que el archivo que solo sabe hacer {@code LIKE} sale rojo.
+     *
+     * <p>El {@code LIKE '%…'} con comodin por delante <b>no es una busqueda por prefijo y no tiene
+     * forma de rango</b>: no llega a ningun indice b-tree, con RLS o sin ella. Es otra cosa y se
+     * dice con otro mensaje, porque pedirle un rango seria pedirle lo imposible. Lo que el dominio
+     * ya rechaza por escrito en {@code FiltroDePredios} y {@code FiltroDeFichas} —«la busqueda
+     * apunta a una columna, no a cualquier cosa»— y lo que esta mitad de la regla convierte en
+     * barrera. Su exencion es una lista declarada con motivo, no un criterio mecanico: la escribe
+     * cada repositorio en {@code busquedasDeTextoLibreConMotivo()}, y <b>es la lista de trabajo
+     * pendiente</b>, no una puerta abierta.
+     */
+    public static List<Hallazgo> revisarPrefijo(String archivo, String contenido) {
+        String literales = literalesDeCadena(contenido);
+        boolean sabeEscribirElRango = OPERADOR_DE_RANGO.matcher(literales).find();
+        boolean buscaTextoLibreConMotivo = BUSCAN_TEXTO_LIBRE_CON_MOTIVO.contains(claseDe(archivo));
+        // El comodin no siempre esta en el SQL: la forma mas comun de escribir un «contiene» es
+        // dejar el LIKE limpio y anteponerlo AL PARAMETRO, en Java. Sin mirarlo, esas consultas se
+        // leerian como busquedas por prefijo y el diagnostico seria el equivocado: se les pediria
+        // un rango que no pueden tener.
+        boolean anteponeElComodinEnJava = COMODIN_ANTEPUESTO_EN_JAVA.matcher(literales).find();
+        List<Hallazgo> hallazgos = new ArrayList<>();
+
+        for (String sentencia : literales.split("\n")) {
+            Matcher like = BUSQUEDA_CON_LIKE.matcher(sentencia);
+            while (like.find()) {
+                boolean comodinPorDelante =
+                        like.group(2).startsWith("'%")
+                                || (anteponeElComodinEnJava && like.group(2).startsWith(":"));
+                if (comodinPorDelante ? buscaTextoLibreConMotivo : sabeEscribirElRango) {
+                    continue;
+                }
+                hallazgos.add(
+                        new Hallazgo(
+                                archivo,
+                                comodinPorDelante
+                                        ? "un LIKE con el comodin por delante recorre el padron"
+                                                + " entero y no tiene forma de rango: la busqueda"
+                                                + " apunta a una columna, no a «cualquier cosa»"
+                                        : "tercer hallazgo de RLS: bajo la politica, textlike no es"
+                                                + " leakproof y un LIKE 'prefijo%' no llega nunca"
+                                                + " al indice. Se escribe como rango con ~>=~ y"
+                                                + " ~<~ (RangoDePrefijo), y el LIKE queda solo de"
+                                                + " repliegue para el prefijo sin sucesor",
+                                like.group()));
+            }
+        }
         return hallazgos;
     }
 
@@ -614,6 +833,71 @@ public final class RevisorDeCodigoFuente {
             literales.append(matcher.group()).append('\n');
         }
         return literales.toString();
+    }
+
+    /**
+     * Las sentencias de Java del fuente, partidas por el {@code ;} que las separa de verdad.
+     *
+     * <p>Es la unidad que {@link #revisarEspacial} necesita: una consulta compuesta por
+     * concatenacion es UNA sentencia aunque sean ocho literales, y dos consultas distintas del
+     * mismo repositorio son dos. Sin esto habria que elegir entre el literal —que parte la consulta
+     * por la mitad— y el archivo —que las junta todas—, y las dos elecciones estan medidas y
+     * fallan.
+     *
+     * <p>Recorre caracter a caracter porque un {@code ;} dentro de una cadena o de un comentario no
+     * separa nada, y partir por el dejaria media consulta a cada lado.
+     */
+    static List<String> sentenciasDeJava(String contenido) {
+        List<String> sentencias = new ArrayList<>();
+        StringBuilder actual = new StringBuilder();
+        int i = 0;
+        while (i < contenido.length()) {
+            char c = contenido.charAt(i);
+
+            if (c == '/' && i + 1 < contenido.length()) {
+                char siguiente = contenido.charAt(i + 1);
+                if (siguiente == '/') {
+                    int fin = contenido.indexOf('\n', i);
+                    i = fin < 0 ? contenido.length() : fin;
+                    continue;
+                }
+                if (siguiente == '*') {
+                    int fin = contenido.indexOf("*/", i + 2);
+                    i = fin < 0 ? contenido.length() : fin + 2;
+                    continue;
+                }
+            }
+
+            if (c == '"' && contenido.startsWith("\"\"\"", i)) {
+                int fin = contenido.indexOf("\"\"\"", i + 3);
+                fin = fin < 0 ? contenido.length() : fin + 3;
+                actual.append(contenido, i, fin);
+                i = fin;
+                continue;
+            }
+            if (c == '"' || c == '\'') {
+                int fin = i + 1;
+                while (fin < contenido.length() && contenido.charAt(fin) != c) {
+                    fin += contenido.charAt(fin) == '\\' ? 2 : 1;
+                }
+                fin = Math.min(fin + 1, contenido.length());
+                actual.append(contenido, i, fin);
+                i = fin;
+                continue;
+            }
+            if (c == ';') {
+                sentencias.add(actual.toString());
+                actual.setLength(0);
+                i++;
+                continue;
+            }
+            actual.append(c);
+            i++;
+        }
+        if (!actual.toString().isBlank()) {
+            sentencias.add(actual.toString());
+        }
+        return sentencias;
     }
 
     /** El SQL de una migracion, sin sus comentarios de linea ni de bloque. */
