@@ -7,9 +7,9 @@ a la causa** en ninguno de ellos.
 
 Los puertos por omisión —5432, 8080, 8180, 8025— son de los más ocupados que hay, y en un demonio
 compartido puede haber otra instalación corriendo. Se mueven en el `.env`, sin tocar el compose:
-`SGTM_PUERTO_BASE`, `SGTM_PUERTO_INGRESO`, `SGTM_PUERTO_IDENTIDAD`, `SGTM_PUERTO_CORREO`.
+`KAMAYUK_PUERTO_BASE`, `KAMAYUK_PUERTO_INGRESO`, `KAMAYUK_PUERTO_IDENTIDAD`, `KAMAYUK_PUERTO_CORREO`.
 
-**Y si mueves el de Keycloak, mueve `SGTM_OIDC_EMISOR` con él.**
+**Y si mueves el de Keycloak, mueve `KAMAYUK_OIDC_EMISOR` con él.**
 
 ## 2. Keycloak contesta `000` justo después de `up --wait`
 

@@ -73,9 +73,9 @@
 #   UBIGEO                    (compose) si se fija, solo reconcilia ese `<ubigeo>.json`
 #   KC_SERVIDOR               (directo) URL de Keycloak, p.ej. http://svc:8080/keycloak
 #   KC_ADMIN / KC_CLAVE       (directo) usuario y clave de administracion
-#   SGTM_KEYCLOAK_ADMIN       (compose) usuario admin; por omision `admin`
-#   SGTM_CLAVE_KEYCLOAK       (compose) clave admin
-#   SGTM_KEYCLOAK_SERVICIO    (compose) servicio del compose; por omision `identidad`
+#   KAMAYUK_KEYCLOAK_ADMIN       (compose) usuario admin; por omision `admin`
+#   KAMAYUK_CLAVE_KEYCLOAK       (compose) clave admin
+#   KAMAYUK_KEYCLOAK_SERVICIO    (compose) servicio del compose; por omision `identidad`
 #   KC_SMTP_USUARIO/KC_SMTP_CLAVE  si el relay pide auth: se ponen en el realm con
 #                             `kcadm`, nunca quedan en el `realm.json` versionado
 #   SIN_CORREO=1              omite el envio del enlace (usuario sin clave; solo local)
@@ -110,7 +110,7 @@ else
 fi
 
 if [ "$MODO" = compose ]; then
-    : "${SGTM_KEYCLOAK_SERVICIO:=identidad}"
+    : "${KAMAYUK_KEYCLOAK_SERVICIO:=identidad}"
 fi
 
 # `kcadm`, en el modo que toque. `</dev/null` porque este guion invoca `kc` dentro
@@ -120,7 +120,7 @@ kc() {
     if [ "$MODO" = directo ]; then
         /opt/keycloak/bin/kcadm.sh "$@" </dev/null
     else
-        docker compose exec -T "$SGTM_KEYCLOAK_SERVICIO" \
+        docker compose exec -T "$KAMAYUK_KEYCLOAK_SERVICIO" \
             /opt/keycloak/bin/kcadm.sh "$@" </dev/null
     fi
 }
@@ -132,9 +132,9 @@ if [ "$MODO" = directo ]; then
     : "${KC_CLAVE:?falta KC_CLAVE}"
     SERVIDOR="$KC_SERVIDOR"; ADMIN="$KC_ADMIN"; CLAVE="$KC_CLAVE"
 else
-    : "${SGTM_CLAVE_KEYCLOAK:?falta SGTM_CLAVE_KEYCLOAK}"
+    : "${KAMAYUK_CLAVE_KEYCLOAK:?falta KAMAYUK_CLAVE_KEYCLOAK}"
     SERVIDOR="${KC_SERVIDOR:-http://localhost:8080}"
-    ADMIN="${SGTM_KEYCLOAK_ADMIN:-admin}"; CLAVE="$SGTM_CLAVE_KEYCLOAK"
+    ADMIN="${KAMAYUK_KEYCLOAK_ADMIN:-admin}"; CLAVE="$KAMAYUK_CLAVE_KEYCLOAK"
 fi
 
 echo "Reconciliando $CUAL del realm «$REALM» contra $SERVIDOR (modo $MODO)"

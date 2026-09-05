@@ -124,7 +124,7 @@ trap limpiar EXIT
 # proceso sobre lo restaurado. Eso es manipular el volumen desde fuera, y contra un
 # contenedor de la imagen oficial no se puede sin reimplementar medio entrypoint — por
 # eso este simulacro pide la instancia local aunque haya Docker.
-export SGTM_MOTOR_MODO=local
+export KAMAYUK_MOTOR_MODO=local
 
 # shellcheck source=../verificaciones/motor/lib-motor-local.sh
 source "$INFRA/verificaciones/motor/lib-motor-local.sh"
@@ -164,7 +164,7 @@ mkdir -p "$ALMACEN"
 walg() {
     motor_como_su_usuario env \
         WALG_FILE_PREFIX="$ALMACEN" \
-        WALG_LIBSODIUM_KEY="${SGTM_CLAVE_DE_PRUEBA:-$CLAVE_CIFRADO}" \
+        WALG_LIBSODIUM_KEY="${KAMAYUK_CLAVE_DE_PRUEBA:-$CLAVE_CIFRADO}" \
         WALG_COMPRESSION_METHOD=lz4 \
         PGHOST=127.0.0.1 PGPORT="$PUERTO" PGDATABASE=postgres \
         PGUSER=sgtm_respaldo PGPASSWORD="$CLAVE_RESPALDO" \
@@ -175,7 +175,7 @@ walg() {
 # 1. El motor, con archivado continuo
 # ─────────────────────────────────────────────────────────────────────────────
 [ "$MODO" = "local" ] \
-    || { echo "FALLO: la biblioteca no arranco en modo local pese a SGTM_MOTOR_MODO=local." >&2; exit 1; }
+    || { echo "FALLO: la biblioteca no arranco en modo local pese a KAMAYUK_MOTOR_MODO=local." >&2; exit 1; }
 
 echo
 echo "· Encendiendo el archivado continuo de WAL"

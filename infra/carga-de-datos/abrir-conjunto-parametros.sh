@@ -103,7 +103,7 @@ if [ -n "$ARCHIVO" ]; then
     trap cleanup EXIT
     MONTAJE_ENV=$(cat <<EOF
 
-            - name: SGTM_CONJUNTOPARAMETROS_ARCHIVO
+            - name: KAMAYUK_CONJUNTOPARAMETROS_ARCHIVO
               value: /datos/parametros.csv
 EOF
 )
@@ -156,29 +156,29 @@ spec:
           env:
             - name: SPRING_PROFILES_ACTIVE
               value: batch
-            - name: SGTM_DB_URL
+            - name: KAMAYUK_DB_URL
               value: jdbc:postgresql://sgtm-${AMBIENTE}-postgres:5432/sgtm
             # sgtm_app basta: conjunto_parametros y conjunto_parametro_detalle son tablas que
             # la aplicacion escribe (V7). Publicar un valor normativo si exigiria
             # rol_carga_parametros, y este proceso no publica ninguno.
-            - name: SGTM_DB_USUARIO
+            - name: KAMAYUK_DB_USUARIO
               value: sgtm_app
-            - name: SGTM_DB_CLAVE
+            - name: KAMAYUK_DB_CLAVE
               valueFrom:
                 secretKeyRef:
                   name: sgtm-${AMBIENTE}-postgres-app
                   key: clave-app
-            - name: SGTM_CONJUNTOPARAMETROS_MUNICIPALIDADID
+            - name: KAMAYUK_CONJUNTOPARAMETROS_MUNICIPALIDADID
               value: "$MUNICIPALIDAD_ID"
-            - name: SGTM_CONJUNTOPARAMETROS_EJERCICIO
+            - name: KAMAYUK_CONJUNTOPARAMETROS_EJERCICIO
               value: "${EJERCICIO:-0}"
-            - name: SGTM_CONJUNTOPARAMETROS_CONJUNTOID
+            - name: KAMAYUK_CONJUNTOPARAMETROS_CONJUNTOID
               value: "${CONJUNTO_ID:-0}"
-            - name: SGTM_CONJUNTOPARAMETROS_SELLAR
+            - name: KAMAYUK_CONJUNTOPARAMETROS_SELLAR
               value: "$SELLAR"
-            - name: SGTM_CONJUNTOPARAMETROS_USUARIODELPROCESO
+            - name: KAMAYUK_CONJUNTOPARAMETROS_USUARIODELPROCESO
               value: conjunto-parametros
-            - name: SGTM_CONJUNTOPARAMETROS_OBSERVACION
+            - name: KAMAYUK_CONJUNTOPARAMETROS_OBSERVACION
               value: "$OBSERVACION"$MONTAJE_ENV$MONTAJE_VOLUMEN
           securityContext:
             allowPrivilegeEscalation: false

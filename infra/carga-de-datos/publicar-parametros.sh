@@ -172,22 +172,22 @@ spec:
           env:
             - name: SPRING_PROFILES_ACTIVE
               value: batch
-            - name: SGTM_DB_URL
+            - name: KAMAYUK_DB_URL
               value: jdbc:postgresql://sgtm-${AMBIENTE}-postgres:5432/sgtm
             # rol_carga_parametros, y solo aqui. parametro_tributario lleva FORCE ROW LEVEL
             # SECURITY y la unica politica de escritura de V6 nombra a este rol: ni sgtm_app
             # ni sgtm_owner pueden insertar en ella. Y este rol no alcanza ninguna otra tabla
             # (V7), asi que este Job no puede componer ni sellar aunque quisiera.
-            - name: SGTM_DB_USUARIO
+            - name: KAMAYUK_DB_USUARIO
               value: rol_carga_parametros
-            - name: SGTM_DB_CLAVE
+            - name: KAMAYUK_DB_CLAVE
               valueFrom:
                 secretKeyRef:
                   name: $SECRETO
                   key: clave-carga
-            - name: SGTM_PUBLICACIONPARAMETROS_ARCHIVO
+            - name: KAMAYUK_PUBLICACIONPARAMETROS_ARCHIVO
               value: /datos/parametros.csv
-            - name: SGTM_PUBLICACIONPARAMETROS_USUARIODELPROCESO
+            - name: KAMAYUK_PUBLICACIONPARAMETROS_USUARIODELPROCESO
               value: "$USUARIO"
           volumeMounts:
             - name: datos

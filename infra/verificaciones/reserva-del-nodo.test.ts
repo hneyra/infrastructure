@@ -48,7 +48,7 @@ function correr(contenidoPrevio: string | undefined): {
   let salida = "";
   try {
     salida = execFileSync("bash", [GUION, "--solo-configuracion"], {
-      env: { ...process.env, SGTM_CONFIG_K3S: config },
+      env: { ...process.env, KAMAYUK_CONFIG_K3S: config },
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });

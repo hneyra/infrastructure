@@ -148,9 +148,9 @@ describe("#731 — ningun guion vuelve a fijar un puerto", () => {
   });
 
   it("hay UNA variable para imponer el puerto, no dos con dos valores distintos", () => {
-    // `SGTM_PUERTO_MOTOR` la leian dos guiones con dos valores por omision distintos
+    // `KAMAYUK_PUERTO_MOTOR` la leian dos guiones con dos valores por omision distintos
     // —55432 y 55434—, de modo que fijarla para uno se la fijaba al otro con otro
-    // sentido; y el simulacro tenia ademas su propio `SGTM_PUERTO_SIMULACRO`.
+    // sentido; y el simulacro tenia ademas su propio `KAMAYUK_PUERTO_SIMULACRO`.
     const todos = GUIONES.concat([
       "verificaciones/motor/lib-motor-local.sh",
       "verificaciones/motor/puerto.sh",
@@ -158,11 +158,11 @@ describe("#731 — ningun guion vuelve a fijar un puerto", () => {
       .map((guion) => readFileSync(join(RAIZ, guion), "utf8"))
       .join("\n");
 
-    expect(todos, "dos nombres para lo mismo divergen").not.toContain("SGTM_PUERTO_SIMULACRO");
+    expect(todos, "dos nombres para lo mismo divergen").not.toContain("KAMAYUK_PUERTO_SIMULACRO");
     expect(
       // La LECTURA, no la mencion: los javadoc la nombran a proposito para explicar que
       // existe, y contar eso convertiria la guarda en una prohibicion de documentar.
-      todos.match(/\$\{SGTM_PUERTO_MOTOR/g) ?? [],
+      todos.match(/\$\{KAMAYUK_PUERTO_MOTOR/g) ?? [],
       "y el que queda se lee en un solo sitio: la biblioteca",
     ).toHaveLength(1);
   });

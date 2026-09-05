@@ -191,8 +191,8 @@ crear_base() {
 
 retrato() {
     local base=$1 salida=$2 tablas=$3
-    ( cd "$VERIFICAR" && SGTM_BASELINE_URL="jdbc:postgresql://$HOST:$PUERTO/postgres" \
-        SGTM_BASELINE_USUARIO="$USUARIO" SGTM_BASELINE_CLAVE="${PGPASSWORD:-}" \
+    ( cd "$VERIFICAR" && KAMAYUK_BASELINE_URL="jdbc:postgresql://$HOST:$PUERTO/postgres" \
+        KAMAYUK_BASELINE_USUARIO="$USUARIO" KAMAYUK_BASELINE_CLAVE="${PGPASSWORD:-}" \
         ./gradlew -q run -Dclase=Retrato --args="$base $salida $tablas" --console=plain \
         >/dev/null )
     python3 "$VERIFICAR/canonizar.py" "$salida" "$salida.c" >/dev/null

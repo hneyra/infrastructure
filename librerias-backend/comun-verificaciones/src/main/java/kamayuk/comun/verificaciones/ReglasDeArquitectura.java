@@ -221,7 +221,7 @@ public final class ReglasDeArquitectura {
      *
      * <p>Se comprueba donde se puede comprobar: un caso de uso de escritura es un metodo
      * {@code @Transactional} que no es de solo lectura, y tiene que declarar un parametro {@link
-     * pe.gob.sgtm.dominio.Observacion}.
+     * kamayuk.comun.verificaciones.muestras.dominio.Observacion}.
      *
      * <p>La restriccion de la base es la barrera final y no se puede rodear, pero falla en
      * ejecucion; esta falla al compilar el build, que es donde cuesta barato. Y hace algo que la

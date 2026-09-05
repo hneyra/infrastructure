@@ -13,9 +13,9 @@ services:
       dockerfile: backend/Dockerfile
       target: migrador
     environment:
-      SGTM_DB_URL: jdbc:postgresql://base:5432/rentas
-      SGTM_DB_OWNER_USUARIO: sgtm_owner
-      SGTM_DB_OWNER_CLAVE: ${SGTM_CLAVE_OWNER:?falta}
+      KAMAYUK_DB_URL: jdbc:postgresql://base:5432/rentas
+      KAMAYUK_DB_OWNER_USUARIO: sgtm_owner
+      KAMAYUK_DB_OWNER_CLAVE: ${KAMAYUK_CLAVE_OWNER:?falta}
     restart: "no"
 
   mercados-implantacion:
@@ -25,9 +25,9 @@ services:
       target: aplicacion
     environment:
       SPRING_PROFILES_ACTIVE: batch
-      SGTM_DB_URL: jdbc:postgresql://base:5432/rentas
-      SGTM_DB_USUARIO: sgtm_app
-      SGTM_DB_CLAVE: ${SGTM_CLAVE_APP:?falta}
+      KAMAYUK_DB_URL: jdbc:postgresql://base:5432/rentas
+      KAMAYUK_DB_USUARIO: sgtm_app
+      KAMAYUK_DB_CLAVE: ${KAMAYUK_CLAVE_APP:?falta}
     restart: "no"
 
   mercados:
@@ -37,9 +37,9 @@ services:
       target: aplicacion
     environment:
       SPRING_PROFILES_ACTIVE: web
-      SGTM_DB_URL: jdbc:postgresql://base:5432/rentas
-      SGTM_DB_USUARIO: sgtm_app
-      SGTM_DB_CLAVE: ${SGTM_CLAVE_APP:?falta}
+      KAMAYUK_DB_URL: jdbc:postgresql://base:5432/rentas
+      KAMAYUK_DB_USUARIO: sgtm_app
+      KAMAYUK_DB_CLAVE: ${KAMAYUK_CLAVE_APP:?falta}
     labels:
       - traefik.enable=true
       - traefik.http.routers.mercados.rule=PathPrefix(`/mercados`)

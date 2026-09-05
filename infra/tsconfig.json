@@ -18,7 +18,7 @@
     "noImplicitReturns": true,
     "noUnusedLocals": true,
     "forceConsistentCasingInFileNames": true,
-    // `@sgtm/infra-contrato` se resuelve AQUI, y no por el `node_modules` del sistema que lo
+    // `@kamayuk/infra-contrato` se resuelve AQUI, y no por el `node_modules` del sistema que lo
     // importa. Los cuatro descriptores lo declaran como `link:` y quien materializa ese enlace
     // es `yarn install` DENTRO de cada sistema; el CI de este repositorio los clona para
     // comprobarlos y solo instala en `infrastructure/infra`, asi que el enlace no existe alli.
@@ -30,7 +30,7 @@
     // Se arregla apuntando al contrato de este repositorio, que es EXACTAMENTE a donde el enlace
     // apunta cuando existe, en vez de instalar cuatro `node_modules` en CI para materializarlo.
     // `EL_ENLACE_DE_LOS_SISTEMAS` lo ata: si un sistema cambia su `link:`, la guarda muerde.
-    "paths": { "@sgtm/infra-contrato": ["./contrato/index.ts"] }
+    "paths": { "@kamayuk/infra-contrato": ["./contrato/index.ts"] }
   },
   "include": [
     "index.ts",

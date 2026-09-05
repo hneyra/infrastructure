@@ -170,7 +170,7 @@ quedó sirviendo**. Lo que se comprobó no es que el `up` volviera, sino la sust
   comprueba que el contenedor corre. Lo que hay que esperar es el `.well-known`.
 - **Los puertos por omisión chocan.** 5432, 8080, 8180 y 8025 estaban tomados en el demonio
   compartido. Se movieron en el `.env` a 55433 / 18080 / 18180 / 18025, **y con el de Keycloak hay
-  que mover `SGTM_OIDC_EMISOR`**: con dos nombres distintos la firma valida, el emisor no cuadra y
+  que mover `KAMAYUK_OIDC_EMISOR`**: con dos nombres distintos la firma valida, el emisor no cuadra y
   el 401 no dice por qué.
 - **Con un `DOCKER_HOST` remoto el comando del README no vale tal cual.** El compose monta rutas
   relativas al árbol y un *bind mount* lo resuelve **el demonio**: si no existen allí, el motor

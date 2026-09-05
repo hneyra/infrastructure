@@ -15,7 +15,7 @@ import { SISTEMAS_CON_APLICACION, exigidasPor, variablesSinOmision } from "./var
  * ## Todo pod que corra la imagen de la APLICACION, y hay que decir por que
  *
  * Hasta C-14 esto miraba **solo** los `Deployment`, y no por comodidad: los `Job` de migracion de
- * los cuatro sistemas corrian la MISMA imagen que el `Deployment` con `SGTM_DB_USUARIO=sgtm_owner`
+ * los cuatro sistemas corrian la MISMA imagen que el `Deployment` con `KAMAYUK_DB_USUARIO=sgtm_owner`
  * y sin `SPRING_PROFILES_ACTIVE`, o sea que arrancaban la aplicacion sin migrar nada. Incluirlos
  * habria puesto esta guarda roja por un defecto que no era el que mide.
  *
@@ -122,17 +122,17 @@ describe("toda variable sin valor por omision la pone el descriptor", () => {
   it("y el lector encuentra de verdad las que hay: `caja` exige las dos de ADR-0026 §4", () => {
     expect(exigidasPor("caja", "web")).toContain("KAMAYUK_CAJA_RESPONSABLE");
     expect(exigidasPor("caja", "web")).toContain("KAMAYUK_CAJA_CANAL");
-    expect(exigidasPor("caja", "web")).toContain("SGTM_DB_URL");
+    expect(exigidasPor("caja", "web")).toContain("KAMAYUK_DB_URL");
   });
 
   /**
-   * Y el perfil separa: `SGTM_OIDC_EMISOR` solo se exige en `web`. Exigirsela a un proceso de lote
+   * Y el perfil separa: `KAMAYUK_OIDC_EMISOR` solo se exige en `web`. Exigirsela a un proceso de lote
    * seria pedir que la maquina que corre una determinacion de madrugada pueda ver Keycloak.
    */
   it("y el perfil separa: el emisor OIDC es del bloque `web`, no del comun", () => {
     const { comunes, porPerfil } = variablesSinOmision("rentas");
-    expect(comunes).not.toContain("SGTM_OIDC_EMISOR");
-    expect(porPerfil["web"]).toContain("SGTM_OIDC_EMISOR");
-    expect(exigidasPor("rentas", "batch")).not.toContain("SGTM_OIDC_EMISOR");
+    expect(comunes).not.toContain("KAMAYUK_OIDC_EMISOR");
+    expect(porPerfil["web"]).toContain("KAMAYUK_OIDC_EMISOR");
+    expect(exigidasPor("rentas", "batch")).not.toContain("KAMAYUK_OIDC_EMISOR");
   });
 });

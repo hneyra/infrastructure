@@ -63,7 +63,7 @@ convenciones**. Cada repositorio de sistema gana una carpeta `infrastructure/` c
 
 ### 2. El descriptor: funciones puras publicadas por su dueño
 
-Cada repositorio pública `@sgtm/infra-<sistema>`: un paquete versionado que exporta **funciones
+Cada repositorio pública `@kamayuk/infra-<sistema>`: un paquete versionado que exporta **funciones
 puras que devuelven manifiestos**, exactamente la forma que ya tienen los componentes de hoy.
 `infrastructure` los importa, **fija su versión**, los compone y **los audita con las mismas reglas
 que audita los propios**.

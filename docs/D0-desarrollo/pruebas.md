@@ -89,7 +89,7 @@ Reproducirlo sin vitest, para no creérselo:
 cd infra
 TMP=$(mktemp -d)
 printf 'write-kubeconfig-mode: "0644"\n\n# … Escrito por infra/vps/reservar-recursos-del-nodo.sh …\nkubelet-arg:\n  - "system-reserved=cpu=1,memory=1Gi"\n  - "kube-reserved=cpu=1,memory=1Gi"\n' > $TMP/config.yaml
-SGTM_CONFIG_K3S=$TMP/config.yaml bash vps/reservar-recursos-del-nodo.sh --solo-configuracion
+KAMAYUK_CONFIG_K3S=$TMP/config.yaml bash vps/reservar-recursos-del-nodo.sh --solo-configuracion
 ```
 
 ## 3. Las barreras, medidas desde el consumidor

@@ -40,18 +40,27 @@ describe("cada sistema recibe la implantacion con el prefijo que su Java lee", (
   });
 
   /**
-   * Y los prefijos son DOS, no uno: `rentas` conserva el del monolito y los otros tres estrenaron
-   * el suyo a proposito. Esta prueba fija esa asimetria contra el codigo, para que «igualarlos»
-   * sea una decision y no un descuido — igualarlos por el lado de `rentas` exige renombrar la
-   * propiedad en su Java, y por el lado de los otros tres deshace la separacion que su javadoc
-   * pide.
+   * Y desde R-A/B los cuatro prefijos son EL MISMO, leido del Java y no escrito aqui.
+   *
+   * Hasta C-18 eran dos: `rentas` conservaba `sgtm.implantacion` —era el monolito— y los otros
+   * tres estrenaron `kamayuk.implantacion`, y esa asimetria es la que dejo el Job de implantacion
+   * de `rentas` **saliendo con codigo 0 sin implantar nada** desde C-14. R-A/B la deshace por el
+   * lado que faltaba: renombrando la propiedad en el Java de `rentas`.
+   *
+   * Esta prueba sigue **leyendo los cuatro archivos** y no comparando contra una lista escrita a
+   * mano: lo que fija es que los cuatro digan lo mismo, y que decir otra cosa sea una decision con
+   * su diff y no un descuido. El motivo por el que los tres hermanos estrenaron nombre —«tener
+   * nombres distintos hace imposible que un descuido apunte el Job de `catastro` con las variables
+   * del de `rentas`»— lo sigue cubriendo la prueba de arriba, que compara **cada** descriptor con
+   * **su** Java: ahi el nombre compartido no confunde nada, porque cada sistema tiene su propio
+   * Job y su propia base.
    */
-  it("y son dos prefijos distintos, leidos del Java y no escritos aqui", () => {
+  it("y los cuatro leen el mismo, leido del Java y no escrito aqui", () => {
     const prefijos = Object.fromEntries(
       SISTEMAS_DEL_PRODUCTO.map((s) => [s, prefijoDeLaImplantacion(s)]),
     );
     expect(prefijos).toEqual({
-      rentas: "sgtm.implantacion",
+      rentas: "kamayuk.implantacion",
       catastro: "kamayuk.implantacion",
       normativa: "kamayuk.implantacion",
       caja: "kamayuk.implantacion",
@@ -79,32 +88,38 @@ describe("cada sistema recibe la implantacion con el prefijo que su Java lee", (
 
 describe("la traduccion de propiedad a variable, y que la guarda muerde", () => {
   it("el punto se vuelve guion bajo y todo va en mayusculas", () => {
-    expect(variableDe("sgtm.implantacion")).toBe("SGTM_IMPLANTACION_");
     expect(variableDe("kamayuk.implantacion")).toBe("KAMAYUK_IMPLANTACION_");
+    // El prefijo del monolito, que ya no lee ningun Java de los cuatro. Se conserva aqui a
+    // proposito: es el que hace de «ajeno» en la mutacion de abajo, y tenerlo escrito una vez es
+    // lo que impide que esta guarda se vuelva a quedar comparando el nombre viejo consigo mismo.
+    expect(variableDe("sgtm.implantacion")).toBe("SGTM_IMPLANTACION_");
   });
 
   it("el defecto que C-18 encontro sale nombrado, variable a variable", () => {
-    // Lo que el descriptor de `rentas` ponia hasta C-18: el prefijo de sus tres hermanos.
-    const comoEstaba = [
+    // La mutacion es la de C-18 con los papeles cambiados por R-A/B: entonces el descriptor de
+    // `rentas` ponia `KAMAYUK_IMPLANTACION_*` y su Java leia `sgtm.implantacion`; ahora los cuatro
+    // leen `kamayuk.implantacion` y lo ajeno es el nombre del monolito. El defecto es el mismo y
+    // es mudo por el mismo motivo: el runner no se registra y el Job sale con codigo 0.
+    const conElPrefijoDelMonolito = [
       "SPRING_PROFILES_ACTIVE",
-      "SGTM_DB_URL",
-      "KAMAYUK_IMPLANTACION_UBIGEO",
-      "KAMAYUK_IMPLANTACION_NOMBRE",
-      "KAMAYUK_IMPLANTACION_OWNERCLAVE",
+      "KAMAYUK_DB_URL",
+      "SGTM_IMPLANTACION_UBIGEO",
+      "SGTM_IMPLANTACION_NOMBRE",
+      "SGTM_IMPLANTACION_OWNERCLAVE",
     ];
-    expect(variablesConElPrefijoAjeno(comoEstaba, "sgtm.implantacion")).toEqual([
-      "KAMAYUK_IMPLANTACION_NOMBRE",
-      "KAMAYUK_IMPLANTACION_OWNERCLAVE",
-      "KAMAYUK_IMPLANTACION_UBIGEO",
+    expect(variablesConElPrefijoAjeno(conElPrefijoDelMonolito, "kamayuk.implantacion")).toEqual([
+      "SGTM_IMPLANTACION_NOMBRE",
+      "SGTM_IMPLANTACION_OWNERCLAVE",
+      "SGTM_IMPLANTACION_UBIGEO",
     ]);
   });
 
   it("y no muerde de mas: lo que no habla de implantacion no se mira", () => {
-    // El contraste. `SGTM_DB_URL` y `KAMAYUK_CAJA_CANAL` no son datos de implantacion, y una
+    // El contraste. `KAMAYUK_DB_URL` y `KAMAYUK_CAJA_CANAL` no son datos de implantacion, y una
     // guarda que las marcara acabaria ignorandose.
     expect(
       variablesConElPrefijoAjeno(
-        ["SGTM_DB_URL", "KAMAYUK_CAJA_CANAL", "KAMAYUK_IMPLANTACION_UBIGEO"],
+        ["KAMAYUK_DB_URL", "KAMAYUK_CAJA_CANAL", "KAMAYUK_IMPLANTACION_UBIGEO"],
         "kamayuk.implantacion",
       ),
     ).toEqual([]);

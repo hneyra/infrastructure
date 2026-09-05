@@ -292,33 +292,33 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
                 },
                 // Las lee `20-asignar-claves.sh`, que es el mismo guion del compose.
                 {
-                  name: "SGTM_CLAVE_OWNER",
+                  name: "KAMAYUK_CLAVE_OWNER",
                   valueFrom: { secretKeyRef: { name: secreto.owner, key: CLAVES.owner } },
                 },
                 {
-                  name: "SGTM_CLAVE_APP",
+                  name: "KAMAYUK_CLAVE_APP",
                   valueFrom: { secretKeyRef: { name: secreto.aplicacion, key: CLAVES.aplicacion } },
                 },
                 // La lee 20-asignar-claves.sh, el mismo guion del compose: es el que le da
                 // LOGIN a rol_carga_parametros (issue #387).
                 {
-                  name: "SGTM_CLAVE_CARGA",
+                  name: "KAMAYUK_CLAVE_CARGA",
                   valueFrom: { secretKeyRef: { name: secreto.carga, key: CLAVES.carga } },
                 },
                 {
-                  name: "SGTM_CLAVE_IDENTIDAD",
+                  name: "KAMAYUK_CLAVE_IDENTIDAD",
                   valueFrom: {
                     secretKeyRef: { name: secreto.identidad, key: CLAVES.baseDeIdentidad },
                   },
                 },
                 // La lee `40-rol-de-respaldo.sh`.
                 {
-                  name: "SGTM_CLAVE_RESPALDO",
+                  name: "KAMAYUK_CLAVE_RESPALDO",
                   valueFrom: { secretKeyRef: { name: secreto.respaldo, key: CLAVES.respaldo } },
                 },
                 // La lee `50-rol-de-monitoreo.sh`.
                 {
-                  name: "SGTM_CLAVE_MONITOREO",
+                  name: "KAMAYUK_CLAVE_MONITOREO",
                   valueFrom: { secretKeyRef: { name: secreto.monitoreo, key: CLAVES.monitoreo } },
                 },
                 { name: "PGDATA", value: DIRECTORIO_DE_DATOS },

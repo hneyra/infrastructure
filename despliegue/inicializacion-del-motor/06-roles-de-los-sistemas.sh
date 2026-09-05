@@ -40,7 +40,7 @@
 # montar rutas locales.
 set -euo pipefail
 
-DIR=${SGTM_DIR_KAMAYUK:-/etc/kamayuk}
+DIR=${KAMAYUK_DIR_KAMAYUK:-/etc/kamayuk}
 DIR_ROLES="$DIR/roles"
 
 shopt -s nullglob

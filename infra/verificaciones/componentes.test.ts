@@ -362,7 +362,7 @@ describe("#150 · sgtm_owner no entra en el Deployment", () => {
 
   it("la aplicacion se conecta como sgtm_app, y solo como sgtm_app", () => {
     for (const { c } of contenedoresDeTodo(ms)) {
-      const usuario = variablesDe(c).get("SGTM_DB_USUARIO");
+      const usuario = variablesDe(c).get("KAMAYUK_DB_USUARIO");
       if (usuario !== undefined) expect(usuario).toBe("sgtm_app");
     }
   });
@@ -399,7 +399,7 @@ describe("#150 · sgtm_owner no entra en el Deployment", () => {
         spec: { template: { spec: { containers: Contenedor[] } } };
       };
       const contenedor = implantacion.spec.template.spec.containers[0];
-      expect(variablesDe(contenedor as Contenedor).get("SGTM_IMPLANTACION_ESDEMOSTRACION")).toBe(
+      expect(variablesDe(contenedor as Contenedor).get("KAMAYUK_IMPLANTACION_ESDEMOSTRACION")).toBe(
         String(invariantesDe(ambiente).application.isDemonstration),
       );
     }
@@ -420,7 +420,7 @@ describe("#150 · la demostracion: la auditoria se pone roja", () => {
       spec: { template: { spec: { containers: Contenedor[] } } };
     };
     const env = aplicacion.spec.template.spec.containers[0]?.env ?? [];
-    const usuario = env.find((e) => e.name === "SGTM_DB_USUARIO");
+    const usuario = env.find((e) => e.name === "KAMAYUK_DB_USUARIO");
     if (usuario) usuario.value = "sgtm_owner";
 
     expect(auditar(ms)).toContainEqual(expect.stringContaining("se conecta a la base como"));
@@ -432,7 +432,7 @@ describe("#150 · la demostracion: la auditoria se pone roja", () => {
       spec: { template: { spec: { containers: Contenedor[] } } };
     };
     aplicacion.spec.template.spec.containers[0]?.env?.push({
-      name: "SGTM_DB_OWNER_CLAVE",
+      name: "KAMAYUK_DB_OWNER_CLAVE",
       valueFrom: { secretKeyRef: { name: secretos(AMBIENTE).owner, key: "clave-owner" } },
     });
 
@@ -530,11 +530,11 @@ describe("#151 · identidad", () => {
       spec: { template: { spec: { containers: Contenedor[] } } };
     };
     const variables = variablesDe(aplicacion.spec.template.spec.containers[0] as Contenedor);
-    expect(variables.get("SGTM_OIDC_EMISOR")).toBe(
+    expect(variables.get("KAMAYUK_OIDC_EMISOR")).toBe(
       `https://${dominio}${RUTA_DE_IDENTIDAD}/realms/sgtm`,
     );
     // El JWKS no sale al ingreso para volver a entrar.
-    expect(variables.get("SGTM_OIDC_JWKS")).toContain("http://sgtm-prod-identidad:8080");
+    expect(variables.get("KAMAYUK_OIDC_JWKS")).toContain("http://sgtm-prod-identidad:8080");
   });
 
   it("el realm que se aplica conserva el mapeador de municipalidad_id", () => {
@@ -1348,7 +1348,7 @@ describe("#151 · la demostracion", () => {
 /** ¿Emite Keycloak con el mismo nombre publico que la aplicacion valida? */
 function emisorCoherente(ms: Manifiesto[]): boolean {
   const hostname = valorDe(ms, "Deployment", "identidad", "KC_HOSTNAME");
-  const emisor = valorDe(ms, "Deployment", "aplicacion", "SGTM_OIDC_EMISOR");
+  const emisor = valorDe(ms, "Deployment", "aplicacion", "KAMAYUK_OIDC_EMISOR");
   return hostname !== undefined && emisor !== undefined && emisor.startsWith(hostname);
 }
 
@@ -1475,15 +1475,15 @@ describe("#152 · la aplicacion y la interfaz", () => {
 });
 
 describe("#152 · la demostracion: la auditoria se pone roja", () => {
-  it("quitando `SGTM_OIDC_EMISOR` del Deployment", () => {
+  it("quitando `KAMAYUK_OIDC_EMISOR` del Deployment", () => {
     const ms = manifiestosDe(AMBIENTE);
     const aplicacion = buscar(ms, "Deployment", "aplicacion") as {
       spec: { template: { spec: { containers: Contenedor[] } } };
     };
     const contenedor = aplicacion.spec.template.spec.containers[0];
-    if (contenedor) contenedor.env = (contenedor.env ?? []).filter((e) => e.name !== "SGTM_OIDC_EMISOR");
+    if (contenedor) contenedor.env = (contenedor.env ?? []).filter((e) => e.name !== "KAMAYUK_OIDC_EMISOR");
 
-    expect(auditar(ms)).toContainEqual(expect.stringContaining("SGTM_OIDC_EMISOR"));
+    expect(auditar(ms)).toContainEqual(expect.stringContaining("KAMAYUK_OIDC_EMISOR"));
   });
 
   it("dejando un contenedor sin limites", () => {
@@ -1775,7 +1775,7 @@ describe("#155 · la demostracion: la auditoria se pone roja", () => {
     const ms = manifiestosDe(AMBIENTE);
     const contenedor = contenedorDelCronJob(ms, "lote");
     (contenedor.env ??= []).push({
-      name: "SGTM_DB_OWNER_CLAVE",
+      name: "KAMAYUK_DB_OWNER_CLAVE",
       valueFrom: { secretKeyRef: { name: secretos(AMBIENTE).owner, key: "clave-owner" } },
     });
 

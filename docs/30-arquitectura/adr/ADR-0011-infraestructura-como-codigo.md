@@ -139,7 +139,7 @@ nombre sin registro A—, se corrigió en `infra/`, el clúster quedó bien… y
 mandando el navegador al nombre inexistente, porque el paquete desplegado era el anterior.
 
 La salida no fue añadir un detector, sino quitarle al paquete el dato: Keycloak se sirve en el mismo
-origen que la interfaz, así que las `VITE_SGTM_OIDC_*` son **rutas** (`/keycloak/realms/…`) y el
+origen que la interfaz, así que las `VITE_KAMAYUK_OIDC_*` son **rutas** (`/keycloak/realms/…`) y el
 navegador las resuelve contra el origen desde el que se descargó la página. Con eso el dominio deja
 de ser entrada de la compilación, queda **un solo consumidor** —`infra/`, que gestiona Pulumi— y la
 interfaz vuelve a la regla general de esta sección: **un artefacto que se promueve, no se

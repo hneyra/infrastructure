@@ -24,7 +24,7 @@ import type { ConfigMap, CronJob, Deployment, Manifiesto, Service } from "./tipo
  * detras de sus sondas, la interfaz sirviendo los estaticos y reenviando `/api/v1`, y el
  * perfil `batch` como CronJob con su ventana.
  *
- * ## Sin `SGTM_OIDC_EMISOR` no arranca, y no se «arregla»
+ * ## Sin `KAMAYUK_OIDC_EMISOR` no arranca, y no se «arregla»
  *
  * La variable no lleva valor por omision ni aqui ni en `application.yaml`, y eso **es**
  * la decision: un backend que atiende peticiones sin poder validar un token responde a
@@ -81,14 +81,14 @@ export function manifiestosDeAplicacion(args: AplicacionArgs): Manifiesto[] {
   const etiquetasDeLaInterfaz = commonLabels(environment, "interfaz");
 
   const credencialesDeLaBase = [
-    { name: "SGTM_DB_URL", value: urlDelPadron(environment) },
+    { name: "KAMAYUK_DB_URL", value: urlDelPadron(environment) },
     // `sgtm_app` y solo `sgtm_app`. La clave de `sgtm_owner` no entra en este
     // Deployment: darle DDL sobre el padron de todas las municipalidades a un proceso
     // expuesto en HTTP es exactamente lo que ARQ-03 §4 excluye, y la auditoria de
     // `auditoria.ts` se pone roja si el `Secret` de owner aparece por aqui.
-    { name: "SGTM_DB_USUARIO", value: "sgtm_app" },
+    { name: "KAMAYUK_DB_USUARIO", value: "sgtm_app" },
     {
-      name: "SGTM_DB_CLAVE",
+      name: "KAMAYUK_DB_CLAVE",
       valueFrom: { secretKeyRef: { name: secreto.aplicacion, key: CLAVES.aplicacion } },
     },
   ];
@@ -133,10 +133,10 @@ export function manifiestosDeAplicacion(args: AplicacionArgs): Manifiesto[] {
               env: [
                 { name: "SPRING_PROFILES_ACTIVE", value: "web" },
                 // El emisor: identidad publica, la misma que Keycloak pone en el `iss`.
-                { name: "SGTM_OIDC_EMISOR", value: emisorPublico(domain, realm) },
+                { name: "KAMAYUK_OIDC_EMISOR", value: emisorPublico(domain, realm) },
                 // Las claves: direccion de red interna. No sale al ingreso para volver
                 // a entrar.
-                { name: "SGTM_OIDC_JWKS", value: jwksInterno(environment, realm) },
+                { name: "KAMAYUK_OIDC_JWKS", value: jwksInterno(environment, realm) },
                 // Y los del realm del CIUDADANO (ADR-0020), con el mismo reparto:
                 // el emisor es una identidad —es lo que se compara con el `iss` y
                 // lo que hace que un token de funcionario no valga en el portal— y
@@ -147,11 +147,11 @@ export function manifiestosDeAplicacion(args: AplicacionArgs): Manifiesto[] {
                 // la cadena de `/api/v1/portal/**` lo niega todo. Aqui se declara
                 // porque el realm se reconcilia en el mismo Job que el otro.
                 {
-                  name: "SGTM_PORTAL_OIDC_EMISOR",
+                  name: "KAMAYUK_PORTAL_OIDC_EMISOR",
                   value: emisorPublico(domain, realmDelCiudadano(realm)),
                 },
                 {
-                  name: "SGTM_PORTAL_OIDC_JWKS",
+                  name: "KAMAYUK_PORTAL_OIDC_JWKS",
                   value: jwksInterno(environment, realmDelCiudadano(realm)),
                 },
                 ...credencialesDeLaBase,
@@ -217,7 +217,7 @@ export function manifiestosDeAplicacion(args: AplicacionArgs): Manifiesto[] {
             {
               name: "interfaz",
               // Una imagen por ambiente, y no es un descuido: Vite resuelve las
-              // `VITE_SGTM_OIDC_*` AL COMPILAR, asi que el emisor queda incrustado en
+              // `VITE_KAMAYUK_OIDC_*` AL COMPILAR, asi que el emisor queda incrustado en
               // el paquete estatico. La etiqueta la pone `publicar-imagenes.yml`.
               image: `${imageRepository}/sgtm-interfaz:${environment}-${version}`,
               ports: [{ name: "http", containerPort: 8080 }],

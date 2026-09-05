@@ -205,8 +205,8 @@ public abstract class ProhibicionesEnElCodigoFuenteTestBase {
                 """
                 class Ejemplo {
                     // Ni este comentario sobre la alicuota del 0.6 % cuenta.
-                    pe.gob.sgtm.dominio.Alicuota predial() {
-                        return pe.gob.sgtm.dominio.Alicuota.de("0.6");
+                    kamayuk.comun.verificaciones.muestras.dominio.Alicuota predial() {
+                        return kamayuk.comun.verificaciones.muestras.dominio.Alicuota.de("0.6");
                     }
                 }
                 """;
@@ -237,7 +237,7 @@ public abstract class ProhibicionesEnElCodigoFuenteTestBase {
         String fuente =
                 """
                 class Bueno {
-                    pe.gob.sgtm.dominio.ValorNormativo alicuota(Parametros p) {
+                    ValorNormativo alicuota(Parametros p) {
                         return p.exigirNumero("ALICUOTA_PREDIAL", "tramo-1");
                     }
                 }

@@ -88,7 +88,7 @@ llega al clúster.
 
 El usuario marcado `administrador: true` es el que la implantación da de alta como primer
 administrador. `Identidad.ts` exige que su `cuenta` sea la misma que `sgtm:administrador` del
-stack; en el compose, `datos-de-implantacion.sh <ubigeo>` deriva `SGTM_ADMINISTRADOR` del
+stack; en el compose, `datos-de-implantacion.sh <ubigeo>` deriva `KAMAYUK_ADMINISTRADOR` del
 archivo. Así la cuenta no puede divergir entre Keycloak y la fila de `usuario` —que es lo único
 que une las dos mitades (ADR-0005)—.
 
@@ -119,7 +119,7 @@ cuenta; la pantalla crea la fila. La aplicación no habla con Keycloak.**
 
 La aplicación **no** la crea, y no es una preferencia de estilo. Medido: el backend no tiene **ni
 un** cliente HTTP saliente en `src/main` —cero `RestClient`, `WebClient`, `RestTemplate` o
-`HttpClient`—, y el `Deployment` sólo recibe `SGTM_OIDC_EMISOR` y `SGTM_OIDC_JWKS`, que son los dos
+`HttpClient`—, y el `Deployment` sólo recibe `KAMAYUK_OIDC_EMISOR` y `KAMAYUK_OIDC_JWKS`, que son los dos
 extremos **públicos y de lectura** con los que Spring Security valida una firma. Para crear una
 cuenta haría falta una credencial de administración del realm, que es justo la clase de credencial
 que [`ADR-0011`](ADR-0011-infraestructura-como-codigo.md) §3 mantiene fuera del alcance de la

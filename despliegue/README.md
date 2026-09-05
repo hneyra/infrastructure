@@ -239,7 +239,7 @@ falta se crea.
 Dos cosas que no hace, y conviene saberlas:
 
 - **No crea ninguna contraseña.** El sistema no guarda claves ni las transporta
-  (ADR-0005). La credencial vive en Keycloak: `SGTM_ADMINISTRADOR` tiene que ser
+  (ADR-0005). La credencial vive en Keycloak: `KAMAYUK_ADMINISTRADOR` tiene que ser
   la misma cuenta que el usuario marcado `administrador: true` en el archivo de la
   municipalidad —de ahí lo saca `identidad/datos-de-implantacion.sh`—, porque es lo
   único que une la fila con la identidad del token.
@@ -284,7 +284,7 @@ que RLS deja ver**, contra PostgreSQL y como `sgtm_app`. Las dos hacen falta —
 habla con el Keycloak de verdad, la otra llega a las filas— y ninguna sustituye a
 la otra.
 
-Otra pregunta que la escalera no puede hacer: **sin `SGTM_OIDC_EMISOR`, la
+Otra pregunta que la escalera no puede hacer: **sin `KAMAYUK_OIDC_EMISOR`, la
 aplicación tiene que negarse a arrancar.** Se arranca la misma imagen a mano, sin
 esa variable y con todo lo demás puesto; si sigue viva a los dos minutos, el paso
 se pone rojo. Un backend que arranca sin emisor responde a la sonda, se declara
@@ -292,6 +292,6 @@ sano y no atiende a nadie.
 
 Y la que da valor al resto: **las credenciales que el contenedor de la aplicación
 tiene de verdad no pueden crear una tabla**. Se demuestra que puede fallar
-cambiando en `compose.yaml` el `SGTM_DB_USUARIO` por `sgtm_owner`: el trabajo se
+cambiando en `compose.yaml` el `KAMAYUK_DB_USUARIO` por `sgtm_owner`: el trabajo se
 pone rojo. Lee las credenciales del contenedor en marcha, no las que el compose
 debería tener.

@@ -27,14 +27,14 @@ services:
     environment:
       POSTGRES_DB: sgtm
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${SGTM_CLAVE_SUPERUSUARIO:?falta SGTM_CLAVE_SUPERUSUARIO en .env}
+      POSTGRES_PASSWORD: ${KAMAYUK_CLAVE_SUPERUSUARIO:?falta KAMAYUK_CLAVE_SUPERUSUARIO en .env}
       # Las lee el guion de asignacion de claves. El superusuario es el unico que
       # puede asignarlas, y solo existe en este contenedor.
-      SGTM_CLAVE_OWNER: ${SGTM_CLAVE_OWNER:?falta SGTM_CLAVE_OWNER en .env}
-      SGTM_CLAVE_APP: ${SGTM_CLAVE_APP:?falta SGTM_CLAVE_APP en .env}
+      KAMAYUK_CLAVE_OWNER: ${KAMAYUK_CLAVE_OWNER:?falta KAMAYUK_CLAVE_OWNER en .env}
+      KAMAYUK_CLAVE_APP: ${KAMAYUK_CLAVE_APP:?falta KAMAYUK_CLAVE_APP en .env}
       # rol_carga_parametros (issue #387): la unica credencial de publicar-parametros.sh
       # y publicar-cuadros.sh. Sin ella el guion de asignacion de claves no arranca.
-      SGTM_CLAVE_CARGA: ${SGTM_CLAVE_CARGA:?falta SGTM_CLAVE_CARGA en .env}
+      KAMAYUK_CLAVE_CARGA: ${KAMAYUK_CLAVE_CARGA:?falta KAMAYUK_CLAVE_CARGA en .env}
     volumes:
       # Los dos guiones de inicializacion corren en orden alfabetico, una sola vez,
       # cuando el volumen esta vacio. `crear-roles.sql` se monta desde el modulo del
@@ -62,13 +62,13 @@ services:
     # Atrapa el correo que Keycloak envia: el enlace de un solo uso para fijar la
     # clave en el alta declarativa de usuarios (ADR-0012, `execute-actions-email`
     # con UPDATE_PASSWORD). No sale de aqui —es un buzon de marcha blanca—; la
-    # bandeja queda en http://localhost:${SGTM_PUERTO_CORREO:-8025}.
+    # bandeja queda en http://localhost:${KAMAYUK_PUERTO_CORREO:-8025}.
     image: axllent/mailpit:v1.20
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: "true"
       MP_SMTP_AUTH_ALLOW_INSECURE: "true"
     ports:
-      - "${SGTM_PUERTO_CORREO:-8025}:8025"
+      - "${KAMAYUK_PUERTO_CORREO:-8025}:8025"
     healthcheck:
       test: ["CMD", "/mailpit", "readyz"]
       interval: 3s
@@ -88,14 +88,14 @@ services:
       correo:
         condition: service_started
     environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${SGTM_KEYCLOAK_ADMIN:-admin}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${SGTM_CLAVE_KEYCLOAK:?falta SGTM_CLAVE_KEYCLOAK en .env}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KAMAYUK_KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KAMAYUK_CLAVE_KEYCLOAK:?falta KAMAYUK_CLAVE_KEYCLOAK en .env}
       KC_HEALTH_ENABLED: "true"
       # El emisor que Keycloak pone en el `iss` de cada token tiene que ser el
       # mismo que el backend valida y el mismo al que el navegador va. Con dos
       # nombres distintos —uno de red interna, otro del anfitrion— la firma valida
       # y el emisor no cuadra, y el 401 no dice por que.
-      KC_HOSTNAME: ${SGTM_OIDC_EMISOR:-http://localhost:8180}
+      KC_HOSTNAME: ${KAMAYUK_OIDC_EMISOR:-http://localhost:8180}
       KC_HOSTNAME_STRICT: "false"
     volumes:
       - ./identidad/realm-sgtm.json:/opt/keycloak/data/import/realm-sgtm.json:ro
@@ -107,7 +107,7 @@ services:
       # las separaria seria un `if` dentro de la aplicacion.
       - ./identidad/realm-sgtm-ciudadano.json:/opt/keycloak/data/import/realm-sgtm-ciudadano.json:ro
     ports:
-      - "${SGTM_PUERTO_IDENTIDAD:-8180}:8080"
+      - "${KAMAYUK_PUERTO_IDENTIDAD:-8180}:8080"
     # Sin healthcheck, y no por descuido: la imagen de Keycloak no trae curl ni
     # wget, y las recetas que circulan para sortearlo dependen de que el shell del
     # contenedor sea bash. Aqui no hace falta ninguna, porque la aplicacion NO
@@ -125,9 +125,9 @@ services:
       base:
         condition: service_healthy
     environment:
-      SGTM_DB_URL: jdbc:postgresql://base:5432/sgtm
-      SGTM_DB_OWNER_USUARIO: sgtm_owner
-      SGTM_DB_OWNER_CLAVE: ${SGTM_CLAVE_OWNER:?falta SGTM_CLAVE_OWNER en .env}
+      KAMAYUK_DB_URL: jdbc:postgresql://base:5432/sgtm
+      KAMAYUK_DB_OWNER_USUARIO: sgtm_owner
+      KAMAYUK_DB_OWNER_CLAVE: ${KAMAYUK_CLAVE_OWNER:?falta KAMAYUK_CLAVE_OWNER en .env}
     # Corre y termina. Si se reinicia, vuelve a comprobar el ambiente y no aplica
     # nada: el migrador es idempotente y tiene su prueba que lo demuestra.
     restart: "no"
@@ -151,28 +151,28 @@ services:
       # Sin esta variable la aplicacion NO arranca, y es deliberado: un backend que
       # atiende peticiones sin poder validar un token es la situacion que ADR-0005
       # excluye. El valor tiene que coincidir con el `iss` que emite Keycloak.
-      SGTM_OIDC_EMISOR: ${SGTM_OIDC_EMISOR:-http://localhost:8180}/realms/sgtm
+      KAMAYUK_OIDC_EMISOR: ${KAMAYUK_OIDC_EMISOR:-http://localhost:8180}/realms/sgtm
       # De donde se traen las claves. Dentro de la red del compose, Keycloak es
       # `identidad:8080`; `localhost:8180` es el nombre por el que llega el
       # navegador, y dentro de este contenedor apuntaria a este mismo proceso.
-      SGTM_OIDC_JWKS: http://identidad:8080/realms/sgtm/protocol/openid-connect/certs
+      KAMAYUK_OIDC_JWKS: http://identidad:8080/realms/sgtm/protocol/openid-connect/certs
       # El emisor del realm del CIUDADANO (ADR-0020). A diferencia del de arriba,
       # este SI admite estar vacio: una instalacion sin portal del contribuyente
       # es legitima, y entonces la cadena de `/api/v1/portal/**` lo niega todo.
       # Lo que no puede pasar —y por eso la cadena se registra igual— es que esas
       # rutas caigan en la cadena general y queden servidas contra el emisor de
       # funcionarios.
-      SGTM_PORTAL_OIDC_EMISOR: ${SGTM_OIDC_EMISOR:-http://localhost:8180}/realms/sgtm-ciudadano
-      SGTM_PORTAL_OIDC_JWKS: http://identidad:8080/realms/sgtm-ciudadano/protocol/openid-connect/certs
-      SGTM_DB_URL: jdbc:postgresql://base:5432/sgtm
+      KAMAYUK_PORTAL_OIDC_EMISOR: ${KAMAYUK_OIDC_EMISOR:-http://localhost:8180}/realms/sgtm-ciudadano
+      KAMAYUK_PORTAL_OIDC_JWKS: http://identidad:8080/realms/sgtm-ciudadano/protocol/openid-connect/certs
+      KAMAYUK_DB_URL: jdbc:postgresql://base:5432/sgtm
       # sgtm_app y solo sgtm_app. Poner aqui las credenciales de sgtm_owner
       # —«para que migre al arrancar», «para una carga rapida»— le daria DDL sobre
       # el padron de todas las municipalidades a un proceso expuesto en HTTP. La
       # verificacion de despliegue comprueba exactamente esto y se pone roja.
-      SGTM_DB_USUARIO: sgtm_app
-      SGTM_DB_CLAVE: ${SGTM_CLAVE_APP:?falta SGTM_CLAVE_APP en .env}
+      KAMAYUK_DB_USUARIO: sgtm_app
+      KAMAYUK_DB_CLAVE: ${KAMAYUK_CLAVE_APP:?falta KAMAYUK_CLAVE_APP en .env}
     ports:
-      - "${SGTM_PUERTO:-8080}:8080"
+      - "${KAMAYUK_PUERTO:-8080}:8080"
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:8080/actuator/health || exit 1"]
       interval: 3s
@@ -198,19 +198,19 @@ services:
         condition: service_completed_successfully
     environment:
       SPRING_PROFILES_ACTIVE: batch
-      SGTM_DB_URL: jdbc:postgresql://base:5432/sgtm
-      SGTM_DB_USUARIO: sgtm_app
-      SGTM_DB_CLAVE: ${SGTM_CLAVE_APP:?falta SGTM_CLAVE_APP en .env}
-      SGTM_IMPLANTACION_UBIGEO: ${SGTM_UBIGEO:?falta SGTM_UBIGEO en .env}
-      SGTM_IMPLANTACION_NOMBRE: ${SGTM_MUNICIPALIDAD:?falta SGTM_MUNICIPALIDAD en .env}
-      SGTM_IMPLANTACION_TIPO: ${SGTM_TIPO_DE_MUNICIPALIDAD:-DISTRITAL}
+      KAMAYUK_DB_URL: jdbc:postgresql://base:5432/sgtm
+      KAMAYUK_DB_USUARIO: sgtm_app
+      KAMAYUK_DB_CLAVE: ${KAMAYUK_CLAVE_APP:?falta KAMAYUK_CLAVE_APP en .env}
+      KAMAYUK_IMPLANTACION_UBIGEO: ${KAMAYUK_UBIGEO:?falta KAMAYUK_UBIGEO en .env}
+      KAMAYUK_IMPLANTACION_NOMBRE: ${KAMAYUK_MUNICIPALIDAD:?falta KAMAYUK_MUNICIPALIDAD en .env}
+      KAMAYUK_IMPLANTACION_TIPO: ${KAMAYUK_TIPO_DE_MUNICIPALIDAD:-DISTRITAL}
       # La cuenta TIENE que ser la misma que el usuario de Keycloak: es lo unico
       # que une la fila de `usuario` con la identidad del token (ADR-0005). Para no
       # tener que cuidarlo a mano, estas dos salen del archivo versionado de la
       # municipalidad: `./identidad/datos-de-implantacion.sh <ubigeo> >> .env`
       # (ADR-0012).
-      SGTM_IMPLANTACION_ADMINISTRADOR: ${SGTM_ADMINISTRADOR:?falta SGTM_ADMINISTRADOR en .env (ver identidad/datos-de-implantacion.sh)}
-      SGTM_IMPLANTACION_NOMBREDELADMINISTRADOR: ${SGTM_NOMBRE_DEL_ADMINISTRADOR:-Administrador del sistema}
+      KAMAYUK_IMPLANTACION_ADMINISTRADOR: ${KAMAYUK_ADMINISTRADOR:?falta KAMAYUK_ADMINISTRADOR en .env (ver identidad/datos-de-implantacion.sh)}
+      KAMAYUK_IMPLANTACION_NOMBREDELADMINISTRADOR: ${KAMAYUK_NOMBRE_DEL_ADMINISTRADOR:-Administrador del sistema}
       # Mientras D-02a este abierta, toda cifra que el sistema calcule sale de
       # parametros que nadie ha firmado. Una instalacion declarada de demostracion
       # marca TODO documento que emita, en los tres formatos (#122).
@@ -222,13 +222,13 @@ services:
       # Solo se aplica al ALTA: relanzar el despliegue con `false` no le quita la marca
       # a una municipalidad ya implantada. Quitarla es un UPDATE deliberado de
       # sgtm_owner, que deja rastro de quien lo hizo.
-      SGTM_IMPLANTACION_ESDEMOSTRACION: ${SGTM_ES_DEMOSTRACION:-true}
-      SGTM_IMPLANTACION_URL: jdbc:postgresql://base:5432/sgtm
+      KAMAYUK_IMPLANTACION_ESDEMOSTRACION: ${KAMAYUK_ES_DEMOSTRACION:-true}
+      KAMAYUK_IMPLANTACION_URL: jdbc:postgresql://base:5432/sgtm
       # OWNERCLAVE sin guion bajo: en una variable de entorno el `_` se traduce a
-      # punto, asi que SGTM_IMPLANTACION_OWNER_CLAVE seria la propiedad
-      # `sgtm.implantacion.owner.clave` y no `owner-clave`. Los guiones del nombre
+      # punto, asi que KAMAYUK_IMPLANTACION_OWNER_CLAVE seria la propiedad
+      # `kamayuk.implantacion.owner.clave` y no `owner-clave`. Los guiones del nombre
       # de la propiedad, en cambio, simplemente se quitan.
-      SGTM_IMPLANTACION_OWNERCLAVE: ${SGTM_CLAVE_OWNER:?falta SGTM_CLAVE_OWNER en .env}
+      KAMAYUK_IMPLANTACION_OWNERCLAVE: ${KAMAYUK_CLAVE_OWNER:?falta KAMAYUK_CLAVE_OWNER en .env}
     restart: "no"
 
   interfaz:
@@ -244,12 +244,12 @@ services:
         # Dockerfile —`/kc/realms/sgtm` y `sgtm-backoffice`— ya son los de este
         # despliegue, y son RUTAS del mismo origen. Escribir aqui el dominio las
         # hornearia en el paquete estatico, que es justo lo que no se quiere.
-        VITE_SGTM_API: /api/v1
+        VITE_KAMAYUK_API: /api/v1
     depends_on:
       aplicacion:
         condition: service_healthy
     ports:
-      - "${SGTM_PUERTO_INTERFAZ:-8081}:8080"
+      - "${KAMAYUK_PUERTO_INTERFAZ:-8081}:8080"
     healthcheck:
       # 127.0.0.1 y no `localhost`: el guion de arranque de la imagen solo anade el
       # `listen [::]:8080` cuando la configuracion es la suya, y esta no lo es, asi

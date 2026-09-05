@@ -433,7 +433,7 @@ function auditarLaAplicacion(
   // Deployment con owner y otro nombre habria salido igual de rechazado por el mismo sitio.
   // Al llegar los descriptores (ADR-0031) los Jobs dejan de ser dos y de llamarse como se
   // llamaban, asi que lo que distingue tiene que ser la CLASE, no el nombre.
-  const usuario = variables.get("SGTM_DB_USUARIO");
+  const usuario = variables.get("KAMAYUK_DB_USUARIO");
   const esMigracion = clase === "Job" && usuario === "sgtm_owner";
   if (usuario !== undefined && usuario !== "sgtm_app" && !esMigracion) {
     problemas.push(
@@ -447,14 +447,14 @@ function auditarLaAplicacion(
 
   // Y la MISMA regla para el otro nombre con que entra esa credencial.
   //
-  // El migrador no lee `SGTM_DB_USUARIO`: lee `SGTM_DB_OWNER_USUARIO` y `SGTM_DB_OWNER_CLAVE`
+  // El migrador no lee `KAMAYUK_DB_USUARIO`: lee `KAMAYUK_DB_OWNER_USUARIO` y `KAMAYUK_DB_OWNER_CLAVE`
   // —lo dice su `main`, y por eso el Job del monolito las declara asi desde el issue #150—. Hasta
-  // C-14 los cuatro sistemas ponian `SGTM_DB_USUARIO=sgtm_owner` en un Job que corria la imagen de
+  // C-14 los cuatro sistemas ponian `KAMAYUK_DB_USUARIO=sgtm_owner` en un Job que corria la imagen de
   // la APLICACION, asi que la comprobacion de arriba los veia; con el Job corriendo el migrador de
   // verdad, esa variable desaparece y la regla se quedaria mirando algo que ya no esta. Que la
   // credencial del unico rol con DDL solo pueda aparecer en un `Job` no puede depender de con que
   // nombre se escriba.
-  for (const nombre of ["SGTM_DB_OWNER_USUARIO", "SGTM_DB_OWNER_CLAVE"]) {
+  for (const nombre of ["KAMAYUK_DB_OWNER_USUARIO", "KAMAYUK_DB_OWNER_CLAVE"]) {
     // `variables` lleva el nombre como clave aunque el valor venga de un `Secret`: lo que se
     // mira es que la variable ESTE, no de donde sale.
     if (variables.has(nombre) && clase !== "Job") {
@@ -468,9 +468,9 @@ function auditarLaAplicacion(
   }
 
   const perfil = variables.get("SPRING_PROFILES_ACTIVE");
-  if (perfil === "web" && !variables.has("SGTM_OIDC_EMISOR")) {
+  if (perfil === "web" && !variables.has("KAMAYUK_OIDC_EMISOR")) {
     problemas.push(
-      `${donde}, contenedor «${c.name}»: perfil \`web\` sin \`SGTM_OIDC_EMISOR\`. Sin esa ` +
+      `${donde}, contenedor «${c.name}»: perfil \`web\` sin \`KAMAYUK_OIDC_EMISOR\`. Sin esa ` +
         "variable " +
         "la aplicacion se niega a arrancar, y es deliberado: un backend que atiende peticiones " +
         "sin poder validar un token responde a la sonda, se declara sano y no atiende a nadie " +

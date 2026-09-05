@@ -21,7 +21,7 @@ import { invariantesDe } from "./stacks";
  *
  * 1. **Los Jobs de migracion no migraban** (C-7, hueco 2). Corrian la MISMA imagen que el
  *    `Deployment` —el descriptor declaraba `imagenes: [SISTEMA]`, una sola— con
- *    `SGTM_DB_USUARIO=sgtm_owner` y sin `SPRING_PROFILES_ACTIVE`: o sea, arrancaban la aplicacion
+ *    `KAMAYUK_DB_USUARIO=sgtm_owner` y sin `SPRING_PROFILES_ACTIVE`: o sea, arrancaban la aplicacion
  *    con las credenciales del unico rol con DDL, y la aplicacion tiene `spring.flyway.enabled:
  *    false` a proposito (ARQ-03 §4).
  * 2. **Nada creaba las cuatro bases ni sus roles** (C-7, hueco 3). Esa mitad la mide
@@ -129,6 +129,60 @@ describe("C-14 §1 · cada sistema publica DOS imagenes, y el migrador corre la 
     ).toBe(declarado);
   });
 
+  /**
+   * El jar se llama como su sistema, y el `ENTRYPOINT` arranca EL QUE EL `COPY` DEJO (R-A/B).
+   *
+   * Dos comprobaciones, y las dos cierran un hueco que C-17 dejo abierto por su otro lado.
+   *
+   * **El nombre.** Hasta R-A/B tres sistemas producian `sgtm.jar` —el nombre del monolito— y
+   * `normativa` producia `normativa.jar`. Ese desajuste no es cosmetico: es exactamente lo que
+   * hizo que la imagen de `normativa` no se pudiera construir (C-17, arreglo B), porque el
+   * `Dockerfile` se copia de un hermano y el nombre del jar no. Con la regla «cada sistema
+   * produce `<sistema>.jar`» no hay nada que recordar: el `Dockerfile` copiado de un hermano se
+   * pone rojo aqui en vez de morir en el ultimo `COPY`.
+   *
+   * **El destino.** El nombre del jar aparece DOS veces en cada `Dockerfile` —el destino del
+   * `COPY` y el `-jar` del `ENTRYPOINT`— y hasta ahora nada las comparaba. Es la misma forma que
+   * los cinco defectos de C-17: una mitad de la frontera bien y la otra sin quien la mire. Y su
+   * sintoma es de los caros, porque llega mas tarde que los otros: la imagen **se construye sin
+   * protestar** y el contenedor muere al arrancar con «Unable to access jarfile», que desde el
+   * cluster se ve como un `CrashLoopBackOff` sin registro que lo explique.
+   */
+  it.each(SISTEMAS_DEL_PRODUCTO)("«%s» produce su jar y su ENTRYPOINT lo arranca", (sistema) => {
+    const clon = resolve(raizDelRepositorio(), "..", sistema);
+    const gradle = readFileSync(
+      join(clon, "backend", `kamayuk-${sistema}-aplicacion`, "build.gradle.kts"),
+      "utf8",
+    );
+    const declarado = /archiveFileName\.set\("([^"]+)"\)/.exec(gradle)?.[1];
+    expect(
+      declarado,
+      `«${sistema}» produce «${declarado}» y el producto se llama kamayuk: el jar de cada ` +
+        `sistema lleva SU nombre, «${sistema}.jar». Antes de R-A/B tres producian «sgtm.jar» y ` +
+        "uno el suyo, y ese desajuste es lo que dejo la imagen de «normativa» sin poder " +
+        "construirse (C-17, arreglo B).",
+    ).toBe(`${sistema}.jar`);
+
+    const dockerfile = readFileSync(join(clon, "backend", "Dockerfile"), "utf8");
+    const destino = /build\/libs\/[^\s]+\s+(\S+)/.exec(dockerfile)?.[1];
+    expect(destino, `el Dockerfile de «${sistema}» no copia el jar a ningun destino`).toBeDefined();
+    expect(
+      destino,
+      `el Dockerfile de «${sistema}» deja el jar en «${destino}», y el producto se sirve desde ` +
+        `«/opt/kamayuk/». Un destino heredado del monolito no falla al construir: falla al ` +
+        "arrancar.",
+    ).toBe(`/opt/kamayuk/${sistema}.jar`);
+
+    const arranca = /ENTRYPOINT\s+\["java",\s*"-jar",\s*"([^"]+)"\]/.exec(dockerfile)?.[1];
+    expect(
+      arranca,
+      `el ENTRYPOINT de «${sistema}» arranca «${arranca}» y el COPY deja el jar en ` +
+        `«${destino}». La imagen SE CONSTRUYE igual —el desajuste no lo ve docker build— y el ` +
+        "contenedor muere al arrancar con «Unable to access jarfile», que desde el cluster es un " +
+        "CrashLoopBackOff sin una linea que lo explique.",
+    ).toBe(destino);
+  });
+
   it.each(SISTEMAS_DEL_PRODUCTO)("«%s» declara las dos imagenes, y solo esas", (sistema) => {
     const descriptor = SISTEMAS.find((s) => s.descriptor.sistema === sistema)?.descriptor;
     expect(descriptor?.imagenes).toEqual([sistema, `${sistema}-migrador`]);
@@ -152,20 +206,20 @@ describe("C-14 §1 · cada sistema publica DOS imagenes, y el migrador corre la 
 
     // Y las variables que el migrador de verdad LEE. Su `main` las nombra y rechaza argumentos
     // a proposito, para que una clave no quede en el historial del proceso.
-    expect(valorDe(principal, "SGTM_DB_OWNER_USUARIO")).toBe("sgtm_owner");
-    expect(declara(principal, "SGTM_DB_OWNER_CLAVE")).toBe(true);
+    expect(valorDe(principal, "KAMAYUK_DB_OWNER_USUARIO")).toBe("sgtm_owner");
+    expect(declara(principal, "KAMAYUK_DB_OWNER_CLAVE")).toBe(true);
     // Y la URL sale del anfitrion que ENTREGA el entorno (C-17, punto 1). Esta linea decia
     // `jdbc:postgresql://postgres:5432/...`, o sea que la guarda de C-14 EXIGIA el nombre roto:
     // en Kubernetes no hay ningun `Service` llamado `postgres` —ese nombre viene del
     // `compose.yaml` local— y lo medido fue `UnknownHostException` en los ocho Jobs. Una guarda
     // escrita contra un valor literal fosiliza el valor; comparada contra `entorno.plataforma`
     // sigue al ambiente.
-    expect(valorDe(principal, "SGTM_DB_URL")).toBe(
+    expect(valorDe(principal, "KAMAYUK_DB_URL")).toBe(
       `jdbc:postgresql://${entorno.plataforma.motor}/${sistema}`,
     );
     expect(
-      declara(principal, "SGTM_DB_USUARIO"),
-      "`SGTM_DB_USUARIO` es la variable de la APLICACION; el migrador no la lee. Ponerla aqui " +
+      declara(principal, "KAMAYUK_DB_USUARIO"),
+      "`KAMAYUK_DB_USUARIO` es la variable de la APLICACION; el migrador no la lee. Ponerla aqui " +
         "es lo que hacia que este Job pareciera correcto sin migrar nada.",
     ).toBe(false);
   });
@@ -202,9 +256,10 @@ describe("C-14 §4 · cada sistema implanta su municipalidad", () => {
     expect(valorDe(principal, "SPRING_PROFILES_ACTIVE")).toBe("batch");
     // EL PREFIJO SALE DEL JAVA DE CADA SISTEMA, no de este literal (C-18).
     //
-    // Hasta C-18 aqui ponia `KAMAYUK_IMPLANTACION_` para los cuatro, y `rentas` **no lee asi**:
-    // es el monolito y conserva `@ConfigurationProperties("sgtm.implantacion")`. Asi que esta
-    // comprobacion exigia el nombre roto, igual que la de C-17 §1 exigia el anfitrion roto. El
+    // Hasta C-18 aqui ponia `KAMAYUK_IMPLANTACION_` para los cuatro, y `rentas` **no leia asi**:
+    // era el monolito y conservaba `@ConfigurationProperties("sgtm.implantacion")` —R-A/B lo
+    // renombro—. Asi que esta comprobacion exigia el nombre roto, igual que la de C-17 §1 exigia
+    // el anfitrion roto, y por eso deriva en vez de escribirlo aunque hoy los cuatro coincidan. El
     // sintoma del defecto que fosilizaba no es un error: `ImplantarMunicipalidad` esta
     // condicionado a `@ConditionalOnProperty("<prefijo>.ubigeo")`, asi que el runner no se
     // registra, el proceso sale con codigo 0 y el Job queda `Complete` sin haber implantado nada.
@@ -332,9 +387,9 @@ describe("C-14 §3 · los CronJob del emisor y del ingestor", () => {
       for (const m of delSistema(AMBIENTE, sistema)) {
         if (m.kind !== "CronJob") continue;
         for (const c of m.spec.jobTemplate.spec.template.spec.containers) {
-          expect(declara(c, "SGTM_DB_OWNER_USUARIO"), m.metadata.name).toBe(false);
-          expect(declara(c, "SGTM_DB_OWNER_CLAVE"), m.metadata.name).toBe(false);
-          expect(valorDe(c, "SGTM_DB_USUARIO"), m.metadata.name).toBe("sgtm_app");
+          expect(declara(c, "KAMAYUK_DB_OWNER_USUARIO"), m.metadata.name).toBe(false);
+          expect(declara(c, "KAMAYUK_DB_OWNER_CLAVE"), m.metadata.name).toBe(false);
+          expect(valorDe(c, "KAMAYUK_DB_USUARIO"), m.metadata.name).toBe("sgtm_app");
         }
       }
     }

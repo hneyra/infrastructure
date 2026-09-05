@@ -35,7 +35,7 @@ la maquina de quien lo escribe:
   `resolve(raizDelRepositorio(), "..", sistema.clon)`;
 - `settings.gradle.kts` de los cuatro backends busca `librerias-backend` en
   `../../infrastructure/librerias-backend`;
-- `infrastructure/package.json` de los cuatro sistemas declara `@sgtm/infra-contrato` como
+- `infrastructure/package.json` de los cuatro sistemas declara `@kamayuk/infra-contrato` como
   `link:../../infrastructure/infra/contrato`.
 
 Diez sitios, en cinco repositorios:

@@ -19,9 +19,9 @@
 # rotar y vigilar.
 set -euo pipefail
 
-: "${SGTM_CLAVE_OWNER:?falta SGTM_CLAVE_OWNER}"
-: "${SGTM_CLAVE_APP:?falta SGTM_CLAVE_APP}"
-: "${SGTM_CLAVE_CARGA:?falta SGTM_CLAVE_CARGA}"
+: "${KAMAYUK_CLAVE_OWNER:?falta KAMAYUK_CLAVE_OWNER}"
+: "${KAMAYUK_CLAVE_APP:?falta KAMAYUK_CLAVE_APP}"
+: "${KAMAYUK_CLAVE_CARGA:?falta KAMAYUK_CLAVE_CARGA}"
 
 # Las claves entran como variables de psql y no interpoladas en el texto del SQL:
 # `:'clave'` las entrecomilla segun las reglas de PostgreSQL, asi que una clave con
@@ -29,9 +29,9 @@ set -euo pipefail
 psql -v ON_ERROR_STOP=1 \
      --username "$POSTGRES_USER" \
      --dbname "$POSTGRES_DB" \
-     -v claveOwner="$SGTM_CLAVE_OWNER" \
-     -v claveApp="$SGTM_CLAVE_APP" \
-     -v claveCarga="$SGTM_CLAVE_CARGA" <<'SQL'
+     -v claveOwner="$KAMAYUK_CLAVE_OWNER" \
+     -v claveApp="$KAMAYUK_CLAVE_APP" \
+     -v claveCarga="$KAMAYUK_CLAVE_CARGA" <<'SQL'
 ALTER ROLE sgtm_owner            LOGIN PASSWORD :'claveOwner';
 ALTER ROLE sgtm_app              LOGIN PASSWORD :'claveApp';
 ALTER ROLE rol_carga_parametros  LOGIN PASSWORD :'claveCarga';

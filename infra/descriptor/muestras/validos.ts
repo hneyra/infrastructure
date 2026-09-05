@@ -77,8 +77,8 @@ function despliegueDe(
                   // backend que atiende sin poder validar un token responde a la sonda,
                   // se declara sano y no atiende a nadie (ADR-0005). Lo exige la auditoria
                   // heredada, no una regla del descriptor.
-                  { name: "SGTM_OIDC_EMISOR", value: `https://${e.dominio}/keycloak/realms/sgtm` },
-                  { name: "SGTM_DB_CLAVE", valueFrom: { secretKeyRef: { name: e.secretoDe("app"), key: "clave" } } },
+                  { name: "KAMAYUK_OIDC_EMISOR", value: `https://${e.dominio}/keycloak/realms/sgtm` },
+                  { name: "KAMAYUK_DB_CLAVE", valueFrom: { secretKeyRef: { name: e.secretoDe("app"), key: "clave" } } },
                 ],
                 ...(atiendeHttp ? { ports: [{ name: "http", containerPort: 8080 }] } : {}),
                 resources: RECURSOS,
@@ -128,7 +128,7 @@ function migracionDe(sistema: string, e: EntornoDelDescriptor, imagen: string): 
                 name: "migrador",
                 image: e.imagenDe(imagen),
                 env: [
-                  { name: "SGTM_DB_CLAVE", valueFrom: { secretKeyRef: { name: e.secretoDe("owner"), key: "clave" } } },
+                  { name: "KAMAYUK_DB_CLAVE", valueFrom: { secretKeyRef: { name: e.secretoDe("owner"), key: "clave" } } },
                 ],
                 resources: RECURSOS,
                 securityContext: seguridadBase({ runAsNonRoot: true }),
@@ -170,7 +170,7 @@ function implantacionDe(sistema: string, e: EntornoDelDescriptor, imagen: string
                 env: [
                   { name: "SPRING_PROFILES_ACTIVE", value: "batch" },
                   { name: "KAMAYUK_IMPLANTACION_UBIGEO", value: e.implantacion.ubigeo },
-                  { name: "SGTM_DB_CLAVE", valueFrom: { secretKeyRef: { name: e.secretoDe("app"), key: "clave" } } },
+                  { name: "KAMAYUK_DB_CLAVE", valueFrom: { secretKeyRef: { name: e.secretoDe("app"), key: "clave" } } },
                 ],
                 resources: RECURSOS,
                 securityContext: seguridadBase({ runAsNonRoot: true }),
@@ -209,7 +209,7 @@ function loteDe(sistema: string, e: EntornoDelDescriptor, imagen: string): Manif
                     image: e.imagenDe(imagen),
                     env: [
                       { name: "SPRING_PROFILES_ACTIVE", value: "batch" },
-                      { name: "SGTM_DB_CLAVE", valueFrom: { secretKeyRef: { name: e.secretoDe("app"), key: "clave" } } },
+                      { name: "KAMAYUK_DB_CLAVE", valueFrom: { secretKeyRef: { name: e.secretoDe("app"), key: "clave" } } },
                     ],
                     resources: RECURSOS,
                     securityContext: seguridadBase({ runAsNonRoot: true }),

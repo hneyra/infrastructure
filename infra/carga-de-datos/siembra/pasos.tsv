@@ -31,13 +31,13 @@
 #   requiere      pasos que tienen que estar completos antes. `-` si ninguno.
 #
 paso	sistema	guion	proceso	archivo	comprobacion	requiere
-1	catastro	cargar-catalogo-vial.sh	sgtm.carga-vial	vias.csv	via=vias.csv:filas	-
-2	catastro	cargar-sectores.sh	sgtm.carga-sectores	sectores.csv	sector=sectores.csv:filas	-
-3	catastro	cargar-manzanas.sh	sgtm.carga-manzanas	manzanas.csv	manzana=manzanas.csv:filas	2
-4	caja	cargar-cajas.sh	sgtm.carga-cajas	cajas.csv	caja=cajas.csv:filas;area=cajas.csv:distintos:codigoArea	-
-5	rentas	cargar-contribuyentes-demo.sh	sgtm.carga-contribuyentes-demo	contribuyentes.csv	contribuyente=contribuyentes.csv:filas	-
-6	catastro	cargar-fichas-demo.sh	sgtm.carga-fichas-demo	fichas.csv	predio=fichas.csv:filas	1,2,3,5
-7	catastro	cargar-detalle-fichas-demo.sh	sgtm.carga-detalle-fichas-demo	detalle-de-fichas.csv	ficha_catastral=fichas.csv:filas+detalle-de-fichas.csv:distintos:codigoPredial	6
-8	rentas	cargar-vehiculos-demo.sh	sgtm.carga-vehiculos-demo	vehiculos.csv	vehiculo=vehiculos.csv:filas	5
-9	rentas	cargar-transferencias-demo.sh	sgtm.carga-transferencias-demo	transferencias.csv	transferencia=transferencias.csv:filas	6,8
-10	rentas	cargar-deuda-demo.sh	sgtm.carga-deuda-demo	deuda.csv	cuenta_corriente_asiento=deuda.csv:filas	5,6,8,9
+1	catastro	cargar-catalogo-vial.sh	kamayuk.carga-vial	vias.csv	via=vias.csv:filas	-
+2	catastro	cargar-sectores.sh	kamayuk.carga-sectores	sectores.csv	sector=sectores.csv:filas	-
+3	catastro	cargar-manzanas.sh	kamayuk.carga-manzanas	manzanas.csv	manzana=manzanas.csv:filas	2
+4	caja	cargar-cajas.sh	kamayuk.carga-cajas	cajas.csv	caja=cajas.csv:filas;area=cajas.csv:distintos:codigoArea	-
+5	rentas	cargar-contribuyentes-demo.sh	kamayuk.carga-contribuyentes-demo	contribuyentes.csv	contribuyente=contribuyentes.csv:filas	-
+6	catastro	cargar-fichas-demo.sh	kamayuk.carga-fichas-demo	fichas.csv	predio=fichas.csv:filas	1,2,3,5
+7	catastro	cargar-detalle-fichas-demo.sh	kamayuk.carga-detalle-fichas-demo	detalle-de-fichas.csv	ficha_catastral=fichas.csv:filas+detalle-de-fichas.csv:distintos:codigoPredial	6
+8	rentas	cargar-vehiculos-demo.sh	kamayuk.carga-vehiculos-demo	vehiculos.csv	vehiculo=vehiculos.csv:filas	5
+9	rentas	cargar-transferencias-demo.sh	kamayuk.carga-transferencias-demo	transferencias.csv	transferencia=transferencias.csv:filas	6,8
+10	rentas	cargar-deuda-demo.sh	kamayuk.carga-deuda-demo	deuda.csv	cuenta_corriente_asiento=deuda.csv:filas	5,6,8,9

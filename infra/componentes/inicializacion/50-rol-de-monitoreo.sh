@@ -15,12 +15,12 @@
 # modos: si el rol ya existe, no lo vuelve a crear.
 set -euo pipefail
 
-: "${SGTM_CLAVE_MONITOREO:?falta SGTM_CLAVE_MONITOREO}"
+: "${KAMAYUK_CLAVE_MONITOREO:?falta KAMAYUK_CLAVE_MONITOREO}"
 
 psql -v ON_ERROR_STOP=1 \
      --username "$POSTGRES_USER" \
      --dbname postgres \
-     -v claveMonitoreo="$SGTM_CLAVE_MONITOREO" <<'SQL'
+     -v claveMonitoreo="$KAMAYUK_CLAVE_MONITOREO" <<'SQL'
 SELECT format('CREATE ROLE sgtm_monitor LOGIN')
  WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sgtm_monitor') \gexec
 

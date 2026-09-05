@@ -127,7 +127,7 @@ function procesoDelContenedor(
   c: Contenedor,
 ): ProcesoDeclarado {
   const env = c.env ?? [];
-  const usuario = env.find((v) => v.name === "SGTM_DB_USUARIO" || v.name === "SGTM_DB_OWNER_USUARIO");
+  const usuario = env.find((v) => v.name === "KAMAYUK_DB_USUARIO" || v.name === "KAMAYUK_DB_OWNER_USUARIO");
   return {
     servicio: servicioDe(sistema, proceso),
     objetivo,
@@ -276,7 +276,7 @@ export function desajustes(
 
     // El rol con que se conecta.
     const usuarioEnCompose =
-      servicio.environment?.["SGTM_DB_USUARIO"] ?? servicio.environment?.["SGTM_DB_OWNER_USUARIO"];
+      servicio.environment?.["KAMAYUK_DB_USUARIO"] ?? servicio.environment?.["KAMAYUK_DB_OWNER_USUARIO"];
     if (declarado.usuario !== undefined && usuarioEnCompose !== declarado.usuario) {
       anotar(
         proceso,

@@ -6,7 +6,7 @@ import { SISTEMAS_DEL_PRODUCTO } from "../componentes/convenciones";
 /**
  * El contrato se resuelve por DOS caminos, y tienen que llevar al mismo sitio.
  *
- * Cada sistema declara `@sgtm/infra-contrato` como `link:` en su `package.json`, y quien
+ * Cada sistema declara `@kamayuk/infra-contrato` —el nombre se lee del propio paquete— como `link:` en su `package.json`, y quien
  * materializa ese enlace es `yarn install` DENTRO de ese sistema. El CI de este repositorio
  * clona los cuatro para comprobarlos y solo instala en `infrastructure/infra`, asi que alli el
  * enlace NO EXISTE: `DescriptorDeSistema` deja de resolver, el parametro `e` de cada metodo cae
@@ -24,7 +24,25 @@ import { SISTEMAS_DEL_PRODUCTO } from "../componentes/convenciones";
  */
 
 const RAIZ = resolve(__dirname, "..");
-const LLAVE = "@sgtm/infra-contrato";
+
+/**
+ * El nombre del paquete NO se escribe aqui: se lee del `package.json` del contrato.
+ *
+ * Escribirlo seria un tercer sitio con la misma verdad, y el que envejece. Lo enseno R-A/B: el
+ * paquete paso de `@sgtm/infra-contrato` a `@kamayuk/infra-contrato`, y con el literal puesto
+ * esta guarda habria seguido comprobando que las dos declaraciones coinciden **en el nombre
+ * viejo** — que es exactamente la forma con que C-17 §1 y C-18 §5 encontraron guardas
+ * fosilizando el valor roto.
+ */
+function llaveDelContrato(): string {
+  const nombre = leerJson(resolve(RAIZ, "contrato", "package.json"))["name"];
+  expect(
+    typeof nombre === "string" && nombre.length > 0,
+    "«infra/contrato/package.json» no declara un «name». Es de donde sale la llave con que los " +
+      "cuatro sistemas lo enlazan, y sin ella esta comprobacion no tiene que comparar.",
+  ).toBe(true);
+  return nombre as string;
+}
 
 function leerJson(ruta: string): Record<string, unknown> {
   // Los `tsconfig` llevan comentarios: se retiran antes de analizar. Solo los de linea, que es
@@ -41,10 +59,11 @@ function destinoDelPaths(): string {
   const tsconfig = leerJson(resolve(RAIZ, "tsconfig.json"));
   const opciones = (tsconfig["compilerOptions"] ?? {}) as Record<string, unknown>;
   const paths = (opciones["paths"] ?? {}) as Record<string, string[]>;
-  const entrada = paths[LLAVE];
+  const llave = llaveDelContrato();
+  const entrada = paths[llave];
   expect(
     entrada,
-    `«${LLAVE}» no esta en el «paths» de infra/tsconfig.json. Sin el, el CI de este ` +
+    `«${llave}» no esta en el «paths» de infra/tsconfig.json. Sin el, el CI de este ` +
       "repositorio no puede comprobar los descriptores de los cuatro sistemas: los clona sin " +
       "instalar sus dependencias, el enlace del contrato no existe y salen 30 «TS7006».",
   ).toBeDefined();
@@ -57,8 +76,9 @@ function destinoDelEnlace(sistema: string): string {
   const paquete = resolve(RAIZ, "..", "..", sistema, "infrastructure", "package.json");
   const json = leerJson(paquete);
   const deps = (json["dependencies"] ?? {}) as Record<string, string>;
-  const declarado = deps[LLAVE];
-  expect(declarado, `«${sistema}» no declara «${LLAVE}» en sus dependencias.`).toBeDefined();
+  const llave = llaveDelContrato();
+  const declarado = deps[llave];
+  expect(declarado, `«${sistema}» no declara «${llave}» en sus dependencias.`).toBeDefined();
   expect(declarado).toMatch(/^link:/);
   return resolve(dirname(paquete), declarado!.slice("link:".length));
 }

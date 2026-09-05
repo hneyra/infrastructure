@@ -31,7 +31,7 @@ export interface ResultadoDeCompletar {
  * Genera una clave, ya codificada para `Secret.data`.
  *
  * **No** son los 32 bytes de `crypto.randomBytes` codificados una vez: eso es lo que
- * este archivo hacia hasta que un clúster real —no un `SGTM_MOTOR_MODO=local`, que
+ * este archivo hacia hasta que un clúster real —no un `KAMAYUK_MOTOR_MODO=local`, que
  * nunca pasa por el API de Kubernetes— lo puso en rojo (issue #157, descubierto
  * verificando `verificar-alertas.sh`/`verificar-tableros.sh` contra un `kind` real).
  * `Secret.data` documenta sus valores como base64 y Kubernetes los DECODIFICA una vez

@@ -8,7 +8,7 @@
  *
  * ## Donde se fija la version, y donde NO
  *
- * La version que se fija aqui es la **del paquete del descriptor** —`@sgtm/infra-catastro`
+ * La version que se fija aqui es la **del paquete del descriptor** —`@kamayuk/infra-catastro`
  * en el `package.json`—, no la de la imagen. Son dos cosas distintas y confundirlas es la
  * prohibicion (b): el descriptor describe *como* se despliega un sistema y cambia cuando
  * cambian sus limites o sus sondas; la imagen dice *que version corre*, se mueve con
@@ -44,7 +44,7 @@ export { auditarDescriptor, describirAuditoriaDeDescriptores } from "./auditoria
  * de ninguna imagen.
  */
 export interface DescriptorFijado {
-  /** La version del paquete `@sgtm/infra-<sistema>`. Se fija aqui, no la elige el sistema. */
+  /** La version del paquete `@kamayuk/infra-<sistema>`. Se fija aqui, no la elige el sistema. */
   readonly version: string;
   readonly descriptor: DescriptorDeSistema;
 }

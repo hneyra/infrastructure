@@ -44,10 +44,10 @@ services:
       # que no es de nadie.
       POSTGRES_DB: postgres
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${SGTM_CLAVE_SUPERUSUARIO:?falta SGTM_CLAVE_SUPERUSUARIO en .env}
-      SGTM_CLAVE_OWNER: ${SGTM_CLAVE_OWNER:?falta SGTM_CLAVE_OWNER en .env}
-      SGTM_CLAVE_APP: ${SGTM_CLAVE_APP:?falta SGTM_CLAVE_APP en .env}
-      SGTM_CLAVE_CARGA: ${SGTM_CLAVE_CARGA:?falta SGTM_CLAVE_CARGA en .env}
+      POSTGRES_PASSWORD: ${KAMAYUK_CLAVE_SUPERUSUARIO:?falta KAMAYUK_CLAVE_SUPERUSUARIO en .env}
+      KAMAYUK_CLAVE_OWNER: ${KAMAYUK_CLAVE_OWNER:?falta KAMAYUK_CLAVE_OWNER en .env}
+      KAMAYUK_CLAVE_APP: ${KAMAYUK_CLAVE_APP:?falta KAMAYUK_CLAVE_APP en .env}
+      KAMAYUK_CLAVE_CARGA: ${KAMAYUK_CLAVE_CARGA:?falta KAMAYUK_CLAVE_CARGA en .env}
     volumes:
       # Orden alfabetico, una sola vez, con el volumen vacio. El `05` va antes que
       # el `10` a proposito: `crear-roles.sql` instala extensiones y concede sobre
@@ -84,7 +84,7 @@ services:
       - ./inicializacion-del-motor/20-asignar-claves.sh:/docker-entrypoint-initdb.d/20-asignar-claves.sh:ro
       - datos-plataforma:/var/lib/postgresql/data
     ports:
-      - "${SGTM_PUERTO_BASE:-5432}:5432"
+      - "${KAMAYUK_PUERTO_BASE:-5432}:5432"
     healthcheck:
       # `--host=127.0.0.1` NO es decorativo: sin el, `pg_isready` pregunta por el
       # socket unix, y durante la inicializacion el motor arranca con
@@ -102,7 +102,7 @@ services:
     # (ADR-0012). Es de la plataforma porque la identidad lo es.
     image: axllent/mailpit:v1.20
     ports:
-      - "${SGTM_PUERTO_CORREO:-8025}:8025"
+      - "${KAMAYUK_PUERTO_CORREO:-8025}:8025"
 
   identidad:
     image: quay.io/keycloak/keycloak:26.0
@@ -111,14 +111,14 @@ services:
       correo:
         condition: service_started
     environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${SGTM_KEYCLOAK_ADMIN:-admin}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${SGTM_CLAVE_KEYCLOAK:?falta SGTM_CLAVE_KEYCLOAK en .env}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KAMAYUK_KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KAMAYUK_CLAVE_KEYCLOAK:?falta KAMAYUK_CLAVE_KEYCLOAK en .env}
       KC_HEALTH_ENABLED: "true"
       # El emisor que Keycloak pone en el `iss` tiene que ser el mismo que los
       # cuatro backends validan y el mismo al que el navegador va. Con dos nombres
       # —uno de red interna, otro del anfitrion— la firma valida y el emisor no
       # cuadra, y el 401 no dice por que.
-      KC_HOSTNAME: ${SGTM_OIDC_EMISOR:-http://localhost:8180}
+      KC_HOSTNAME: ${KAMAYUK_OIDC_EMISOR:-http://localhost:8180}
       KC_HOSTNAME_STRICT: "false"
     volumes:
       # Los DOS realms. No son dos clientes de uno: son **dos emisores**, y es lo
@@ -128,7 +128,7 @@ services:
       - ./identidad/realm-sgtm.json:/opt/keycloak/data/import/realm-sgtm.json:ro
       - ./identidad/realm-sgtm-ciudadano.json:/opt/keycloak/data/import/realm-sgtm-ciudadano.json:ro
     ports:
-      - "${SGTM_PUERTO_IDENTIDAD:-8180}:8080"
+      - "${KAMAYUK_PUERTO_IDENTIDAD:-8180}:8080"
 
   ingreso:
     # Traefik con el enrutado POR PREFIJO (ADR-0030 §2): el primer segmento dice
@@ -154,7 +154,7 @@ services:
       # que caduca sin decir cual de los cuatro servicios falta.
       - --ping=true
     ports:
-      - "${SGTM_PUERTO_INGRESO:-8080}:80"
+      - "${KAMAYUK_PUERTO_INGRESO:-8080}:80"
     volumes:
       # De solo lectura: Traefik lee las etiquetas de los contenedores y no
       # escribe nada. Un socket de Docker escribible en un contenedor es root en

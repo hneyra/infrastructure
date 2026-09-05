@@ -21,7 +21,7 @@
  *
  * ## El perfil importa
  *
- * `application.yaml` tiene bloques por perfil: `SGTM_OIDC_EMISOR` no tiene omision y solo se exige
+ * `application.yaml` tiene bloques por perfil: `KAMAYUK_OIDC_EMISOR` no tiene omision y solo se exige
  * en `web`. Un Deployment de perfil `batch` que no la declare esta **bien**, y exigirsela seria
  * pedir que la maquina que corre una determinacion de madrugada pueda ver Keycloak. Por eso cada
  * contenedor se mide contra el bloque comun mas el de SU perfil, leido de su propio

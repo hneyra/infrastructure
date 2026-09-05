@@ -1,6 +1,6 @@
 # `descriptor/` — el contrato con el que un sistema aporta su infraestructura
 
-ADR-0031 §2. Cada repositorio publica `@sgtm/infra-<sistema>`; `infrastructure` lo importa,
+ADR-0031 §2. Cada repositorio publica `@kamayuk/infra-<sistema>`; `infrastructure` lo importa,
 **fija su versión**, lo compone y **lo audita con las mismas reglas que audita los propios**.
 
 ## Por qué esto se puede hacer

@@ -14,14 +14,14 @@
 # modos: si la base ya existe, no hace nada.
 set -euo pipefail
 
-: "${SGTM_CLAVE_IDENTIDAD:?falta SGTM_CLAVE_IDENTIDAD}"
+: "${KAMAYUK_CLAVE_IDENTIDAD:?falta KAMAYUK_CLAVE_IDENTIDAD}"
 
 # `psql -v` y `:'clave'`, igual que en 20-asignar-claves.sh: una clave con comilla
 # simple se asigna bien en vez de romper la sentencia o, peor, cambiarla.
 psql -v ON_ERROR_STOP=1 \
      --username "$POSTGRES_USER" \
      --dbname postgres \
-     -v claveIdentidad="$SGTM_CLAVE_IDENTIDAD" <<'SQL'
+     -v claveIdentidad="$KAMAYUK_CLAVE_IDENTIDAD" <<'SQL'
 SELECT format('CREATE ROLE keycloak LOGIN')
  WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'keycloak') \gexec
 

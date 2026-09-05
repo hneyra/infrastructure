@@ -15,8 +15,8 @@
 # los usuarios `sgtm-verificacion` de CI para el direct grant—. Para el alta
 # declarativa de una municipalidad entera, ver `reconciliar-identidades.sh`.
 #
-# El correo, el nombre y el apellido salen de SGTM_CORREO, SGTM_NOMBRE y
-# SGTM_APELLIDO; sin ellas se ponen marcadores. No son adorno: Keycloak exige los
+# El correo, el nombre y el apellido salen de KAMAYUK_CORREO, KAMAYUK_NOMBRE y
+# KAMAYUK_APELLIDO; sin ellas se ponen marcadores. No son adorno: Keycloak exige los
 # tres para dar por completo el perfil, y sin perfil completo el usuario no puede
 # iniciar sesion aunque exista y tenga clave.
 #
@@ -38,22 +38,22 @@ usuario="${1:?uso: crear-usuario.sh [--reset] <usuario> <clave> [municipalidad_i
 clave="${2:?falta la clave}"
 municipalidad="${3:-}"
 
-: "${SGTM_KEYCLOAK_ADMIN:=admin}"
-: "${SGTM_CLAVE_KEYCLOAK:?falta SGTM_CLAVE_KEYCLOAK}"
-: "${SGTM_KEYCLOAK_URL:=http://localhost:8180}"
-: "${SGTM_KEYCLOAK_SERVICIO:=identidad}"
+: "${KAMAYUK_KEYCLOAK_ADMIN:=admin}"
+: "${KAMAYUK_CLAVE_KEYCLOAK:?falta KAMAYUK_CLAVE_KEYCLOAK}"
+: "${KAMAYUK_KEYCLOAK_URL:=http://localhost:8180}"
+: "${KAMAYUK_KEYCLOAK_SERVICIO:=identidad}"
 
 # kcadm corre DENTRO del contenedor de Keycloak: es donde esta la herramienta, y
 # asi la clave de administracion no sale a la linea de comandos del anfitrion.
 kc() {
-  docker compose exec -T "$SGTM_KEYCLOAK_SERVICIO" /opt/keycloak/bin/kcadm.sh "$@"
+  docker compose exec -T "$KAMAYUK_KEYCLOAK_SERVICIO" /opt/keycloak/bin/kcadm.sh "$@"
 }
 
 kc config credentials \
   --server http://localhost:8080 \
   --realm master \
-  --user "$SGTM_KEYCLOAK_ADMIN" \
-  --password "$SGTM_CLAVE_KEYCLOAK" >/dev/null
+  --user "$KAMAYUK_KEYCLOAK_ADMIN" \
+  --password "$KAMAYUK_CLAVE_KEYCLOAK" >/dev/null
 
 # `| head -1` cerraria la tuberia antes de que kcadm termine de escribir, y con
 # `pipefail` ese SIGPIPE mata el guion entero por un motivo que no tiene nada que
@@ -76,9 +76,9 @@ existente=$(buscarId "$usuario")
 # El marcador del apellido va SIN parentesis, y no es capricho: Keycloak valida
 # nombre y apellido contra una lista de caracteres prohibidos —parentesis entre
 # ellos— y responde `error-person-name-invalid-character`. Letras y espacios.
-correo="${SGTM_CORREO:-$usuario@sgtm.invalido}"
-nombre="${SGTM_NOMBRE:-$usuario}"
-apellido="${SGTM_APELLIDO:-Por completar}"
+correo="${KAMAYUK_CORREO:-$usuario@sgtm.invalido}"
+nombre="${KAMAYUK_NOMBRE:-$usuario}"
+apellido="${KAMAYUK_APELLIDO:-Por completar}"
 
 if [ -z "$existente" ]; then
   if [ -n "$municipalidad" ]; then

@@ -6,8 +6,8 @@
 #   ./identidad/datos-de-implantacion.sh 200101 >> .env
 #
 # Emite, en formato apto para `.env` y para `eval`:
-#   SGTM_ADMINISTRADOR=<cuenta del usuario con administrador:true>
-#   SGTM_NOMBRE_DEL_ADMINISTRADOR="<nombre apellido>"
+#   KAMAYUK_ADMINISTRADOR=<cuenta del usuario con administrador:true>
+#   KAMAYUK_NOMBRE_DEL_ADMINISTRADOR="<nombre apellido>"
 #
 # El resto de datos de la implantacion —ubigeo, nombre de la municipalidad, tipo,
 # regimen de demostracion— siguen en el `.env`: este archivo solo declara personas.
@@ -32,6 +32,6 @@ a = admins[0]
 cuenta = a["cuenta"]
 nombre = f"{a['nombre']} {a['apellido']}".strip()
 
-print(f"SGTM_ADMINISTRADOR={cuenta}")
-print(f'SGTM_NOMBRE_DEL_ADMINISTRADOR="{nombre}"')
+print(f"KAMAYUK_ADMINISTRADOR={cuenta}")
+print(f'KAMAYUK_NOMBRE_DEL_ADMINISTRADOR="{nombre}"')
 PY

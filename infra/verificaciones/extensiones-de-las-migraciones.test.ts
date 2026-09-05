@@ -531,7 +531,7 @@ describe("C-10 — `05-crear-bases.sh` deriva las bases y sus extensiones", () =
         ...process.env,
         PATH: `${falso}:${process.env["PATH"] ?? ""}`,
         POSTGRES_USER: "postgres",
-        SGTM_DIR_KAMAYUK: dirBanco,
+        KAMAYUK_DIR_KAMAYUK: dirBanco,
       },
     });
     return { salida, sql: execFileSync("cat", [registro], { encoding: "utf8" }) };

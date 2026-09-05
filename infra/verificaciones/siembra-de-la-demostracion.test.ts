@@ -100,7 +100,7 @@ describe("C-6 — un guion de carga y el proceso que lo atiende estan en el mism
    * El silencio mas caro que dejo el corte, y el mas dificil de ver.
    *
    * `catastro/infra/carga-de-datos/cargar-transferencias-demo.sh` lanzaba un Job con la
-   * imagen de `catastro` y `SGTM_CARGATRANSFERENCIASDEMO_ARCHIVO`, y ese cargador vive en
+   * imagen de `catastro` y `KAMAYUK_CARGATRANSFERENCIASDEMO_ARCHIVO`, y ese cargador vive en
    * `rentas`. Medido el 2026-09-05: la aplicacion arranca, **no imprime ni una linea de
    * carga** y sale con codigo 0. No hay aviso, no hay fila rechazada, no hay nada.
    */
@@ -116,18 +116,18 @@ describe("C-6 — un guion de carga y el proceso que lo atiende estan en el mism
       }
     }
     expect(censo).toEqual([
-      "rentas/cargar-contribuyentes-demo.sh -> SGTM_CARGACONTRIBUYENTESDEMO_ARCHIVO",
-      "rentas/cargar-deuda-demo.sh -> SGTM_CARGADEUDADEMO_ARCHIVO",
-      "rentas/cargar-transferencias-demo.sh -> SGTM_CARGATRANSFERENCIASDEMO_ARCHIVO",
-      "rentas/cargar-vehiculos-demo.sh -> SGTM_CARGAVEHICULOSDEMO_ARCHIVO",
-      "catastro/cargar-arancel-vial.sh -> SGTM_CARGAARANCEL_ARCHIVO",
-      "catastro/cargar-catalogo-vial.sh -> SGTM_CARGAVIAL_ARCHIVO",
-      "catastro/cargar-detalle-fichas-demo.sh -> SGTM_CARGADETALLEFICHASDEMO_ARCHIVO",
-      "catastro/cargar-fichas-demo.sh -> SGTM_CARGAFICHASDEMO_ARCHIVO",
-      "catastro/cargar-manzanas.sh -> SGTM_CARGAMANZANAS_ARCHIVO",
-      "catastro/cargar-predios.sh -> SGTM_CARGAPREDIOS_ARCHIVO",
-      "catastro/cargar-sectores.sh -> SGTM_CARGASECTORES_ARCHIVO",
-      "caja/cargar-cajas.sh -> SGTM_CARGACAJAS_ARCHIVO",
+      "rentas/cargar-contribuyentes-demo.sh -> KAMAYUK_CARGACONTRIBUYENTESDEMO_ARCHIVO",
+      "rentas/cargar-deuda-demo.sh -> KAMAYUK_CARGADEUDADEMO_ARCHIVO",
+      "rentas/cargar-transferencias-demo.sh -> KAMAYUK_CARGATRANSFERENCIASDEMO_ARCHIVO",
+      "rentas/cargar-vehiculos-demo.sh -> KAMAYUK_CARGAVEHICULOSDEMO_ARCHIVO",
+      "catastro/cargar-arancel-vial.sh -> KAMAYUK_CARGAARANCEL_ARCHIVO",
+      "catastro/cargar-catalogo-vial.sh -> KAMAYUK_CARGAVIAL_ARCHIVO",
+      "catastro/cargar-detalle-fichas-demo.sh -> KAMAYUK_CARGADETALLEFICHASDEMO_ARCHIVO",
+      "catastro/cargar-fichas-demo.sh -> KAMAYUK_CARGAFICHASDEMO_ARCHIVO",
+      "catastro/cargar-manzanas.sh -> KAMAYUK_CARGAMANZANAS_ARCHIVO",
+      "catastro/cargar-predios.sh -> KAMAYUK_CARGAPREDIOS_ARCHIVO",
+      "catastro/cargar-sectores.sh -> KAMAYUK_CARGASECTORES_ARCHIVO",
+      "caja/cargar-cajas.sh -> KAMAYUK_CARGACAJAS_ARCHIVO",
     ]);
   });
 

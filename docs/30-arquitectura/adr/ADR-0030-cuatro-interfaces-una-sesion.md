@@ -75,7 +75,7 @@ hace el *login*; los otros tres obtienen su token con `prompt=none` contra la se
 
 ### 4. Las librerias comunes, y la regla que las gobierna
 
-> **Una libreria común no puede contener lógica de negocio de un contexto.** Si `@sgtm/ui` necesita
+> **Una libreria común no puede contener lógica de negocio de un contexto.** Si `@kamayuk/ui` necesita
 > saber qué es un arbitrio, dejó de ser común y es el monolito otra vez, repartido y sin que el build
 > lo vea.
 
@@ -90,11 +90,11 @@ hace el *login*; los otros tres obtienen su token con `prompt=none` contra la se
 | `normativa-reglas` | El motor y las reglas (ADR-0025). Lo pública `normativa` |
 | `<sistema>-cliente` | Los tipos y el cliente HTTP de cada API. **Lo publica el dueño de la API, no el consumidor** |
 
-**Frontend** — paquetes npm: `@sgtm/ui` (el sistema de diseño derivado del prototipo), `@sgtm/shell`
-(carril de módulos, paleta de comandos, enrutado, renderizador de fallo), `@sgtm/sesion` (OIDC, PKCE,
-renovación silenciosa, audiencias, selector de municipalidad, *logout* de los cuatro), `@sgtm/api`
-(`solicitar()` y el catálogo de errores emparejado con el backend), `@sgtm/formato` (fechas, importes,
-código predial, placa) y `@sgtm/verificaciones` (los arneses, parametrizados por catálogo de
+**Frontend** — paquetes npm: `@kamayuk/ui` (el sistema de diseño derivado del prototipo), `@kamayuk/shell`
+(carril de módulos, paleta de comandos, enrutado, renderizador de fallo), `@kamayuk/sesion` (OIDC, PKCE,
+renovación silenciosa, audiencias, selector de municipalidad, *logout* de los cuatro), `@kamayuk/api`
+(`solicitar()` y el catálogo de errores emparejado con el backend), `@kamayuk/formato` (fechas, importes,
+código predial, placa) y `@kamayuk/verificaciones` (los arneses, parametrizados por catálogo de
 destinos).
 
 **El cliente lo pública el dueño de la API** porque es la diferencia entre una versión del contrato y

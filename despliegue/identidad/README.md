@@ -80,7 +80,7 @@ equivalente para el clúster y las comprobaciones de que salió bien están en e
 
 ```bash
 kc config credentials --server http://localhost:8080 --realm master \
-  --user admin --password "$SGTM_CLAVE_KEYCLOAK"
+  --user admin --password "$KAMAYUK_CLAVE_KEYCLOAK"
 UID=$(kc get users -r sgtm -q username=<cuenta> -q exact=true \
   --fields id --format csv --noquotes | tr -d '\r' | sed -n 1p)
 

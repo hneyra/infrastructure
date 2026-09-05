@@ -15,7 +15,7 @@
 # operativo. Era una constante distinta por guion y el nombre del contenedor, en cambio,
 # lleva el PID; esa asimetria hacia chocar a dos motores del mismo trabajo con un
 # `address already in use` que no se parece a su causa. El porque largo esta en
-# `puerto.sh`. Se puede seguir imponiendo uno con `SGTM_PUERTO_MOTOR`, para depurar.
+# `puerto.sh`. Se puede seguir imponiendo uno con `KAMAYUK_PUERTO_MOTOR`, para depurar.
 
 : "${AMBIENTE:?lib-motor-local.sh necesita AMBIENTE}"
 : "${TRABAJO:?lib-motor-local.sh necesita TRABAJO}"
@@ -48,7 +48,7 @@ done
 # El puerto, despues de comprobar las herramientas: pedirlo necesita `node`.
 # shellcheck source=infra/verificaciones/motor/puerto.sh
 . "$LIB_MOTOR_AQUI/puerto.sh"
-PUERTO=${SGTM_PUERTO_MOTOR:-$(motor_puerto_libre)}
+PUERTO=${KAMAYUK_PUERTO_MOTOR:-$(motor_puerto_libre)}
 export PGPORT=$PUERTO
 echo "· Puerto del anfitrion: $PUERTO"
 
@@ -116,12 +116,12 @@ motor_docker_run() {
         --env POSTGRES_DB=sgtm \
         --env POSTGRES_USER=postgres \
         --env POSTGRES_PASSWORD="$CLAVE_SUPER" \
-        --env SGTM_CLAVE_OWNER="$CLAVE_OWNER" \
-        --env SGTM_CLAVE_APP="$CLAVE_APP" \
-        --env SGTM_CLAVE_CARGA="$CLAVE_CARGA" \
-        --env SGTM_CLAVE_IDENTIDAD="$CLAVE_IDENTIDAD" \
-        --env SGTM_CLAVE_RESPALDO="$CLAVE_RESPALDO" \
-        --env SGTM_CLAVE_MONITOREO="$CLAVE_MONITOREO" \
+        --env KAMAYUK_CLAVE_OWNER="$CLAVE_OWNER" \
+        --env KAMAYUK_CLAVE_APP="$CLAVE_APP" \
+        --env KAMAYUK_CLAVE_CARGA="$CLAVE_CARGA" \
+        --env KAMAYUK_CLAVE_IDENTIDAD="$CLAVE_IDENTIDAD" \
+        --env KAMAYUK_CLAVE_RESPALDO="$CLAVE_RESPALDO" \
+        --env KAMAYUK_CLAVE_MONITOREO="$CLAVE_MONITOREO" \
         --env PGDATA=/var/lib/postgresql/data/pgdata \
         --volume "$TRABAJO/inicializacion:/docker-entrypoint-initdb.d:ro" \
         --volume "$TRABAJO/kamayuk:/etc/kamayuk:ro" \
@@ -167,15 +167,15 @@ motor_arrancar_localmente() {
         case "$guion" in
             *.sql) psql --quiet -v ON_ERROR_STOP=1 --username=postgres --file="$guion" sgtm \
                        >/dev/null ;;
-            # `SGTM_DIR_KAMAYUK` existe justo para esto: los dos guiones de C-14 leen de
+            # `KAMAYUK_DIR_KAMAYUK` existe justo para esto: los dos guiones de C-14 leen de
             # `/etc/kamayuk` dentro del contenedor y de aqui cuando se corren fuera.
             *.sh) POSTGRES_USER=postgres POSTGRES_DB=sgtm \
-                  SGTM_DIR_KAMAYUK="$TRABAJO/kamayuk" \
-                  SGTM_CLAVE_OWNER="$CLAVE_OWNER" SGTM_CLAVE_APP="$CLAVE_APP" \
-                  SGTM_CLAVE_CARGA="$CLAVE_CARGA" \
-                  SGTM_CLAVE_IDENTIDAD="$CLAVE_IDENTIDAD" \
-                  SGTM_CLAVE_RESPALDO="$CLAVE_RESPALDO" \
-                  SGTM_CLAVE_MONITOREO="$CLAVE_MONITOREO" bash "$guion" >/dev/null ;;
+                  KAMAYUK_DIR_KAMAYUK="$TRABAJO/kamayuk" \
+                  KAMAYUK_CLAVE_OWNER="$CLAVE_OWNER" KAMAYUK_CLAVE_APP="$CLAVE_APP" \
+                  KAMAYUK_CLAVE_CARGA="$CLAVE_CARGA" \
+                  KAMAYUK_CLAVE_IDENTIDAD="$CLAVE_IDENTIDAD" \
+                  KAMAYUK_CLAVE_RESPALDO="$CLAVE_RESPALDO" \
+                  KAMAYUK_CLAVE_MONITOREO="$CLAVE_MONITOREO" bash "$guion" >/dev/null ;;
         esac
     done
     unset PGPASSWORD
@@ -230,16 +230,16 @@ if [ -z "$BINARIOS" ] && command -v initdb >/dev/null 2>&1; then
     BINARIOS=$(dirname "$(command -v initdb)")
 fi
 
-# `SGTM_MOTOR_MODO=local` fuerza la instancia local aunque haya Docker. Lo usa
+# `KAMAYUK_MOTOR_MODO=local` fuerza la instancia local aunque haya Docker. Lo usa
 # `respaldo/simulacro-de-restauracion.sh` (issue #155): el PITR exige apagar el motor,
 # destruir su directorio de datos y arrancar OTRO proceso sobre lo restaurado, y eso
 # contra un contenedor de la imagen oficial no se puede sin reimplementar medio
 # entrypoint. Nadie mas deberia usarlo: el camino fiel es el de Docker.
-if [ "${SGTM_MOTOR_MODO:-}" = "local" ]; then
+if [ "${KAMAYUK_MOTOR_MODO:-}" = "local" ]; then
     [ -n "$BINARIOS" ] && [ -x "$BINARIOS/initdb" ] \
-        || { echo "FALLO: SGTM_MOTOR_MODO=local pero no hay un PostgreSQL local instalado." >&2; exit 1; }
+        || { echo "FALLO: KAMAYUK_MOTOR_MODO=local pero no hay un PostgreSQL local instalado." >&2; exit 1; }
     MODO=local
-    echo "· Motor: instancia local temporal, pedida con SGTM_MOTOR_MODO=local"
+    echo "· Motor: instancia local temporal, pedida con KAMAYUK_MOTOR_MODO=local"
     echo "  ($("$BINARIOS/postgres" --version))"
     motor_arrancar_localmente
 elif docker pull --quiet "$MOTOR_IMAGEN" >/dev/null 2>&1; then

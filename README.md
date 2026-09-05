@@ -242,7 +242,7 @@ levantándolo a mano; el tercero no lo va a encontrar nadie.
   archivo histórico y la única copia con `git log`.
 - **No parte los stacks.** Siguen siendo `stg` y `prod` del mismo `index.ts` (ADR-0031 §3).
 - **No crea los descriptores por sistema.** Cada repositorio publicará su
-  `@sgtm/infra-<sistema>` con sus funciones puras; aquí sólo está la plataforma.
+  `@kamayuk/infra-<sistema>` con sus funciones puras; aquí sólo está la plataforma.
 - **No mueve `infra/` a la raíz.** El `package.json` de la raíz delega en él, y eso es
   deliberado: `raizDelRepositorio()` es el **padre de `infra/`**, así que subirla haría que la
   raíz del repositorio fuera el directorio que contiene todos los repos, y con ella se irían

@@ -91,10 +91,10 @@ máquinas** y levantar desde ahí. Ver [DEV-03 §4](solucion-de-problemas.md).
 `--wait` no basta como prueba de que la plataforma sirve. Esto es lo que se ejecutó, y lo que
 devolvió:
 
-Los comandos usan el puerto por omisión; si lo moviste (§5), añade `-p $SGTM_PUERTO_BASE`.
+Los comandos usan el puerto por omisión; si lo moviste (§5), añade `-p $KAMAYUK_PUERTO_BASE`.
 
 ```bash
-export PGPASSWORD=$(grep '^SGTM_CLAVE_SUPERUSUARIO=' despliegue/.env | cut -d= -f2)
+export PGPASSWORD=$(grep '^KAMAYUK_CLAVE_SUPERUSUARIO=' despliegue/.env | cut -d= -f2)
 
 # Las cuatro bases
 psql -h 127.0.0.1 -U postgres -d postgres -tAc \
@@ -148,13 +148,13 @@ nuevos, porque todavía no existe ninguna imagen suya.
 
 | Puerto | Quién | Variable |
 |---|---|---|
-| 5432 | PostgreSQL | `SGTM_PUERTO_BASE` |
-| 8080 | Traefik | `SGTM_PUERTO_INGRESO` |
-| 8180 | Keycloak | `SGTM_PUERTO_IDENTIDAD` |
-| 8025 | Mailpit | `SGTM_PUERTO_CORREO` |
+| 5432 | PostgreSQL | `KAMAYUK_PUERTO_BASE` |
+| 8080 | Traefik | `KAMAYUK_PUERTO_INGRESO` |
+| 8180 | Keycloak | `KAMAYUK_PUERTO_IDENTIDAD` |
+| 8025 | Mailpit | `KAMAYUK_PUERTO_CORREO` |
 
 En un demonio compartido —una máquina con otra instalación corriendo— los cuatro chocan. Se mueven
-en el `.env`, sin tocar el compose. **Y si mueves el de Keycloak, mueve `SGTM_OIDC_EMISOR` con
+en el `.env`, sin tocar el compose. **Y si mueves el de Keycloak, mueve `KAMAYUK_OIDC_EMISOR` con
 él**: es lo que Keycloak escribe en el `iss` de cada token y lo que el backend compara; con dos
 nombres distintos la firma valida, el emisor no cuadra, y el 401 no dice por qué.
 

@@ -249,11 +249,11 @@ export function manifiestosDeMigracion(args: MigracionArgs): Manifiesto[] {
               name: "migrador",
               image: `${imageRepository}/sgtm-migrador:${version}`,
               env: [
-                { name: "SGTM_DB_URL", value: urlDelPadron(environment) },
-                { name: "SGTM_DB_OWNER_USUARIO", value: "sgtm_owner" },
+                { name: "KAMAYUK_DB_URL", value: urlDelPadron(environment) },
+                { name: "KAMAYUK_DB_OWNER_USUARIO", value: "sgtm_owner" },
                 // El unico sitio, con el Job de al lado, donde entra esta clave.
                 {
-                  name: "SGTM_DB_OWNER_CLAVE",
+                  name: "KAMAYUK_DB_OWNER_CLAVE",
                   valueFrom: { secretKeyRef: { name: secreto.owner, key: CLAVES.owner } },
                 },
               ],
@@ -270,29 +270,29 @@ export function manifiestosDeMigracion(args: MigracionArgs): Manifiesto[] {
 
   const variablesDeImplantacion: VariableDeEntorno[] = [
     { name: "SPRING_PROFILES_ACTIVE", value: "batch" },
-    { name: "SGTM_DB_URL", value: urlDelPadron(environment) },
-    { name: "SGTM_DB_USUARIO", value: "sgtm_app" },
+    { name: "KAMAYUK_DB_URL", value: urlDelPadron(environment) },
+    { name: "KAMAYUK_DB_USUARIO", value: "sgtm_app" },
     {
-      name: "SGTM_DB_CLAVE",
+      name: "KAMAYUK_DB_CLAVE",
       valueFrom: { secretKeyRef: { name: secreto.aplicacion, key: CLAVES.aplicacion } },
     },
-    { name: "SGTM_IMPLANTACION_UBIGEO", value: implantacion.ubigeo },
-    { name: "SGTM_IMPLANTACION_NOMBRE", value: implantacion.nombre },
-    { name: "SGTM_IMPLANTACION_TIPO", value: implantacion.tipo },
+    { name: "KAMAYUK_IMPLANTACION_UBIGEO", value: implantacion.ubigeo },
+    { name: "KAMAYUK_IMPLANTACION_NOMBRE", value: implantacion.nombre },
+    { name: "KAMAYUK_IMPLANTACION_TIPO", value: implantacion.tipo },
     // No crea ninguna contrasena: la credencial vive en Keycloak, y esta cuenta tiene
     // que ser la misma que exista alli.
-    { name: "SGTM_IMPLANTACION_ADMINISTRADOR", value: implantacion.administrador },
+    { name: "KAMAYUK_IMPLANTACION_ADMINISTRADOR", value: implantacion.administrador },
     {
-      name: "SGTM_IMPLANTACION_NOMBREDELADMINISTRADOR",
+      name: "KAMAYUK_IMPLANTACION_NOMBREDELADMINISTRADOR",
       value: implantacion.nombreDelAdministrador,
     },
-    { name: "SGTM_IMPLANTACION_ESDEMOSTRACION", value: String(implantacion.esDemostracion) },
-    { name: "SGTM_IMPLANTACION_URL", value: urlDelPadron(environment) },
+    { name: "KAMAYUK_IMPLANTACION_ESDEMOSTRACION", value: String(implantacion.esDemostracion) },
+    { name: "KAMAYUK_IMPLANTACION_URL", value: urlDelPadron(environment) },
     // OWNERCLAVE sin guion bajo: en una variable de entorno el `_` se traduce a punto,
-    // asi que SGTM_IMPLANTACION_OWNER_CLAVE seria `sgtm.implantacion.owner.clave` y no
+    // asi que KAMAYUK_IMPLANTACION_OWNER_CLAVE seria `kamayuk.implantacion.owner.clave` y no
     // `owner-clave`. Es la misma nota que lleva el compose, y por el mismo motivo.
     {
-      name: "SGTM_IMPLANTACION_OWNERCLAVE",
+      name: "KAMAYUK_IMPLANTACION_OWNERCLAVE",
       valueFrom: { secretKeyRef: { name: secreto.owner, key: CLAVES.owner } },
     },
   ];

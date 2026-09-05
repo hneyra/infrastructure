@@ -74,7 +74,7 @@ export function crearRolesSql(): string {
 /**
  * `20-asignar-claves.sh`, de la inicializacion del motor del compose.
  *
- * Lee `SGTM_CLAVE_OWNER` y `SGTM_CLAVE_APP` del entorno; en el compose salen del `.env`
+ * Lee `KAMAYUK_CLAVE_OWNER` y `KAMAYUK_CLAVE_APP` del entorno; en el compose salen del `.env`
  * y aqui de un `Secret`. El guion no cambia, que es justo lo que se quiere.
  */
 export function asignarClavesSh(): string {

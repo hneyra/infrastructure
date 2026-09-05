@@ -21,7 +21,7 @@
 # modos: si el rol ya existe, no lo vuelve a crear.
 set -euo pipefail
 
-: "${SGTM_CLAVE_RESPALDO:?falta SGTM_CLAVE_RESPALDO}"
+: "${KAMAYUK_CLAVE_RESPALDO:?falta KAMAYUK_CLAVE_RESPALDO}"
 
 # `psql -v` y `:'clave'`, igual que en 20-asignar-claves.sh y 30-base-de-keycloak.sh:
 # una clave con comilla simple se asigna bien en vez de romper la sentencia o, peor,
@@ -29,7 +29,7 @@ set -euo pipefail
 psql -v ON_ERROR_STOP=1 \
      --username "$POSTGRES_USER" \
      --dbname postgres \
-     -v claveRespaldo="$SGTM_CLAVE_RESPALDO" <<'SQL'
+     -v claveRespaldo="$KAMAYUK_CLAVE_RESPALDO" <<'SQL'
 SELECT format('CREATE ROLE sgtm_respaldo LOGIN')
  WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sgtm_respaldo') \gexec
 

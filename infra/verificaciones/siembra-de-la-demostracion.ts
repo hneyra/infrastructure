@@ -21,7 +21,7 @@ import { SISTEMAS, clonDe, type Sistema } from "./deriva-de-migraciones";
  * Y hay un tercero que solo existe desde el corte, y es todavia mas silencioso: un guion de
  * carga que vive en el repositorio equivocado. `catastro/infra/carga-de-datos/
  * cargar-transferencias-demo.sh` lanzaba un Job con la imagen de `catastro` y la propiedad
- * `sgtm.carga-transferencias-demo.archivo`, y ese cargador vive en `rentas`: la aplicacion
+ * `kamayuk.carga-transferencias-demo.archivo`, y ese cargador vive en `rentas`: la aplicacion
  * arranca, **no ejecuta ni una linea de carga** y sale con codigo 0. Ni un aviso.
  *
  * ## Por que estas guardas viven aqui
@@ -62,7 +62,7 @@ export interface Paso {
   numero: number;
   sistema: string;
   guion: string;
-  /** La propiedad que enciende el cargador: `sgtm.carga-vial`. */
+  /** La propiedad que enciende el cargador: `kamayuk.carga-vial`. */
   proceso: string;
   archivo: string;
   /** `<tabla>=<expresion>` por cada tabla que el paso tiene que dejar poblada. */
@@ -205,16 +205,23 @@ export function guionesDe(sistema: string): readonly string[] {
 }
 
 /**
- * La variable `SGTM_..._ARCHIVO` que un guion le pasa al contenedor.
+ * La variable `..._ARCHIVO` que un guion le pasa al contenedor.
  *
  * Es lo unico que ata el guion al codigo: sin ella el cargador no se enciende
  * (`@ConditionalOnProperty`), y con la de otro sistema la aplicacion arranca, no hace nada
  * y sale con codigo 0.
+ *
+ * **El patron NO lleva el prefijo del producto dentro** (R-A/B). Lo llevaba —`SGTM_..._ARCHIVO`—
+ * y eso convertia esta guarda en una que solo sabia mirar el nombre viejo: al renombrar los
+ * guiones a `KAMAYUK_..._ARCHIVO` dejo de encontrar ni una y los doce salieron como «no manda
+ * exactamente una variable ..._ARCHIVO», que es un mensaje que apunta al guion cuando el problema
+ * estaba aqui. Sin el prefijo, un guion que mande la variable con OTRO nombre se encuentra igual y
+ * lo que lo delata es la comparacion contra `variableDe(proceso)`, que dice los dos nombres.
  */
 export function variableDeArchivoDe(sistema: string, guion: string): string | undefined {
   const texto = readFileSync(join(cargaDeDatosDe(sistema), guion), "utf8");
   const encontradas = new Set<string>();
-  for (const coincidencia of texto.matchAll(/\bSGTM_[A-Z0-9]+_ARCHIVO\b/g)) {
+  for (const coincidencia of texto.matchAll(/\b[A-Z][A-Z0-9]*_[A-Z0-9]+_ARCHIVO\b/g)) {
     encontradas.add(coincidencia[0]);
   }
   const lista = [...encontradas];
@@ -222,7 +229,7 @@ export function variableDeArchivoDe(sistema: string, guion: string): string | un
   return lista[0];
 }
 
-/** `sgtm.carga-vial` -> `SGTM_CARGAVIAL_ARCHIVO`, que es como Spring lo enlaza. */
+/** `kamayuk.carga-vial` -> `KAMAYUK_CARGAVIAL_ARCHIVO`, que es como Spring lo enlaza. */
 export function variableDe(proceso: string): string {
   return `${proceso.replace(/-/g, "").replace(/\./g, "_").toUpperCase()}_ARCHIVO`;
 }

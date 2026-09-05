@@ -8,15 +8,19 @@ import { raizDelRepositorio } from "../componentes/fuentes";
  * ## El defecto, medido y no supuesto
  *
  * Los cuatro descriptores ponen las variables de la implantacion con el prefijo
- * `KAMAYUK_IMPLANTACION_`. **`rentas` no las lee asi**: es el monolito y conserva
- * `@ConfigurationProperties("sgtm.implantacion")`, y sus dos `@Value` piden
- * `${sgtm.implantacion.url}` y `${sgtm.implantacion.owner-clave}`. Los otros tres estrenaron
- * `kamayuk.implantacion` **a proposito** —lo dice su propio javadoc: «tener nombres distintos hace
- * imposible que un descuido apunte el Job de implantacion de `catastro` con las variables del de
- * `rentas`»—, y el descriptor de `rentas` copio el de sus hermanos.
+ * `KAMAYUK_IMPLANTACION_`, y desde R-A/B los cuatro Java lo leen. **Hasta entonces `rentas` no**:
+ * era el monolito y conservaba `@ConfigurationProperties("sgtm.implantacion")`, con sus dos
+ * `@Value` pidiendo `${sgtm.implantacion.url}` y `${sgtm.implantacion.owner-clave}`, mientras sus
+ * tres hermanos estrenaban `kamayuk.implantacion`; y el descriptor de `rentas` copio el de ellos.
+ *
+ * Que hoy los cuatro digan lo mismo **no deja a esta comprobacion sin trabajo**, y esa es la
+ * razon de que no se haya borrado con el renombrado: sigue siendo lo unico que ata el descriptor
+ * de un sistema al Java que lo lee, y el dia que uno de los dos se mueva —por un renombrado, por
+ * una copia entre hermanos o por una etapa C que toque los nombres— el otro se pone rojo aqui en
+ * vez de salir con codigo 0.
  *
  * El sintoma no se parece a su causa, y por eso llevaba desde C-14 sin que nadie lo viera:
- * `ImplantarMunicipalidad` esta condicionado a `@ConditionalOnProperty("sgtm.implantacion.ubigeo")`,
+ * `ImplantarMunicipalidad` esta condicionado a `@ConditionalOnProperty("kamayuk.implantacion.ubigeo")`,
  * asi que con el prefijo ajeno **el runner ni siquiera se registra**. El proceso arranca, no hace
  * nada y **sale con codigo 0** — el `Job` de Kubernetes queda `Complete` y la evidencia de C-17 lo
  * recoge asi: «kamayuk-rentas-implantacion-… Complete 1/1 25s». Una tarea que contesta que si
@@ -39,7 +43,7 @@ import { raizDelRepositorio } from "../componentes/fuentes";
  * que se saltara lo que no entiende daria verde justo el dia que alguien lo escriba de otra forma.
  */
 
-/** El prefijo de propiedad de un sistema: `sgtm.implantacion` o `kamayuk.implantacion`. */
+/** El prefijo de propiedad de un sistema: `kamayuk.implantacion` o `kamayuk.implantacion`. */
 export function prefijoDeLaImplantacion(sistema: string): string {
   const ruta = rutaDeDatosDeImplantacion(sistema);
   if (!existsSync(ruta)) {
@@ -78,9 +82,9 @@ export function rutaDeDatosDeImplantacion(sistema: string): string {
 /**
  * El prefijo de variable de entorno que Spring resuelve para esa propiedad.
  *
- * `sgtm.implantacion` -> `SGTM_IMPLANTACION_`. El punto se vuelve guion bajo y todo va en
+ * `kamayuk.implantacion` -> `KAMAYUK_IMPLANTACION_`. El punto se vuelve guion bajo y todo va en
  * mayusculas; es la «relaxed binding» de Spring Boot, y es lo unico que hace que un
- * `KAMAYUK_IMPLANTACION_UBIGEO` **no** llegue a `sgtm.implantacion.ubigeo`.
+ * `KAMAYUK_IMPLANTACION_UBIGEO` **no** llegue a `kamayuk.implantacion.ubigeo`.
  */
 export function variableDe(prefijo: string): string {
   return `${prefijo.replace(/\./g, "_").toUpperCase()}_`;

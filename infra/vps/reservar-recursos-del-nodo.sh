@@ -29,7 +29,7 @@
 # configuracion -la parte que corrige la reserva duplicada del issue #252 sobre un
 # archivo del que solo hay una copia- se pueda ejercitar de verdad en
 # `verificaciones/reserva-del-nodo.test.ts`, en vez de razonar sobre ella. Con
-# `SGTM_CONFIG_K3S` se le dice sobre que archivo trabajar.
+# `KAMAYUK_CONFIG_K3S` se le dice sobre que archivo trabajar.
 set -euo pipefail
 
 SOLO_CONFIGURACION=no
@@ -50,7 +50,7 @@ if [ "$SOLO_CONFIGURACION" = "no" ]; then
     command -v systemctl >/dev/null 2>&1 || { echo "Falta systemctl -esto asume k3s como servicio de systemd." >&2; exit 1; }
 fi
 
-CONFIG="${SGTM_CONFIG_K3S:-/etc/rancher/k3s/config.yaml}"
+CONFIG="${KAMAYUK_CONFIG_K3S:-/etc/rancher/k3s/config.yaml}"
 
 # Lo que se reserva EN TOTAL para kubelet, containerd y el sistema operativo.
 #

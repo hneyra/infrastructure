@@ -36,7 +36,7 @@
 # la maquina donde se escribio esto es un tunel a un VPS y no puede montar rutas locales.
 set -euo pipefail
 
-DIR=${SGTM_DIR_KAMAYUK:-/etc/kamayuk}
+DIR=${KAMAYUK_DIR_KAMAYUK:-/etc/kamayuk}
 DIR_ROLES="$DIR/roles"
 
 # shellcheck source=lib-extensiones.sh

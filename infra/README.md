@@ -149,7 +149,7 @@ Y sobre los manifiestos, en `auditoria.ts`:
 | Un `Deployment` con volumen persistente usa `Recreate` | `INF-01` §4 |
 | Ningún `Service` fuera de `ClusterIP` | `INF-01` §1.4 |
 | El `Secret` de `sgtm_owner` no entra en ningún proceso expuesto en HTTP | ARQ-03 §4, #150 |
-| El perfil `web` declara `SGTM_OIDC_EMISOR`; el `batch` no abre puertos | ADR-0005, #152 |
+| El perfil `web` declara `KAMAYUK_OIDC_EMISOR`; el `batch` no abre puertos | ADR-0005, #152 |
 | Keycloak no arranca en `start-dev` | #151 |
 | Toda ruta va por `websecure` con TLS, y `/keycloak/admin` no se publica | #153 |
 | El motor declara `archive_mode=on`; ninguna clave de wal-g va como `value` | RNF-076, #155 |

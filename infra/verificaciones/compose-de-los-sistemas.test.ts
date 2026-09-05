@@ -145,21 +145,21 @@ const MERCADOS: LoQueElDescriptorDice = {
     web: {
       servicio: "mercados",
       objetivo: "aplicacion",
-      variables: ["SGTM_DB_CLAVE", "SGTM_DB_URL", "SGTM_DB_USUARIO", "SPRING_PROFILES_ACTIVE"],
+      variables: ["KAMAYUK_DB_CLAVE", "KAMAYUK_DB_URL", "KAMAYUK_DB_USUARIO", "SPRING_PROFILES_ACTIVE"],
       usuario: "sgtm_app",
       bases: ["mercados"],
     },
     migrador: {
       servicio: "mercados-migraciones",
       objetivo: "migrador",
-      variables: ["SGTM_DB_OWNER_CLAVE", "SGTM_DB_OWNER_USUARIO", "SGTM_DB_URL"],
+      variables: ["KAMAYUK_DB_OWNER_CLAVE", "KAMAYUK_DB_OWNER_USUARIO", "KAMAYUK_DB_URL"],
       usuario: "sgtm_owner",
       bases: ["mercados"],
     },
     implantacion: {
       servicio: "mercados-implantacion",
       objetivo: "aplicacion",
-      variables: ["SGTM_DB_CLAVE", "SGTM_DB_URL", "SGTM_DB_USUARIO", "SPRING_PROFILES_ACTIVE"],
+      variables: ["KAMAYUK_DB_CLAVE", "KAMAYUK_DB_URL", "KAMAYUK_DB_USUARIO", "SPRING_PROFILES_ACTIVE"],
       usuario: "sgtm_app",
       bases: ["mercados"],
     },
@@ -236,11 +236,11 @@ describe("y muerde sobre los CUATRO de verdad, no solo sobre una muestra", () =>
       const roto = clonar(composeDe(sistema));
       const backend = roto.services[servicioDe(sistema, "web")];
       expect(backend, "el compose real no tiene el servicio del backend").toBeDefined();
-      delete backend?.environment?.["SGTM_OIDC_JWKS"];
+      delete backend?.environment?.["KAMAYUK_OIDC_JWKS"];
 
       const hallazgos = hallazgosDe(sistema, roto);
       expect(hallazgos).toHaveLength(1);
-      expect(hallazgos[0]).toContain("SGTM_OIDC_JWKS");
+      expect(hallazgos[0]).toContain("KAMAYUK_OIDC_JWKS");
       expect(hallazgos[0]).toContain("ADR-0011");
     },
   );
@@ -251,12 +251,12 @@ describe("y muerde sobre los CUATRO de verdad, no solo sobre una muestra", () =>
       const roto = clonar(composeDe(sistema));
       const backend = roto.services[servicioDe(sistema, "web")];
       if (backend !== undefined) {
-        backend.environment = { ...backend.environment, SGTM_ATAJO_LOCAL: "si" };
+        backend.environment = { ...backend.environment, KAMAYUK_ATAJO_LOCAL: "si" };
       }
 
       const hallazgos = hallazgosDe(sistema, roto);
       expect(hallazgos).toHaveLength(1);
-      expect(hallazgos[0]).toContain("SGTM_ATAJO_LOCAL");
+      expect(hallazgos[0]).toContain("KAMAYUK_ATAJO_LOCAL");
       expect(hallazgos[0]).toContain("funciona en local y falla desplegado");
     },
   );
