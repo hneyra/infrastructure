@@ -6,6 +6,7 @@ import {
   SECRETOS_DE_ARRANQUE,
 } from "../componentes/secretos";
 import { SISTEMAS_DEL_PRODUCTO } from "../componentes/convenciones";
+import { namespaceDelSistema } from "../descriptor/entorno";
 import { contenedoresDe, podsDe } from "../componentes/tipos";
 import { ENVIRONMENTS, type Environment } from "../config";
 import { manifiestosDeLosSistemas } from "../herramientas/emitir-manifiestos";
@@ -122,7 +123,13 @@ describe("C-17 §4 · lo que se declara es lo que se monta", () => {
    */
   it.each(ENVIRONMENTS)("%s: las claves de un rol del cluster son espejo, no valores nuevos", (a) => {
     const inventario = inventarioDelAmbiente(invariantesDe(a));
-    const deSistemas = inventario.filter((e) => e.namespace.startsWith("kamayuk-"));
+    // Los namespaces de los CUATRO sistemas, nombrados uno a uno. Hasta la etapa D esto
+    // era `namespace.startsWith("kamayuk-")`, y funcionaba solo porque el de la plataforma
+    // empezaba por `sgtm-`: al renombrarlo, el mismo filtro pasaba a coger las 21 entradas
+    // del ambiente en vez de las 10 de los sistemas. Un prefijo no era el criterio, era una
+    // coincidencia entre dos nombres que ya no existe.
+    const deLosSistemas = new Set(SISTEMAS_DEL_PRODUCTO.map((s) => namespaceDelSistema(a, s)));
+    const deSistemas = inventario.filter((e) => deLosSistemas.has(e.namespace));
     expect(deSistemas).toHaveLength(10);
 
     const espejos = deSistemas.filter((e) => e.espejoDe !== undefined);

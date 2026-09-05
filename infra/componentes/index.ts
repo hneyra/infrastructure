@@ -41,7 +41,7 @@ export function construirManifiestos(s: Invariants): Manifiesto[] {
    * **Lo que NO gobierna es la plataforma**, y ese es el punto: el motor, la identidad, el
    * correo, el `Job` del realm, el respaldo y la observabilidad se quedan, porque los
    * cuatro sistemas de ADR-0031 viven en su propio namespace y se conectan a
-   * `sgtm-<amb>-postgres.sgtm-<amb>` (C-17, punto 1). Borrar la plataforma con el monolito
+   * `kamayuk-<amb>-postgres.kamayuk-<amb>` (C-17, punto 1). Borrar la plataforma con el monolito
    * los dejaria sin base, y el sintoma no seria un error sino cuatro pods que arrancan y
    * no pasan nunca su sonda de arranque.
    *

@@ -36,7 +36,7 @@
 # motor —el administrador de Keycloak, la clave de cifrado del respaldo—: el inventario
 # las distingue solo, porque no llevan `rolDePostgres`.
 #
-#   uso: secretos/asignar-claves.sh --ambiente stg|prod [--namespace sgtm-stg] [--comprobar]
+#   uso: secretos/asignar-claves.sh --ambiente stg|prod [--namespace kamayuk-stg] [--comprobar]
 #
 # `--comprobar` no cambia nada: solo dice, rol por rol, si la credencial del `Secret`
 # sirve para conectarse. Es lo que hay que correr antes de publicar.
@@ -56,7 +56,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ -n "$AMBIENTE" ] || { echo "Falta --ambiente (stg o prod)." >&2; exit 2; }
-NAMESPACE=${NAMESPACE:-sgtm-$AMBIENTE}
+NAMESPACE=${NAMESPACE:-kamayuk-$AMBIENTE}
 
 AQUI=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 INFRA=$(cd "$AQUI/.." && pwd)
@@ -64,8 +64,8 @@ cd "$INFRA"
 
 command -v kubectl >/dev/null 2>&1 || { echo "Falta kubectl." >&2; exit 1; }
 
-MOTOR="deployment/sgtm-${AMBIENTE}-postgres"
-SECRETO_SUPER="sgtm-${AMBIENTE}-postgres-superusuario"
+MOTOR="deployment/kamayuk-${AMBIENTE}-postgres"
+SECRETO_SUPER="kamayuk-${AMBIENTE}-postgres-superusuario"
 
 CLAVE_SUPER=$(kubectl -n "$NAMESPACE" get secret "$SECRETO_SUPER" \
     -o jsonpath='{.data.clave-superusuario}' | base64 --decode)

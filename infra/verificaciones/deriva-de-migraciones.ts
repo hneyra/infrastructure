@@ -444,9 +444,9 @@ export function loQueFalta(deriva: DerivaDeMigraciones): string {
     `${deriva.declaraLaReferencia}: le faltan ${deriva.faltan.length} ` +
     `(${deriva.faltan.join(", ")}).\n` +
     "  Nada lo delata solo: el Job lleva la version EN EL NOMBRE, asi que mientras esa " +
-    `linea no se mueva «sgtm-${deriva.ambiente}-migracion-${corta}» ya existe, ` +
+    `linea no se mueva «kamayuk-${deriva.ambiente}-migracion-${corta}» ya existe, ` +
     "`pulumi up` no crea ninguno y sale en verde.\n" +
-    "  Remedio: subir `sgtm:applicationBootstrapVersion` en " +
+    "  Remedio: subir `kamayuk:applicationBootstrapVersion` en " +
     `infra/Pulumi.${deriva.ambiente}.yaml al ultimo sha de main con las tres imagenes ` +
     "publicadas (publicar-imagenes.yml en verde para ese sha)."
   );

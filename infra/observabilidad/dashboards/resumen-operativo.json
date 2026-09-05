@@ -1,12 +1,12 @@
 {
-  "title": "SGTM — Resumen operativo",
-  "uid": "sgtm-resumen-operativo",
+  "title": "Kamayuk — Resumen operativo",
+  "uid": "kamayuk-resumen-operativo",
   "editable": true,
   "timezone": "utc",
   "time": { "from": "now-6h", "to": "now" },
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["sgtm", "issue-156"],
+  "tags": ["kamayuk", "issue-156"],
   "panels": [
     {
       "id": 1,
@@ -22,7 +22,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "sum(jvm_memory_used_bytes{application=\"sgtm\"})" }
+        { "refId": "A", "expr": "sum(jvm_memory_used_bytes{application=\"kamayuk\"})" }
       ]
     },
     {
@@ -34,7 +34,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(http_server_requests_seconds_count{application=\"sgtm\"}[5m])) by (uri)",
+          "expr": "sum(rate(http_server_requests_seconds_count{application=\"kamayuk\"}[5m])) by (uri)",
           "legendFormat": "{{uri}}"
         }
       ]

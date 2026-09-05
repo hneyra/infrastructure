@@ -20,7 +20,7 @@ set -euo pipefail
 
 AQUI=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 INFRA=$(cd "$AQUI/.." && pwd)
-NS=sgtm-stg
+NS=kamayuk-stg
 cd "$INFRA"
 
 command -v kubectl >/dev/null 2>&1 || { echo "FALLO: falta kubectl." >&2; exit 1; }
@@ -46,14 +46,14 @@ yarn --silent manifiestos --ambiente stg \
         // repositorio no publica, y el resto del padron completo no deja margen para
         // que nada responda a tiempo.
         const pesados = [
-          { kind: "Deployment", prefijo: "sgtm-stg-interfaz" },
-          { kind: "Service", prefijo: "sgtm-stg-interfaz" },
-          { kind: "Deployment", prefijo: "sgtm-stg-identidad" },
-          { kind: "Job", prefijo: "sgtm-stg-realm-" },
-          { kind: "Job", prefijo: "sgtm-stg-migracion-" },
-          { kind: "Job", prefijo: "sgtm-stg-implantacion-" },
-          { kind: "Deployment", prefijo: "sgtm-stg-aplicacion" },
-          { kind: "CronJob", prefijo: "sgtm-stg-lote" },
+          { kind: "Deployment", prefijo: "kamayuk-stg-interfaz" },
+          { kind: "Service", prefijo: "kamayuk-stg-interfaz" },
+          { kind: "Deployment", prefijo: "kamayuk-stg-identidad" },
+          { kind: "Job", prefijo: "kamayuk-stg-realm-" },
+          { kind: "Job", prefijo: "kamayuk-stg-migracion-" },
+          { kind: "Job", prefijo: "kamayuk-stg-implantacion-" },
+          { kind: "Deployment", prefijo: "kamayuk-stg-aplicacion" },
+          { kind: "CronJob", prefijo: "kamayuk-stg-lote" },
         ];
         entrada.items = entrada.items.filter((i) => {
           const nombre = i.metadata?.name ?? "";
@@ -88,7 +88,7 @@ echo "· Generando los secretos que faltan"
 # `bootstrap-secretos.sh` no genera (ADR-0011 §3) es el de las credenciales de
 # almacenamiento de objetos, que normalmente materializa `pulumi up`. Sin el, el
 # motor se queda en `CreateContainerConfigError` y esta espera nunca termina.
-kubectl -n "$NS" create secret generic sgtm-stg-postgres-respaldo-credenciales \
+kubectl -n "$NS" create secret generic kamayuk-stg-postgres-respaldo-credenciales \
     --from-literal=access-key-id=verificacion \
     --from-literal=secret-access-key=verificacion \
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
@@ -98,12 +98,12 @@ echo "· Esperando a que el motor, node-exporter, kube-state-metrics y Prometheu
 # clúster `kind` recien creado descarga TODAS estas imagenes de red a la vez, y
 # el propio `startupProbe` del motor ya da hasta cinco minutos.
 for despliegue in postgres observabilidad-node-exporter observabilidad-kube-state-metrics observabilidad-prometheus; do
-    if ! kubectl -n "$NS" rollout status "deployment/sgtm-stg-$despliegue" --timeout=300s; then
-        echo "::group::Diagnostico de sgtm-stg-$despliegue"
+    if ! kubectl -n "$NS" rollout status "deployment/kamayuk-stg-$despliegue" --timeout=300s; then
+        echo "::group::Diagnostico de kamayuk-stg-$despliegue"
         kubectl -n "$NS" get pods -o wide
-        kubectl -n "$NS" describe "deployment/sgtm-stg-$despliegue"
-        kubectl -n "$NS" describe pods -l "app=sgtm-stg-$despliegue"
-        kubectl -n "$NS" logs "deployment/sgtm-stg-$despliegue" --all-containers --prefix --tail=200 || true
+        kubectl -n "$NS" describe "deployment/kamayuk-stg-$despliegue"
+        kubectl -n "$NS" describe pods -l "app=kamayuk-stg-$despliegue"
+        kubectl -n "$NS" logs "deployment/kamayuk-stg-$despliegue" --all-containers --prefix --tail=200 || true
         kubectl -n "$NS" get events --sort-by=.lastTimestamp
         echo "::endgroup::"
         exit 1
@@ -132,9 +132,9 @@ spec:
               import http.server
               CUERPO = (
                   '# TYPE jvm_memory_used_bytes gauge\n'
-                  'jvm_memory_used_bytes{application="sgtm",area="heap"} 123456789\n'
+                  'jvm_memory_used_bytes{application="kamayuk",area="heap"} 123456789\n'
                   '# TYPE http_server_requests_seconds_count counter\n'
-                  'http_server_requests_seconds_count{application="sgtm",uri="/api/v1/predios"} 42\n'
+                  'http_server_requests_seconds_count{application="kamayuk",uri="/api/v1/predios"} 42\n'
               )
               class H(http.server.BaseHTTPRequestHandler):
                   def do_GET(self):
@@ -172,10 +172,10 @@ spec:
   podSelector: { matchLabels: { app: aplicacion-sintetica } }
   policyTypes: [Ingress, Egress]
   ingress:
-    - from: [{ podSelector: { matchLabels: { app: sgtm-stg-observabilidad-prometheus } } }]
+    - from: [{ podSelector: { matchLabels: { app: kamayuk-stg-observabilidad-prometheus } } }]
       ports: [{ port: 8080, protocol: TCP }]
   egress:
-    - to: [{ podSelector: { matchLabels: { app: sgtm-stg-observabilidad-prometheus } } }]
+    - to: [{ podSelector: { matchLabels: { app: kamayuk-stg-observabilidad-prometheus } } }]
       ports: [{ port: 9090, protocol: TCP }]
 ---
 apiVersion: networking.k8s.io/v1
@@ -183,7 +183,7 @@ kind: NetworkPolicy
 metadata:
   name: permitir-verificacion-tableros-prometheus
 spec:
-  podSelector: { matchLabels: { app: sgtm-stg-observabilidad-prometheus } }
+  podSelector: { matchLabels: { app: kamayuk-stg-observabilidad-prometheus } }
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
@@ -198,15 +198,15 @@ spec:
       ports: [{ port: 8080, protocol: TCP }]
 YAML
 
-# Prometheus escuchaba a `sgtm-stg-aplicacion` -que no existe en este clúster de
+# Prometheus escuchaba a `kamayuk-stg-aplicacion` -que no existe en este clúster de
 # prueba, nunca contesta y su ausencia no se puede distinguir de un fallo real-. Se
 # repunta el job `aplicacion` al exportador sintetico, solo para esta comprobacion.
 echo "· Repuntando el scrape de «aplicacion» al exportador sintetico"
-kubectl -n "$NS" get configmap sgtm-stg-observabilidad-prometheus -o json \
+kubectl -n "$NS" get configmap kamayuk-stg-observabilidad-prometheus -o json \
     | node -e '
         const cm = JSON.parse(require("fs").readFileSync(0, "utf8"));
         cm.data["prometheus.yml"] = cm.data["prometheus.yml"].replace(
-          /targets: \["sgtm-stg-aplicacion:8080"\]/,
+          /targets: \["kamayuk-stg-aplicacion:8080"\]/,
           "targets: [\"aplicacion-sintetica:8080\"]",
         );
         process.stdout.write(JSON.stringify(cm));
@@ -216,15 +216,15 @@ kubectl -n "$NS" get configmap sgtm-stg-observabilidad-prometheus -o json \
 # El objeto ConfigMap en el API cambia al instante; el archivo que kubelet monta
 # DENTRO del Pod no -kubelet lo sincroniza en su propio ciclo periodico, hasta
 # ~60-90s despues, independiente de cuando se aplico el cambio-. Pedir `/-/reload`
-# antes de que eso pase relee un archivo que TODAVIA dice `sgtm-stg-aplicacion`:
+# antes de que eso pase relee un archivo que TODAVIA dice `kamayuk-stg-aplicacion`:
 # Prometheus contesta 200 igual -recargo algo, solo que lo viejo-, y el resultado
 # es identico a que el repunte nunca hubiera pasado. Encontrado en CI: `/api/v1/targets`
-# mostraba `scrapeUrl: http://sgtm-stg-aplicacion:8080/...` pese a que el ConfigMap
+# mostraba `scrapeUrl: http://kamayuk-stg-aplicacion:8080/...` pese a que el ConfigMap
 # ya tenia `aplicacion-sintetica:8080` -connection refused, no un problema de red-.
 echo "· Esperando a que el volumen del ConfigMap se sincronice dentro del Pod"
 SINCRONIZADO=no
 for intento in $(seq 1 45); do
-    if kubectl -n "$NS" exec deployment/sgtm-stg-observabilidad-prometheus -- \
+    if kubectl -n "$NS" exec deployment/kamayuk-stg-observabilidad-prometheus -- \
         grep -q 'aplicacion-sintetica:8080' /etc/prometheus/prometheus.yml 2>/dev/null; then
         SINCRONIZADO=si
         break
@@ -261,7 +261,7 @@ for intento in 1 2 3 4 5; do
     if SALIDA=$(kubectl -n "$NS" exec deployment/aplicacion-sintetica -- python3 -c "
 import urllib.request
 urllib.request.urlopen(
-    urllib.request.Request('http://sgtm-stg-observabilidad-prometheus:9090/-/reload', method='POST'),
+    urllib.request.Request('http://kamayuk-stg-observabilidad-prometheus:9090/-/reload', method='POST'),
     timeout=10,
 )
 " 2>&1); then
@@ -274,25 +274,25 @@ if [ "$LOGRADO" != "si" ]; then
     echo "FALLO: /-/reload no respondio en 5 intentos. Ultimo error:" >&2
     echo "$SALIDA" >&2
     echo >&2
-    echo "::group::Diagnostico: aplicacion-sintetica -> sgtm-stg-observabilidad-prometheus" >&2
+    echo "::group::Diagnostico: aplicacion-sintetica -> kamayuk-stg-observabilidad-prometheus" >&2
     kubectl -n "$NS" get pods -o wide >&2
-    kubectl -n "$NS" get endpoints sgtm-stg-observabilidad-prometheus -o wide >&2
+    kubectl -n "$NS" get endpoints kamayuk-stg-observabilidad-prometheus -o wide >&2
     echo "--- resolucion DNS y conexion TCP desde dentro de aplicacion-sintetica ---" >&2
     kubectl -n "$NS" exec deployment/aplicacion-sintetica -- python3 -c "
 import socket
 try:
-    print('DNS:', socket.gethostbyname('sgtm-stg-observabilidad-prometheus'))
+    print('DNS:', socket.gethostbyname('kamayuk-stg-observabilidad-prometheus'))
 except Exception as e:
     print('DNS FALLO:', repr(e))
 try:
-    s = socket.create_connection(('sgtm-stg-observabilidad-prometheus', 9090), timeout=5)
+    s = socket.create_connection(('kamayuk-stg-observabilidad-prometheus', 9090), timeout=5)
     print('TCP: conecta')
     s.close()
 except Exception as e:
     print('TCP FALLO:', repr(e))
 " >&2 || true
-    kubectl -n "$NS" describe pods -l app=sgtm-stg-observabilidad-prometheus >&2
-    kubectl -n "$NS" logs deployment/sgtm-stg-observabilidad-prometheus --all-containers --prefix --tail=200 >&2 || true
+    kubectl -n "$NS" describe pods -l app=kamayuk-stg-observabilidad-prometheus >&2
+    kubectl -n "$NS" logs deployment/kamayuk-stg-observabilidad-prometheus --all-containers --prefix --tail=200 >&2 || true
     kubectl -n "$NS" get events --sort-by=.lastTimestamp >&2
     echo "::endgroup::" >&2
     exit 1
@@ -323,7 +323,7 @@ spec:
   podSelector: { matchLabels: { app: verificador-de-tableros } }
   policyTypes: [Egress]
   egress:
-    - to: [{ podSelector: { matchLabels: { app: sgtm-stg-observabilidad-prometheus } } }]
+    - to: [{ podSelector: { matchLabels: { app: kamayuk-stg-observabilidad-prometheus } } }]
       ports: [{ port: 9090, protocol: TCP }]
 YAML
 kubectl -n "$NS" wait --for=condition=Ready pod/verificador-de-tableros --timeout=60s
@@ -358,7 +358,7 @@ consultar_panel() {
         if kubectl -n "$NS" exec verificador-de-tableros -- python3 -c "
 import json, urllib.parse, urllib.request
 q = urllib.parse.quote('''$expr''')
-r = urllib.request.urlopen(f'http://sgtm-stg-observabilidad-prometheus:9090/api/v1/query?query={q}', timeout=10)
+r = urllib.request.urlopen(f'http://kamayuk-stg-observabilidad-prometheus:9090/api/v1/query?query={q}', timeout=10)
 d = json.load(r)
 print(len(d['data']['result']))
 "; then

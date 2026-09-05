@@ -72,7 +72,7 @@ convierte «falta el dominio» en un fallo **a mitad del despliegue**, con el cl
 medio cambiar, en vez de un fallo del arranque que dice qué valor falta y para qué sirve:
 
 ```
-Falta el valor obligatorio «sgtm:domain» en la configuración del stack.
+Falta el valor obligatorio «kamayuk:domain» en la configuración del stack.
 Sirve para: el nombre público por el que llega el navegador.
 Ponlo con `pulumi config set domain <valor>`.
 ```
@@ -168,7 +168,7 @@ Todas se ejercen editando archivos reales y viendo el rojo:
 
 | Rotura | Qué se pone rojo |
 |---|---|
-| Quitar `sgtm:domain` de `Pulumi.prod.yaml` | `yarn test`, nombrando el valor que falta |
+| Quitar `kamayuk:domain` de `Pulumi.prod.yaml` | `yarn test`, nombrando el valor que falta |
 | Subir `walArchiveTimeoutSeconds` a 3600 | `yarn test`, citando RNF-076 |
 | Ponerle etiqueta a `applicationImageRepository` | `yarn test`, citando `ADR-0011` §5 |
 | Copiar la lectura de configuración a un componente | `yarn lint` |
@@ -239,13 +239,13 @@ Sin estos `Secret`, `pulumi up` crea los objetos y los pods se quedan esperando,
 Pulumi vive en el estado de Pulumi, y esa clave abre el padrón de todas las
 municipalidades.
 
-**Uno más, y este `bootstrap-secretos.sh` no lo genera: `sgtm-<amb>-smtp`** (`usuario`,
+**Uno más, y este `bootstrap-secretos.sh` no lo genera: `kamayuk-<amb>-smtp`** (`usuario`,
 `clave`), que el Job de identidad usa para el relay con que Keycloak envía el enlace de
 clave del alta declarativa de usuarios (ADR-0012). No se genera porque no es un valor que
 se pueda fabricar aquí: lo emite el proveedor del relay, y se pone a mano con
-`kubectl create secret generic sgtm-<amb>-smtp --from-literal=usuario=… --from-literal=clave=…`
+`kubectl create secret generic kamayuk-<amb>-smtp --from-literal=usuario=… --from-literal=clave=…`
 (`INF-06` §1.2). En `stg` no hace falta: el relay es un buzón Mailpit del propio clúster
-(`sgtm-stg-correo`), sin autenticación.
+(`kamayuk-stg-correo`), sin autenticación.
 
 ## Liberar una versión nueva
 
@@ -254,10 +254,10 @@ La etiqueta de la imagen **no la mueve Pulumi** (`ADR-0011` §5): el campo `imag
 diario no lo ve como deriva.
 
 ```bash
-kubectl -n sgtm-prod set image deployment/sgtm-prod-aplicacion aplicacion=ghcr.io/hneyra/sgtm-aplicacion:<sha>
-kubectl -n sgtm-prod rollout status deployment/sgtm-prod-aplicacion
+kubectl -n kamayuk-prod set image deployment/kamayuk-prod-aplicacion aplicacion=ghcr.io/hneyra/sgtm-aplicacion:<sha>
+kubectl -n kamayuk-prod rollout status deployment/kamayuk-prod-aplicacion
 # Y revertir, sin pulumi up y en segundos:
-kubectl -n sgtm-prod rollout undo deployment/sgtm-prod-aplicacion
+kubectl -n kamayuk-prod rollout undo deployment/kamayuk-prod-aplicacion
 ```
 
 **Si la versión nueva trae migraciones**, antes hay que correr el Job de migración con
@@ -273,7 +273,7 @@ volver a aplicar la misma no hace nada: el migrador es idempotente.
 ### Y por eso hay que subir `applicationBootstrapVersion` (issue #675)
 
 Ese mismo nombre es lo que hace que **no subirla no se note**. Mientras
-`sgtm:applicationBootstrapVersion` no se mueva, `pulumi up` encuentra el Job de
+`kamayuk:applicationBootstrapVersion` no se mueva, `pulumi up` encuentra el Job de
 migración que ya existe, no crea ninguno, y sale en verde con «unchanged»; no hay ningún
 `Deployment` que quede `NotReady` por ello.
 
@@ -358,8 +358,8 @@ reemplaza cuando haya buzón de operaciones; las invariantes valen igual.
 VPS, cuya única función es abrir el túnel que este flujo necesita:
 
 ```bash
-ssh-keygen -t ed25519 -f despliegue-sgtm-stg -C "github-actions@sgtm-stg" -N ""
-ssh-keygen -t ed25519 -f despliegue-sgtm-prod -C "github-actions@sgtm-prod" -N ""
+ssh-keygen -t ed25519 -f despliegue-kamayuk-stg -C "github-actions@kamayuk-stg" -N ""
+ssh-keygen -t ed25519 -f despliegue-kamayuk-prod -C "github-actions@kamayuk-prod" -N ""
 # Cada pública, en su propia línea de authorized_keys del VPS que le corresponde —para
 # poder revocarla sola, sin tocar la del otro VPS ni la de nadie más—. Restringida a NO
 # abrir una shell (verificar que la entrada final NO tenga `no-port-forwarding`, es la

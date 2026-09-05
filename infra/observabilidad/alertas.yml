@@ -18,7 +18,7 @@
 # (issue #158). Alertmanager la pasa tal cual al receptor configurado: quien recibe la
 # alerta recibe tambien que hacer con ella, no solo que algo esta mal.
 groups:
-  - name: sgtm
+  - name: kamayuk
     rules:
       # `pg_up`, no solo: ese metrico lo emite el propio sidecar de `postgres-exporter`
       # (issue #156), que vive en el MISMO pod que el motor. Si el pod entero cae

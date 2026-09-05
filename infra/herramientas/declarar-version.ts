@@ -6,7 +6,7 @@ import { leerStack } from "../verificaciones/stacks";
 import type { DerivaDeMigraciones } from "../verificaciones/deriva-de-migraciones";
 
 /**
- * Quien escribe `sgtm:applicationBootstrapVersion`, y por que ya no es una persona
+ * Quien escribe `kamayuk:applicationBootstrapVersion`, y por que ya no es una persona
  * (issue #720).
  *
  * <h2>El tramite que esto sustituye, medido</h2>
@@ -155,7 +155,7 @@ export function decidir(situacion: Situacion): Decision {
 }
 
 /** La linea exacta que Pulumi lee, y la unica que este mecanismo toca. */
-const CLAVE = "sgtm:applicationBootstrapVersion:";
+const CLAVE = "kamayuk:applicationBootstrapVersion:";
 
 /** Donde vive el stack de un ambiente. */
 function archivoDe(ambiente: Environment): string {

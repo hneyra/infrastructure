@@ -143,7 +143,8 @@ public final class FronteraDeSistema {
      * El nombre simple de la clase, que es como se nombra un cruce consentido.
      *
      * <p>Se nombra la clase y no el archivo entero para que la lista se lea igual venga la ruta
-     * como venga: en un repositorio el archivo es {@code sgtm-rentas/src/main/…} y en otro no.
+     * como venga: en un repositorio el archivo es {@code kamayuk-rentas-nucleo/src/main/…} y en
+     * otro no.
      */
     private static String claseDe(String archivo) {
         String nombre = archivo.replace('\\', '/');

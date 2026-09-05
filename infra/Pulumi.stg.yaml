@@ -28,8 +28,8 @@ config:
   #
   # Sustituir por la medición en cuanto alguien tenga el túnel abierto:
   #   kubectl get node -o jsonpath='{.items[0].status.allocatable.cpu}{"/"}{.items[0].status.allocatable.memory}'
-  sgtm:nodeAllocatableCpu: "4"
-  sgtm:nodeAllocatableMemory: 7Gi
+  kamayuk:nodeAllocatableCpu: "4"
+  kamayuk:nodeAllocatableMemory: 7Gi
   #
   # LA BRECHA DE #1 SE RETIRA (C-19). Este nodo NO daba para el monolito y los cuatro
   # sistemas juntos —C-16 lo midio: faltaban 3 232Mi—, y la direccion decidio que `stg` es un
@@ -48,16 +48,16 @@ config:
   # RESERVA —hoy, una sola entrada: la memoria del motor, de 2Gi a 1Gi— y no toca ningun
   # `limits`, asi que PostgreSQL sigue pudiendo usar los 8 Gi que el nodo tenga libres.
   # Aqui vale porque esta base tiene la municipalidad de demostracion, no un padron real.
-  sgtm:perfilDeRecursos: minimo
+  kamayuk:perfilDeRecursos: minimo
   # `stg` NO despliega el monolito (C-19, decision de la direccion): no lo usa nadie, y era
   # el mayor consumidor del ambiente. Lo que se va son sus dos `Job` de arranque, el
   # `Deployment` del perfil `web`, la interfaz, el `CronJob` de `lote` y las dos rutas del
   # ingreso que apuntaban a sus dos `Service`.
   #
-  # LO QUE NO SE VA, y conviene tenerlo escrito porque vive en el MISMO namespace `sgtm-stg`:
-  # el motor (`sgtm-stg-postgres`), la identidad, el correo, el `Job` del realm, el respaldo
+  # LO QUE NO SE VA, y conviene tenerlo escrito porque vive en el MISMO namespace `kamayuk-stg`:
+  # el motor (`kamayuk-stg-postgres`), la identidad, el correo, el `Job` del realm, el respaldo
   # y la observabilidad. Los cuatro sistemas de ADR-0031 se conectan literalmente a
-  # `sgtm-stg-postgres.sgtm-stg` (C-17, punto 1) y validan sus tokens contra `sgtm-stg-identidad`
+  # `kamayuk-stg-postgres.kamayuk-stg` (C-17, punto 1) y validan sus tokens contra `kamayuk-stg-identidad`
   # (C-14, punto 3): borrar la plataforma con el monolito los rompe a los cuatro, y el sintoma
   # no seria un error sino cuatro pods que arrancan y no pasan nunca su sonda de arranque.
   #
@@ -65,38 +65,38 @@ config:
   # cluster (2026-09-05: `sgtm-stg-aplicacion` 1->0, `sgtm-stg-interfaz` 2->0) es lo que ya
   # estaba; esto es lo que hace que los manifiestos dejen de declararlo, que es lo que
   # `yarn capacidad` mide.
-  sgtm:desplegarElMonolito: "false"
-  sgtm:domain: sv-RFoVCw2ifaqy3G9NZ1eT.cloud.elastika.pe
+  kamayuk:desplegarElMonolito: "false"
+  kamayuk:domain: sv-RFoVCw2ifaqy3G9NZ1eT.cloud.elastika.pe
   # A QUIEN se le avisa cuando algo de operacion necesita una persona, y DONDE (C-7 §4).
   # El primero que lo consume es `caja`: ADR-0026 §4 exige que un pago que no se pudo imputar
   # avise a una persona CON NOMBRE, porque es dinero cobrado sin registrar. Su aplicacion NO
   # ARRANCA sin las dos, y `checkInvariants` rechaza ademas el relleno —«pendiente», «TBD»—,
   # que satisfaria esa guarda y la vaciaria de sentido.
-  sgtm:responsableDeOperacion: Equipo de operacion (ensayo)
-  sgtm:canalDeOperacion: operaciones@example.pe
-  sgtm:acmeEmail: operaciones@example.pe
+  kamayuk:responsableDeOperacion: Equipo de operacion (ensayo)
+  kamayuk:canalDeOperacion: operaciones@example.pe
+  kamayuk:acmeEmail: operaciones@example.pe
   # Certificado del entorno de pruebas de Let's Encrypt: aquí se ajusta el ingreso sin
   # gastar el límite de tasa. En prod está prohibido, porque ese certificado no lo
   # acepta ningún navegador (RNF-074).
-  sgtm:acmeStaging: "true"
-  sgtm:postgresImage: postgis/postgis:16-3.4-alpine
-  sgtm:postgresStorageSize: 20Gi
-  sgtm:keycloakImage: quay.io/keycloak/keycloak:26.0
-  sgtm:keycloakRealm: sgtm
-  sgtm:keycloakSeedTestUsers: "true"
+  kamayuk:acmeStaging: "true"
+  kamayuk:postgresImage: postgis/postgis:16-3.4-alpine
+  kamayuk:postgresStorageSize: 20Gi
+  kamayuk:keycloakImage: quay.io/keycloak/keycloak:26.0
+  kamayuk:keycloakRealm: sgtm
+  kamayuk:keycloakSeedTestUsers: "true"
   # El relay SMTP del alta declarativa de usuarios (ADR-0012). En stg es un buzón
   # Mailpit del propio clúster —`Identidad.ts` lo despliega— sin autenticación: la
   # escalera de identidad comprueba que el enlace de clave se envía de verdad, no
   # que llegue a un buzón real. En prod está prohibido un buzón así (INF-03 §4).
-  sgtm:keycloakSmtpHost: sgtm-stg-correo
-  sgtm:keycloakSmtpPort: "1025"
-  sgtm:keycloakSmtpFrom: no-responder@sv-RFoVCw2ifaqy3G9NZ1eT.cloud.elastika.pe
-  sgtm:keycloakSmtpStartTls: "false"
-  sgtm:keycloakSmtpAuth: "false"
-  sgtm:applicationImageRepository: ghcr.io/hneyra
+  kamayuk:keycloakSmtpHost: kamayuk-stg-correo
+  kamayuk:keycloakSmtpPort: "1025"
+  kamayuk:keycloakSmtpFrom: no-responder@sv-RFoVCw2ifaqy3G9NZ1eT.cloud.elastika.pe
+  kamayuk:keycloakSmtpStartTls: "false"
+  kamayuk:keycloakSmtpAuth: "false"
+  kamayuk:applicationImageRepository: ghcr.io/hneyra
   # No es secreto; `registryPullToken` (un PAT con `read:packages`) sí lo es, y CI lo
   # inyecta igual que `backupAccessKeyId` (issue #257).
-  sgtm:registryUsername: hneyra
+  kamayuk:registryUsername: hneyra
   # Sube con `prod`, y en el mismo PR a propósito: `aplicar-prod` tiene
   # `needs: aplicar-stg` (`infra.yml`), así que `stg` es la puerta por la que pasa toda
   # versión que llegue a producción, y dejarla atrás convierte el ensayo en un ensayo de
@@ -129,30 +129,30 @@ config:
   # Lo llevaba una persona hasta el 2026-09-02, y ese dia se midio lo que costaba:
   # **cuatro** PR de dos lineas en hora y media (#705, #715, #717, #719), y el tercero
   # obsoleto durante su propio CI porque otra migracion entro mientras corria.
-  sgtm:applicationBootstrapVersion: c755de2149344b8033736958ee8ae6f643c90281
-  sgtm:webReplicas: "1"
+  kamayuk:applicationBootstrapVersion: c755de2149344b8033736958ee8ae6f643c90281
+  kamayuk:webReplicas: "1"
   # La municipalidad de ensayo. El ubigeo es el de Catacaos, igual que en prod (D-01,
   # 2026-08-24), porque stg restaura los respaldos de prod anonimizados (INF-03 §2 y
   # §3): con otro ubigeo, lo restaurado no cuadraría con lo implantado.
-  sgtm:ubigeo: "200105"
-  sgtm:municipalidad: Municipalidad Distrital de Catacaos (ensayo)
-  sgtm:tipoDeMunicipalidad: DISTRITAL
-  sgtm:administrador: administrador
-  sgtm:nombreDelAdministrador: Administrador del sistema
+  kamayuk:ubigeo: "200105"
+  kamayuk:municipalidad: Municipalidad Distrital de Catacaos (ensayo)
+  kamayuk:tipoDeMunicipalidad: DISTRITAL
+  kamayuk:administrador: administrador
+  kamayuk:nombreDelAdministrador: Administrador del sistema
   # El `id` de la fila que crea el Job de implantacion, y que los procesos por lotes de
   # los cuatro sistemas fijan como contexto de tenant (C-14 §3). `municipalidad.id` es
   # una columna `IDENTITY`: en una base recien creada vale 1 por construccion. Se declara
   # y no se deriva —componer manifiestos no habla con ninguna base—, y por eso
   # `checkInvariants` solo puede exigir que sea un entero mayor que cero.
-  sgtm:municipalidadId: "1"
+  kamayuk:municipalidadId: "1"
   # La municipalidad de stg se da de alta MARCADA: todo documento que emita sale
   # marcado en los tres formatos (INF-03 §3.2, issue #122). `config.ts` lo exige.
-  sgtm:esDemostracion: "true"
+  kamayuk:esDemostracion: "true"
   # AWS S3 (issue #158, decision de 2026-08-24). us-east-1: es donde vive el bucket.
-  sgtm:backupEndpoint: https://s3.us-east-1.amazonaws.com
-  sgtm:backupRegion: us-east-1
-  sgtm:backupBucket: sgtm-stg-respaldos
-  sgtm:walArchiveTimeoutSeconds: "300"
+  kamayuk:backupEndpoint: https://s3.us-east-1.amazonaws.com
+  kamayuk:backupRegion: us-east-1
+  kamayuk:backupBucket: sgtm-stg-respaldos
+  kamayuk:walArchiveTimeoutSeconds: "300"
   # De dónde lee stg para ensayar la restauración. Es el contenedor de prod, y la
   # credencial con que lo lee es de SOLO LECTURA (INF-03 §4).
-  sgtm:restoreSourceBucket: sgtm-prod-respaldos
+  kamayuk:restoreSourceBucket: sgtm-prod-respaldos

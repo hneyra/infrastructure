@@ -51,8 +51,8 @@ config:
   #
   # Volver a medirlo después de tocar el nodo o la reserva:
   #   kubectl get node -o jsonpath='{.items[0].status.allocatable.cpu}{"/"}{.items[0].status.allocatable.memory}'
-  sgtm:nodeAllocatableCpu: "2"
-  sgtm:nodeAllocatableMemory: 6029348Ki
+  kamayuk:nodeAllocatableCpu: "2"
+  kamayuk:nodeAllocatableMemory: 6029348Ki
   #
   # BRECHA DECLARADA (issue #1, C-16). Este nodo NO da para el monolito y los cuatro
   # sistemas juntos. Medido con `yarn capacidad --ambiente prod`, que desde C-16 suma los
@@ -69,7 +69,7 @@ config:
   # antes de invocar a Pulumi y se pone rojo con las cifras. Y no se puede quedar puesta de mas:
   # `capacidad.test.ts` exige que la brecha SIGA AHI, asi que el dia que el nodo crezca la
   # prueba se pone roja y obliga a retirarla.
-  sgtm:nodeCapacityGapIssue: "1"
+  kamayuk:nodeCapacityGapIssue: "1"
   #
   # Cuanto pide este ambiente sobre su nodo (C-19). `dimensionado` es la tabla de INF-01 §2,
   # que es la que este archivo ha usado siempre: esta linea NO cambia una sola peticion de
@@ -78,40 +78,40 @@ config:
   # Se declara igualmente, sin valor por omision, por lo mismo que `municipalidadId`: un
   # `?? "dimensionado"` haria que olvidarlo se leyera igual que declararlo. Y `checkInvariants`
   # RECHAZA `minimo` aqui: ese perfil es de un ambiente de ensayo.
-  sgtm:perfilDeRecursos: dimensionado
+  kamayuk:perfilDeRecursos: dimensionado
   # `prod` SI despliega el monolito (C-19): es el ambiente que lo sirve, y por eso `stg` es el
   # unico que lo apaga. Sin valor por omision, por lo mismo de arriba.
-  sgtm:desplegarElMonolito: "true"
-  sgtm:domain: vmd120205.contaboserver.net
+  kamayuk:desplegarElMonolito: "true"
+  kamayuk:domain: vmd120205.contaboserver.net
   # A QUIEN se le avisa cuando algo de operacion necesita una persona, y DONDE (C-7 §4).
   # El primero que lo consume es `caja`: ADR-0026 §4 exige que un pago que no se pudo imputar
   # avise a una persona CON NOMBRE, porque es dinero cobrado sin registrar. Su aplicacion NO
   # ARRANCA sin las dos, y `checkInvariants` rechaza ademas el relleno —«pendiente», «TBD»—,
   # que satisfaria esa guarda y la vaciaria de sentido.
-  sgtm:responsableDeOperacion: Equipo de operacion
-  sgtm:canalDeOperacion: operaciones@example.pe
-  sgtm:acmeEmail: operaciones@example.pe
+  kamayuk:responsableDeOperacion: Equipo de operacion
+  kamayuk:canalDeOperacion: operaciones@example.pe
+  kamayuk:acmeEmail: operaciones@example.pe
   # Versiones fijadas. Una etiqueta móvil convierte cualquier reinicio del VPS en una
   # actualización no planificada, y en un solo nodo eso pasa en cada mantenimiento.
-  sgtm:postgresImage: postgis/postgis:16-3.4-alpine
-  sgtm:postgresStorageSize: 100Gi
-  sgtm:keycloakImage: quay.io/keycloak/keycloak:26.0
-  sgtm:keycloakRealm: sgtm
+  kamayuk:postgresImage: postgis/postgis:16-3.4-alpine
+  kamayuk:postgresStorageSize: 100Gi
+  kamayuk:keycloakImage: quay.io/keycloak/keycloak:26.0
+  kamayuk:keycloakRealm: sgtm
   # SIN relay SMTP, a propósito (ADR-0012, Opción B). Esta marcha blanca no tiene un
   # relay de correo decidido (D-05), así que NO se declara `keycloakSmtpHost`: el realm
   # va sin `smtpServer`, el Job de reconciliación crea el usuario sin clave y con
   # UPDATE_PASSWORD pendiente, y un operador se la fija con el runbook «Recuperar el
   # acceso de un usuario». Cuando haya relay, se añaden aquí `keycloakSmtpHost` /
   # `keycloakSmtpPort` / `keycloakSmtpFrom` (en claro) y —si pide auth— el `Secret`
-  # `sgtm-prod-smtp` (`usuario`/`clave`), que NO genera `bootstrap-secretos.sh`
+  # `kamayuk-prod-smtp` (`usuario`/`clave`), que NO genera `bootstrap-secretos.sh`
   # (INF-06 §1.2). No hace falta relanzar el alta: reenviar el enlace a cada usuario.
   # Sin etiqueta, a propósito: la pone el flujo de liberación (ADR-0011 §5, issue #148).
-  sgtm:applicationImageRepository: ghcr.io/hneyra
+  kamayuk:applicationImageRepository: ghcr.io/hneyra
   # El usuario con que el nodo se autentica contra ghcr.io para traer sgtm-aplicacion,
   # sgtm-migrador y sgtm-interfaz —los tres privados—. No es secreto; lo que sí lo es
   # es `registryPullToken` (un PAT con `read:packages`), que CI inyecta igual que
   # `backupAccessKeyId` (issue #257).
-  sgtm:registryUsername: hneyra
+  kamayuk:registryUsername: hneyra
   # Una réplica, como `stg`. Dos no caben en los ~6 GB que este nodo reparte: el pico
   # del arranque —los Deployment más los Jobs de migración e implantación, que conviven
   # con ellos durante el `pulumi up`— pedía 6 368Mi contra 5 728Mi disponibles. Con una
@@ -121,7 +121,7 @@ config:
   # Lo que se cede es la continuidad durante un despliegue, no la disponibilidad: sobre
   # un nodo único las dos réplicas caían juntas de todos modos (INF-01 §1). Se vuelve a
   # "2" cuando el nodo crezca a lo que INF-01 §2 dimensiona.
-  sgtm:webReplicas: "1"
+  kamayuk:webReplicas: "1"
   # La versión con la que Pulumi CREA los despliegues. El campo `image` de los tres
   # `Deployment` queda ignorado después (ADR-0011 §5), así que subir esta línea **no**
   # reemplaza la imagen de un `Deployment` que ya corre: eso lo hace el flujo de
@@ -177,38 +177,38 @@ config:
   # Lo llevaba una persona hasta el 2026-09-02, y ese dia se midio lo que costaba:
   # **cuatro** PR de dos lineas en hora y media (#705, #715, #717, #719), y el tercero
   # obsoleto durante su propio CI porque otra migracion entro mientras corria.
-  sgtm:applicationBootstrapVersion: c755de2149344b8033736958ee8ae6f643c90281
+  kamayuk:applicationBootstrapVersion: c755de2149344b8033736958ee8ae6f643c90281
   # La municipalidad que se implanta. D-01 —municipalidad piloto— se decidió el
   # 2026-08-24: Municipalidad Distrital de Catacaos (`decisiones-abiertas.md`), en
   # reemplazo de la Municipalidad Distrital de Chala que se había decidido un día antes.
   # El validador funcional de reglas tributarias, la otra mitad de D-01, sigue sin
   # nombrarse. El administrador NO lleva contraseña: la credencial vive en Keycloak y
   # esta cuenta tiene que ser la misma que exista allí.
-  sgtm:ubigeo: "200105"
-  sgtm:municipalidad: Municipalidad Distrital de Catacaos
-  sgtm:tipoDeMunicipalidad: DISTRITAL
-  sgtm:administrador: administrador
-  sgtm:nombreDelAdministrador: Administrador del sistema
+  kamayuk:ubigeo: "200105"
+  kamayuk:municipalidad: Municipalidad Distrital de Catacaos
+  kamayuk:tipoDeMunicipalidad: DISTRITAL
+  kamayuk:administrador: administrador
+  kamayuk:nombreDelAdministrador: Administrador del sistema
   # El `id` de la fila que crea el Job de implantacion, y que los procesos por lotes de
   # los cuatro sistemas fijan como contexto de tenant (C-14 §3). `municipalidad.id` es
   # una columna `IDENTITY`: en una base recien creada vale 1 por construccion. Se declara
   # y no se deriva —componer manifiestos no habla con ninguna base—, y por eso
   # `checkInvariants` solo puede exigir que sea un entero mayor que cero.
-  sgtm:municipalidadId: "1"
+  kamayuk:municipalidadId: "1"
   # Decidido a mano, que es lo que exige el issue #150. Vale `true` mientras D-02a esté
   # abierta: toda cifra que el sistema calcule hoy sale de tramos y alícuotas que nadie
   # ha firmado, y una instalación que emite documentos con esas cifras tiene que decir
   # lo que es. Ponerlo en `false` es el acto deliberado que cierra la marcha blanca, y
   # solo corresponde cuando D-02a esté cerrada.
-  sgtm:esDemostracion: "true"
+  kamayuk:esDemostracion: "true"
   # El RPO de RNF-076, escrito. El destino está FUERA del VPS (INF-01 §1.3).
   # AWS S3 (issue #158, decision de 2026-08-24). us-east-1: es donde vive el bucket.
-  sgtm:backupEndpoint: https://s3.us-east-1.amazonaws.com
-  sgtm:backupRegion: us-east-1
-  sgtm:backupBucket: sgtm-prod-respaldos
-  sgtm:walArchiveTimeoutSeconds: "300"
+  kamayuk:backupEndpoint: https://s3.us-east-1.amazonaws.com
+  kamayuk:backupRegion: us-east-1
+  kamayuk:backupBucket: sgtm-prod-respaldos
+  kamayuk:walArchiveTimeoutSeconds: "300"
   # A donde Alertmanager avisa (issue #156). Obligatorio en prod: `config.ts` se pone
   # rojo sin él —«una regla que no notifica a nadie no es una alerta»—. ⚠ PROVISIONAL:
   # el receptor real —Slack, correo, PagerDuty— se decide con el patrocinador; este
   # valor solo fija que la variable exista.
-  sgtm:alertWebhookUrl: https://hooks.example.pe/sgtm-alertas
+  kamayuk:alertWebhookUrl: https://hooks.example.pe/kamayuk-alertas

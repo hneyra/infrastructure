@@ -27,7 +27,7 @@ set -euo pipefail
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INFRA="${AQUI}/../.."
 AMBIENTE="${AMBIENTE:-prod}"
-NAMESPACE="sgtm-${AMBIENTE}"
+NAMESPACE="kamayuk-${AMBIENTE}"
 
 command -v kubectl >/dev/null 2>&1 || { echo "Falta kubectl." >&2; exit 1; }
 
@@ -93,7 +93,7 @@ kubectl apply --filename "$MANIFIESTOS" >/dev/null
 # LOS ESPACIOS DE NOMBRES QUE SE APLICARON, no uno.
 #
 # C-16: este guion aplicaba los CINCO —`yarn manifiestos` emite la plataforma y los cuatro
-# sistemas desde ADR-0031— y despues miraba solo `sgtm-<ambiente>`. Un pod de `kamayuk-caja`
+# sistemas desde ADR-0031— y despues miraba solo `kamayuk-<ambiente>`. Un pod de `kamayuk-caja`
 # rechazado por «Insufficient cpu» no lo veia nadie, de modo que el guion podia dar por
 # comprobada la direccion peligrosa —«capacidad.ts dijo cabe y el planificador lo ubico todo»—
 # habiendo mirado una quinta parte de lo que aplico.

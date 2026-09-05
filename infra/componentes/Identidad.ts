@@ -88,7 +88,7 @@ export interface IdentidadArgs {
    */
   clienteDeVerificacion: boolean;
   /**
-   * Desplegar un buzon Mailpit del clúster como relay SMTP (`sgtm-<amb>-correo`).
+   * Desplegar un buzon Mailpit del clúster como relay SMTP (`kamayuk-<amb>-correo`).
    *
    * Solo `stg`: la escalera comprueba que Keycloak ENVIA el enlace de clave, no que
    * llegue a un correo real. En `prod` el relay es de verdad y externo (ADR-0012,
@@ -901,7 +901,7 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
           // clave, en vez de fallar. Un operador la fija con el runbook.
           ...(smtp === undefined ? [{ name: "SIN_CORREO", value: "1" }] : []),
           // Si el relay pide auth, el usuario y la clave salen del `Secret`
-          // `sgtm-<amb>-smtp` —que NO genera `bootstrap-secretos.sh`: lo emite el
+          // `kamayuk-<amb>-smtp` —que NO genera `bootstrap-secretos.sh`: lo emite el
           // proveedor del relay (INF-06 §1.2)—. El guion los pone en el realm con
           // `kcadm`, nunca quedan en el `realm.json` versionado.
           ...(smtp?.auth

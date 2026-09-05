@@ -100,7 +100,7 @@ export interface Demanda {
 }
 
 export interface DemandaDeUnPod extends Demanda {
-  /** `Deployment/sgtm-prod-aplicacion`, como lo nombra la auditoria. */
+  /** `Deployment/kamayuk-prod-aplicacion`, como lo nombra la auditoria. */
   contexto: string;
   clase: string;
   /**

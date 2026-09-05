@@ -38,7 +38,7 @@ set -euo pipefail
 
 AQUI=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 INFRA=$(cd "$AQUI/.." && pwd)
-NS=sgtm-stg
+NS=kamayuk-stg
 CALICO_VERSION=v3.28.2
 
 cd "$INFRA"
@@ -77,18 +77,18 @@ echo "· Generando los secretos que faltan (issue #154)"
 # La misma unica excepcion de ADR-0011 §3 que `observabilidad/verificar-alertas.sh`
 # ya documenta: el Secret de respaldo lo materializa `pulumi up`, no
 # `bootstrap-secretos.sh`, y este guion tampoco llama a Pulumi.
-kubectl -n "$NS" create secret generic sgtm-stg-postgres-respaldo-credenciales \
+kubectl -n "$NS" create secret generic kamayuk-stg-postgres-respaldo-credenciales \
     --from-literal=access-key-id=verificacion \
     --from-literal=secret-access-key=verificacion \
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
 echo "· Esperando a que PostgreSQL este listo"
-if ! kubectl -n "$NS" rollout status deployment/sgtm-stg-postgres --timeout=300s; then
-    echo "::group::Diagnostico: sgtm-stg-postgres"
+if ! kubectl -n "$NS" rollout status deployment/kamayuk-stg-postgres --timeout=300s; then
+    echo "::group::Diagnostico: kamayuk-stg-postgres"
     kubectl -n "$NS" get pods -o wide
-    kubectl -n "$NS" describe deployment/sgtm-stg-postgres
-    kubectl -n "$NS" describe pods -l app=sgtm-stg-postgres
-    kubectl -n "$NS" logs deployment/sgtm-stg-postgres --all-containers --prefix --tail=200 || true
+    kubectl -n "$NS" describe deployment/kamayuk-stg-postgres
+    kubectl -n "$NS" describe pods -l app=kamayuk-stg-postgres
+    kubectl -n "$NS" logs deployment/kamayuk-stg-postgres --all-containers --prefix --tail=200 || true
     kubectl -n "$NS" get events --sort-by=.lastTimestamp
     echo "::endgroup::"
     exit 1
@@ -108,7 +108,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: sintetico-interfaz
-  labels: { app: sgtm-stg-interfaz }
+  labels: { app: kamayuk-stg-interfaz }
 spec:
   restartPolicy: Never
   containers:
@@ -118,14 +118,14 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: sintetico-aplicacion
-  labels: { app: sgtm-stg-aplicacion }
+  labels: { app: kamayuk-stg-aplicacion }
 spec:
   restartPolicy: Never
   containers:
     - { name: sintetico, image: alpine:3.20, command: ["sleep", "infinity"] }
 YAML
 # El testigo va en "default": SIN NetworkPolicy ninguna -"denegar-todo" solo
-# selecciona el namespace sgtm-stg-, para demostrar que un fallo de conexion en
+# selecciona el namespace kamayuk-stg-, para demostrar que un fallo de conexion en
 # los dos pods de arriba es la politica actuando, y no que este runner de CI no
 # tiene salida a internet o Calico no arranco bien.
 kubectl apply -n default -f - >/dev/null <<YAML
@@ -162,7 +162,7 @@ echo "  El testigo SIN politica conecta: el entorno de la prueba funciona."
 
 echo
 echo "· 1/2 — Desde la interfaz, PostgreSQL"
-if puede_conectar "$NS" sintetico-interfaz "sgtm-stg-postgres" 5432; then
+if puede_conectar "$NS" sintetico-interfaz "kamayuk-stg-postgres" 5432; then
     echo "FALLO: la interfaz CONECTO a PostgreSQL. permitir-ingreso-postgres deberia" >&2
     echo "seleccionar solo aplicacion/identidad/lote/respaldo, nunca la interfaz." >&2
     exit 1
@@ -190,7 +190,7 @@ echo "· La demostracion que el issue pide: sin las politicas, la MISMA conexion
 # demostracion sin ambiguedad es la que el propio issue describe: sin NINGUNA
 # politica de red en el namespace, la conexion conecta.
 kubectl -n "$NS" delete networkpolicy --all >/dev/null
-if ! puede_conectar "$NS" sintetico-interfaz "sgtm-stg-postgres" 5432; then
+if ! puede_conectar "$NS" sintetico-interfaz "kamayuk-stg-postgres" 5432; then
     echo "FALLO: sin NINGUNA NetworkPolicy en el namespace, la interfaz SIGUE sin" >&2
     echo "poder conectar. Eso ya no es una politica mal etiquetada: es Calico, kind, o" >&2
     echo "el propio guion de comprobacion los que estan fallando, no Red.ts." >&2

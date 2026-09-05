@@ -35,7 +35,7 @@
 #
 #   uso: sembrar-demostracion.sh --ambiente stg|prod --municipalidad-id N
 #          --url-catastro postgresql://... --url-rentas postgresql://... --url-caja postgresql://...
-#          [--namespace sgtm-stg] [--desde N] [--solo-comprobar]
+#          [--namespace kamayuk-stg] [--desde N] [--solo-comprobar]
 #
 #        --desde N        empieza en el paso N. Repetir un paso no duplica ni pone nada en
 #                         rojo: la comprobacion mira el TOTAL de la tabla, no lo que el paso

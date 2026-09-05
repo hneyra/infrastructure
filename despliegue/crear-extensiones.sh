@@ -67,7 +67,7 @@
 # prueba EJECUTE este guion en vez de leerlo.
 #
 #   uso: despliegue/crear-extensiones.sh --ambiente stg|prod [--sistema sgtm]
-#                                        [--namespace sgtm-stg] [--comprobar]
+#                                        [--namespace kamayuk-stg] [--comprobar]
 #        despliegue/crear-extensiones.sh --listar [--sistema catastro]
 #
 # Requiere: kubectl con el tunel al API del ambiente ya abierto (ver infra/README.md).
@@ -154,12 +154,12 @@ if [ -z "$extensiones" ]; then
 fi
 
 [ -n "$AMBIENTE" ] || { echo "Falta --ambiente (stg o prod)." >&2; exit 2; }
-NAMESPACE=${NAMESPACE:-sgtm-$AMBIENTE}
+NAMESPACE=${NAMESPACE:-kamayuk-$AMBIENTE}
 
 command -v kubectl >/dev/null 2>&1 || { echo "Falta kubectl." >&2; exit 1; }
 
-MOTOR="deployment/sgtm-${AMBIENTE}-postgres"
-SECRETO_SUPER="sgtm-${AMBIENTE}-postgres-superusuario"
+MOTOR="deployment/kamayuk-${AMBIENTE}-postgres"
+SECRETO_SUPER="kamayuk-${AMBIENTE}-postgres-superusuario"
 
 CLAVE_SUPER=$(kubectl -n "$NAMESPACE" get secret "$SECRETO_SUPER" \
     -o jsonpath='{.data.clave-superusuario}' | base64 --decode)

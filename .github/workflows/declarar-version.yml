@@ -1,4 +1,4 @@
-# Quién escribe `sgtm:applicationBootstrapVersion` (issue #720).
+# Quién escribe `kamayuk:applicationBootstrapVersion` (issue #720).
 #
 # **El merge lo escribe.** Hasta el 2026-09-02 lo escribía una persona, en un PR de dos
 # líneas, y ese día hicieron falta **cuatro en hora y media** (#705, #715, #717, #719):
@@ -139,7 +139,7 @@ jobs:
               echo '## No se pudo integrar la línea'
               echo
               echo 'El `push` a `main` fue rechazado. Mientras eso no se resuelva el'
-              echo 'trámite sigue siendo manual: subir `sgtm:applicationBootstrapVersion`'
+              echo 'trámite sigue siendo manual: subir `kamayuk:applicationBootstrapVersion`'
               echo 'en `infra/Pulumi.stg.yaml` y en `infra/Pulumi.prod.yaml` a'
               echo '`${{ github.event.workflow_run.head_sha }}`.'
             } >> "$GITHUB_STEP_SUMMARY"

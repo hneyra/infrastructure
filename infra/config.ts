@@ -170,7 +170,7 @@ export interface IdentitySettings {
    *
    * Cuando sí se declara: el servidor y el remitente no son secretos —van en claro en
    * `Pulumi.<stack>.yaml`, como `domain`—; el usuario y la clave del relay, si `auth`
-   * es true, viven en el `Secret` `sgtm-<amb>-smtp` y **no** los genera
+   * es true, viven en el `Secret` `kamayuk-<amb>-smtp` y **no** los genera
    * `bootstrap-secretos.sh` (INF-06 §1.2). En `stg` el relay es un buzón Mailpit del
    * propio clúster, sin `auth`.
    */
@@ -186,7 +186,7 @@ export interface SmtpSettings {
   from: string;
   /** STARTTLS al conectar. */
   startTls: boolean;
-  /** El relay exige usuario y clave. Si es true, se leen del `Secret` `sgtm-<amb>-smtp`. */
+  /** El relay exige usuario y clave. Si es true, se leen del `Secret` `kamayuk-<amb>-smtp`. */
   auth: boolean;
 }
 
@@ -246,8 +246,8 @@ export interface ApplicationSettings {
    *
    * **Lo que NO gobierna, y es la mitad que importa**: la plataforma. El motor, la
    * identidad, el correo, el `Job` del realm, el respaldo y la observabilidad viven en el
-   * **mismo** namespace `sgtm-<ambiente>` y **los cuatro sistemas de ADR-0031 se conectan
-   * literalmente** a `sgtm-<ambiente>-postgres.sgtm-<ambiente>` (C-17, punto 1). Apagar
+   * **mismo** namespace `kamayuk-<ambiente>` y **los cuatro sistemas de ADR-0031 se conectan
+   * literalmente** a `kamayuk-<ambiente>-postgres.kamayuk-<ambiente>` (C-17, punto 1). Apagar
    * esto no puede tocar nada de eso, y una guarda lo mide en vez de confiarlo al
    * cuidado de quien lea.
    */
@@ -416,7 +416,7 @@ export interface Settings extends Invariants {
    *
    * Misma clasificación que `backupCredentials`: `ADR-0011` §3 las trata como secreto
    * de *arranque de la infraestructura* —lo que el nodo necesita para poder traer las
-   * imágenes de `sgtm:applicationImageRepository`—, no de la aplicación. Sin esto, un
+   * imágenes de `kamayuk:applicationImageRepository`—, no de la aplicación. Sin esto, un
    * clúster nuevo (o reconstruido desde cero) no puede completar el primer `pulumi up`:
    * los tres paquetes de `ghcr.io/hneyra` que no son PostgreSQL ni Keycloak son
    * privados, y sin credencial la respuesta es `401` al pedir el token anónimo, antes
@@ -451,7 +451,7 @@ export class MissingConfigError extends Error {
     readonly purpose: string,
   ) {
     super(
-      `Falta el valor obligatorio «sgtm:${key}» en la configuración del stack. ` +
+      `Falta el valor obligatorio «kamayuk:${key}» en la configuración del stack. ` +
         `Sirve para: ${purpose}. Ponlo con \`pulumi config set ${key} <valor>\`.`,
     );
     this.name = "MissingConfigError";
@@ -847,7 +847,7 @@ export function checkInvariants(s: Invariants): string[] {
     if (isProd && !smtp.auth) {
       problems.push(
         "`keycloakSmtpAuth` es false en «prod». Un relay abierto entrega correo de cualquiera; el " +
-          "de prod se autentica, y su usuario y clave viven en el `Secret` `sgtm-prod-smtp` " +
+          "de prod se autentica, y su usuario y clave viven en el `Secret` `kamayuk-prod-smtp` " +
           "(INF-06 §1.2).",
       );
     }
@@ -1071,14 +1071,14 @@ export function loadSettings(): Settings {
 // Convenciones de nombres y etiquetas
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** El namespace del SGTM en el nodo. Uno por ambiente. */
+/** El namespace de Kamayuk en el nodo. Uno por ambiente. */
 export function namespaceName(environment: Environment): string {
-  return `sgtm-${environment}`;
+  return `kamayuk-${environment}`;
 }
 
-/** Convención de nombres: `sgtm-<ambiente>-<componente>`. */
+/** Convención de nombres: `kamayuk-<ambiente>-<componente>`. */
 export function resourceName(environment: Environment, component: string): string {
-  return `sgtm-${environment}-${component}`;
+  return `kamayuk-${environment}-${component}`;
 }
 
 /** Etiquetas obligatorias. Van en todo objeto que se crea aquí. */
@@ -1087,7 +1087,7 @@ export function commonLabels(
   component: string,
 ): Record<string, string> {
   return {
-    proyecto: "sgtm",
+    proyecto: "kamayuk",
     ambiente: environment,
     componente: component,
     "gestionado-por": "pulumi",
