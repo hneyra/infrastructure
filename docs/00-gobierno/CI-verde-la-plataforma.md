@@ -208,6 +208,49 @@ un** `job_name: aplicacion` apuntando a `aplicacion-sintetica:8080`, y seis jobs
 
 ---
 
+## 4.b · La corrida real
+
+**`33982300002` — `main`, VERDE.** Los doce trabajos que se ejecutan, en verde; los cuatro
+en `-` son los que solo corren de madrugada o detras de credenciales que no hay. La corrida
+anterior, `33981724106`, dejo el motor y los tableros en verde y descubrio el segundo sitio
+del fosil de los secretos.
+
+| Trabajo | Antes (`33979449460`) | Ahora (`33982300002`) |
+|---|---|---|
+| El motor, levantado y con el aislamiento verificado | **X** 54 s | **✓** 5 m 6 s |
+| Los secretos se generan solos, y ninguno se repite | **X** 1 m 30 s | **✓** 1 m 46 s |
+| Los tableros muestran datos de verdad | **X** 1 m 55 s | **✓** 3 m 52 s |
+| Los otros nueve, y `pulumi up en stg` | ✓ | ✓ |
+
+Lo que dicen sus registros, que es lo que importa mas que el color:
+
+```
+· verificarAislamiento contra esta instancia
+  · rentas      BUILD SUCCESSFUL in 1m 21s
+  · catastro    BUILD SUCCESSFUL in 48s
+  · normativa   BUILD SUCCESSFUL in 32s
+  · caja        BUILD SUCCESSFUL in 35s
+  (comprobado: los cinco roles de ESTE motor los provisiono la prueba)
+El motor del manifiesto de «stg» cumple lo que el issue #149 exige (modo: docker).
+
+Comprobadas 24 claves generadas (todas distintas) y 18 espejos (todos iguales a su origen)
+Ninguna de las 21 huellas cambio.
+Correcto: la comprobacion detecto las dos claves iguales.
+
+· Apuntando el scrape de «aplicacion» al exportador sintetico
+· Cada panel del tablero, consultado contra Prometheus
+Los paneles del tablero muestran datos de verdad.
+```
+
+**«Ninguna de las 21 huellas cambio»** es la medida del ultimo defecto: antes de este
+cambio ese numero habria sido 20.
+
+Y `pulumi up en stg` sigue saliendo verde en 24 s sin ejecutar ninguno de sus pasos, porque
+los ocho secretos de despliegue no estan puestos. No se corrio `pulumi up` contra ningun
+ambiente.
+
+---
+
 ## 5 · Huecos declarados
 
 1. **Los tres arreglos no se pueden ejecutar enteros en local, y no se ejecutaron.** El
