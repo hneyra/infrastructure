@@ -322,7 +322,13 @@ miembros nuevos sin necesitar una prueba más, porque lo que las mide ya estaba 
    prod (nodo 2 / 5888Mi)  todo              permanente 2040m / 6816Mi  pico 2710m / 10208Mi   NO CABE
    ```
 
-   `herramientas/capacidad.ts` compone **sólo la plataforma**, así que hoy dice «cabe» en los dos. No
+   > **Cerrado en parte por [C-16](C-15-C-16-guardas-que-no-miraban.md)**: `yarn capacidad` ya suma
+   > los cinco espacios de nombres y dice «no cabe» con las cifras que faltan —3 232Mi en `stg`;
+   > 910m y 4 480Mi en `prod`—, y la brecha está declarada como `nodeCapacityGapIssue` (issue #1)
+   > en los dos stacks. Lo que **sigue abierto** es la decisión de fondo: si el monolito y los
+   > cuatro conviven en el mismo nodo (ADR-0029, D-22).
+
+   `herramientas/capacidad.ts` componía **sólo la plataforma**, así que decía «cabe» en los dos. No
    se «arregla» bajando peticiones hasta que cuadre —eso sería inventar una holgura que no existe—:
    lo que hay que decidir es si el monolito y los cuatro conviven en el mismo nodo, y eso es ADR-0029
    y D-22, no C-14. Lo que sí queda es que **no pueda crecer en silencio**: una guarda fija la cifra

@@ -37,7 +37,7 @@ const AMBIENTE: Environment = "stg";
 
 function delSistema(ambiente: Environment, sistema: string): Manifiesto[] {
   const plataforma = construirManifiestos(invariantesDe(ambiente));
-  return manifiestosDeLosSistemas(ambiente, plataforma).filter(
+  return manifiestosDeLosSistemas(invariantesDe(ambiente), plataforma).filter(
     (m) => m.metadata.namespace === `kamayuk-${sistema}-${ambiente}`,
   );
 }
@@ -108,7 +108,7 @@ describe("C-14 §1 · cada sistema publica DOS imagenes, y el migrador corre la 
   it.each(SISTEMAS_DEL_PRODUCTO)("el Job de migracion de «%s» corre el MIGRADOR", (sistema) => {
     const ms = delSistema(AMBIENTE, sistema);
     const { principal } = jobLlamado(ms, `kamayuk-${sistema}-migracion`);
-    const entorno = entornoDelAmbiente(AMBIENTE)(sistema);
+    const entorno = entornoDelAmbiente(invariantesDe(AMBIENTE))(sistema);
 
     expect(
       principal.image,
@@ -155,7 +155,7 @@ describe("C-14 §4 · cada sistema implanta su municipalidad", () => {
   it.each(SISTEMAS_DEL_PRODUCTO)("«%s» compone su Job de implantacion", (sistema) => {
     const ms = delSistema(AMBIENTE, sistema);
     const { principal, iniciales } = jobLlamado(ms, `kamayuk-${sistema}-implantacion`);
-    const entorno = entornoDelAmbiente(AMBIENTE)(sistema);
+    const entorno = entornoDelAmbiente(invariantesDe(AMBIENTE))(sistema);
     const implantacion = invariantesDe(AMBIENTE).implantacion;
 
     // La imagen de la APLICACION con el perfil `batch` (ADR-0003: un artefacto, dos perfiles).
@@ -318,7 +318,7 @@ describe("C-14 · el egreso declarado ES el que se aplica", () => {
   });
 
   it("y el destino de la plataforma es el namespace de la plataforma, no el suyo", () => {
-    const entorno = entornoDelAmbiente(AMBIENTE)("rentas");
+    const entorno = entornoDelAmbiente(invariantesDe(AMBIENTE))("rentas");
     const politicas = delSistema(AMBIENTE, "rentas").filter((m) => m.kind === "NetworkPolicy");
     const alMotor = politicas
       .flatMap((m) => (m.kind === "NetworkPolicy" ? (m.spec.egress ?? []) : []))
@@ -350,7 +350,7 @@ const TECHO_DE_LOS_SISTEMAS = { cpuEnMili: 950, memoriaEnMi: 4864 };
 describe("C-14 · lo que los cuatro sistemas anaden al nodo", () => {
   it.each(ENVIRONMENTS)("en «%s» no crece en silencio", (ambiente) => {
     const plataforma = construirManifiestos(invariantesDe(ambiente));
-    const demanda = demandaDelStack([...manifiestosDeLosSistemas(ambiente, plataforma)]);
+    const demanda = demandaDelStack([...manifiestosDeLosSistemas(invariantesDe(ambiente), plataforma)]);
     expect(demanda.picoDeArranque.cpuEnMili).toBeLessThanOrEqual(TECHO_DE_LOS_SISTEMAS.cpuEnMili);
     expect(demanda.picoDeArranque.memoriaEnMi).toBeLessThanOrEqual(
       TECHO_DE_LOS_SISTEMAS.memoriaEnMi,
@@ -368,7 +368,7 @@ describe("C-14 · lo que los cuatro sistemas anaden al nodo", () => {
    */
   it("y hoy NO caben junto al monolito en el nodo de prod, que es el hallazgo", () => {
     const plataforma = construirManifiestos(invariantesDe("prod"));
-    const todos = [...plataforma, ...manifiestosDeLosSistemas("prod", plataforma)];
+    const todos = [...plataforma, ...manifiestosDeLosSistemas(invariantesDe("prod"), plataforma)];
     const demanda = demandaDelStack(todos);
     const nodo = invariantesDe("prod").node;
     // 200m/160Mi de los pods de serie de k3s, como descuenta `auditarCapacidad`.

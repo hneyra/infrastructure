@@ -103,6 +103,16 @@ export interface DemandaDeUnPod extends Demanda {
   /** `Deployment/sgtm-prod-aplicacion`, como lo nombra la auditoria. */
   contexto: string;
   clase: string;
+  /**
+   * El espacio de nombres en el que corre.
+   *
+   * No es decorativo y no esta aqui para el informe: es lo unico que permite comprobar **que
+   * se midio todo**. Desde ADR-0031 cada sistema tiene el suyo, y un namespace no es una
+   * maquina —sus pods compiten por la misma CPU y la misma memoria que los de la plataforma—,
+   * asi que una suma que se deje uno fuera contesta «cabe» sin haberlo mirado. Es C-16, y con
+   * este campo `capacidad.test.ts` puede exigir que los cinco esten dentro.
+   */
+  espacio: string;
   /** Ya multiplicado por las replicas en `cpuEnMili`/`memoriaEnMi`. */
   replicas: number;
 }
@@ -181,6 +191,9 @@ export function demandaDelStack(manifiestos: Manifiesto[]): DemandaDelStack {
       pods.push({
         contexto,
         clase,
+        // `(sin espacio de nombres)` no deberia salir nunca: todo objeto con pods lo declara.
+        // Si sale, es una senal y no un adorno — un pod sin namespace no se puede ubicar.
+        espacio: m.metadata.namespace ?? "(sin espacio de nombres)",
         replicas,
         cpuEnMili: unidad.cpuEnMili * replicas,
         memoriaEnMi: unidad.memoriaEnMi * replicas,

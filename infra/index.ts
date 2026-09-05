@@ -3,6 +3,7 @@ import * as pulumi from "@pulumi/pulumi";
 import { auditarManifiestos, describirAuditoria } from "./auditoria";
 import { auditarCapacidad, describirCapacidad } from "./capacidad";
 import { construirManifiestos } from "./componentes";
+import { manifiestosDelAmbiente } from "./herramientas/emitir-manifiestos";
 import {
   CLAVES_DE_CREDENCIALES_DE_RESPALDO,
   secretoDeCredencialesDeRespaldo,
@@ -97,7 +98,20 @@ if (problemas.length > 0) {
  * Y la marca no se puede quedar puesta de más: `capacidad.test.ts` exige que un
  * ambiente que la declara **siga sin caber**.
  */
-const noCabe = auditarCapacidad(manifiestos, {
+/*
+ * Y se mide **todo lo que este ambiente pone sobre el nodo**, no solo lo que este
+ * `ConfigGroup` aplica. El nodo es UNO: desde ADR-0031 los cuatro sistemas tienen namespace
+ * propio, y un namespace no es una maquina — sus pods compiten por la misma CPU y la misma
+ * memoria. Un `pulumi up` de la plataforma sobre un nodo que ya sostiene los cuatro se cuelga
+ * exactamente igual que el del issue #252, y medir solo lo propio contestaria «cabe».
+ *
+ * Es la direccion segura de las dos: equivocarse por estricto detiene un despliegue que
+ * habria funcionado —y lo dice, con las cifras—; equivocarse por optimista devuelve el
+ * colgado en silencio, con la guarda en verde. C-16 se pago por la segunda.
+ */
+const todoLoQueVaAlNodo = manifiestosDelAmbiente(settings);
+
+const noCabe = auditarCapacidad(todoLoQueVaAlNodo, {
   cpuAsignable: settings.node.allocatableCpu,
   memoriaAsignable: settings.node.allocatableMemory,
 });

@@ -1,6 +1,6 @@
 import { auditarCapacidad, demandaDelStack, describirCapacidad } from "../capacidad";
-import { construirManifiestos } from "../componentes";
 import { ENVIRONMENTS, type Environment } from "../config";
+import { manifiestosDelAmbiente } from "./emitir-manifiestos";
 import { invariantesDe } from "../verificaciones/stacks";
 
 /**
@@ -13,6 +13,12 @@ import { invariantesDe } from "../verificaciones/stacks";
  *
  *   yarn capacidad --ambiente prod
  *   yarn capacidad --ambiente prod --cpu 4 --memoria 8Gi   # contra otro nodo
+ *
+ * **Mide los cinco espacios de nombres**, no la plataforma sola. Hasta C-16 llamaba a
+ * `construirManifiestos` a secas, asi que contestaba «cabe» habiendo mirado uno de los cinco:
+ * los cuatro sistemas de ADR-0031 tienen namespace propio y **el nodo sigue siendo uno**. El
+ * desglose por espacio de nombres se imprime siempre, para que la cifra se pueda contrastar sin
+ * volver a componer nada.
  */
 
 function opcion(nombre: string): string | undefined {
@@ -27,7 +33,7 @@ if (!ENVIRONMENTS.includes(ambiente)) {
 }
 
 const invariantes = invariantesDe(ambiente);
-const manifiestos = construirManifiestos(invariantes);
+const manifiestos = manifiestosDelAmbiente(invariantes);
 const nodo = {
   cpuAsignable: opcion("cpu") ?? invariantes.node.allocatableCpu,
   memoriaAsignable: opcion("memoria") ?? invariantes.node.allocatableMemory,
@@ -45,6 +51,22 @@ console.error(
   `  pico arranque  ${String(demanda.picoDeArranque.cpuEnMili)}m / ` +
     `${String(Math.round(demanda.picoDeArranque.memoriaEnMi))}Mi`,
 );
+
+// Y el desglose por espacio de nombres. Es lo que habria delatado a simple vista el defecto de
+// C-16: la cifra de un ambiente con cuatro sistemas desplegados salia con una sola linea aqui.
+const porEspacio = new Map<string, { cpu: number; memoria: number }>();
+for (const pod of demanda.pods) {
+  const acumulado = porEspacio.get(pod.espacio) ?? { cpu: 0, memoria: 0 };
+  acumulado.cpu += pod.cpuEnMili;
+  acumulado.memoria += pod.memoriaEnMi;
+  porEspacio.set(pod.espacio, acumulado);
+}
+console.error(`  en ${String(porEspacio.size)} espacio(s) de nombres, en el pico:`);
+for (const [espacio, suma] of [...porEspacio].sort((a, b) => b[1].cpu - a[1].cpu)) {
+  console.error(
+    `    ${espacio.padEnd(24)} ${String(suma.cpu)}m / ${String(Math.round(suma.memoria))}Mi`,
+  );
+}
 
 // A `stdout` va SOLO el veredicto, en una palabra: es lo que lee el guion de shell.
 // Todo lo demas va a `stderr` para que se vea en el registro sin ensuciar la lectura.

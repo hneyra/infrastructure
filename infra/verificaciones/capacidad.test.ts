@@ -8,6 +8,10 @@ import {
 } from "../capacidad";
 import { construirManifiestos } from "../componentes";
 import { ENVIRONMENTS, type Environment } from "../config";
+import { manifiestosDelAmbiente } from "../herramientas/emitir-manifiestos";
+import { namespaceName } from "../config";
+import { entornoDelAmbiente } from "../herramientas/emitir-manifiestos";
+import { SISTEMAS } from "../descriptor/sistemas";
 import { invariantesDe } from "./stacks";
 
 /**
@@ -30,7 +34,26 @@ const nodoDe = (ambiente: Environment): CapacidadDelNodo => {
   };
 };
 
-const manifiestosDe = (ambiente: Environment) => construirManifiestos(invariantesDe(ambiente));
+/**
+ * **Todo lo que el ambiente pone sobre el nodo**, no la plataforma sola.
+ *
+ * Hasta C-16 esto era `construirManifiestos(...)` a secas, y con ello la aritmetica se media
+ * contra UNO de los cinco espacios de nombres. El nodo es uno: los cuatro sistemas de
+ * ADR-0031 tienen namespace propio y sus pods compiten por la misma CPU y la misma memoria.
+ */
+const manifiestosDe = (ambiente: Environment) => manifiestosDelAmbiente(invariantesDe(ambiente));
+
+/**
+ * **Solo el monolito**, sin los cuatro sistemas.
+ *
+ * Los tres casos historicos de abajo —el nodo justo de 1 900m, los 2 CPU que `prod` reparte
+ * hoy y los 3 que dejaria la reserva repartida— afirman cosas del MONOLITO, medidas cuando era
+ * lo unico que habia sobre el nodo, y siguen siendo ciertas de el. Se nombra aparte en vez de
+ * actualizar sus cifras: la afirmacion «prod cabe en 2 CPU» no se ha vuelto falsa, ha dejado de
+ * ser la respuesta a «¿cabe el ambiente?» — y esa segunda pregunta la contesta `manifiestosDe`,
+ * con la brecha declarada de #1.
+ */
+const soloElMonolitoDe = (ambiente: Environment) => construirManifiestos(invariantesDe(ambiente));
 
 describe("las cantidades de Kubernetes se leen como las lee Kubernetes", () => {
   it("CPU: milicores, enteros y decimales", () => {
@@ -188,15 +211,15 @@ describe("y se demuestra que puede fallar", () => {
    * despliegue se colgaria de todos modos. Es justo la confusion que la cabecera de
    * `capacidad.ts` describe, escrita como prueba.
    */
-  it("lo permanente cabe y el pico no: por eso se mide el pico", () => {
+  it("lo permanente del monolito cabe y su pico no: por eso se mide el pico", () => {
     const nodoJusto = { cpuAsignable: "1900m", memoriaAsignable: "6029348Ki" };
-    const demanda = demandaDelStack(manifiestosDe("prod"));
+    const demanda = demandaDelStack(soloElMonolitoDe("prod"));
     // 1 700m: los 1 900m asignables menos lo que los pods de serie de k3s ya ocupan.
     const disponible = 1900 - 200;
 
     expect(demanda.permanente.cpuEnMili).toBeLessThanOrEqual(disponible);
     expect(demanda.picoDeArranque.cpuEnMili).toBeGreaterThan(disponible);
-    expect(auditarCapacidad(manifiestosDe("prod"), nodoJusto).join("\n")).toMatch(
+    expect(auditarCapacidad(soloElMonolitoDe("prod"), nodoJusto).join("\n")).toMatch(
       /no cabe en el nodo por CPU/,
     );
   });
@@ -206,9 +229,9 @@ describe("y se demuestra que puede fallar", () => {
    * reserva todavia duplicada. Es lo que separa «desplegable» de «desplegable cuando
    * alguien entre al VPS».
    */
-  it("prod cabe en los 2 CPU que el nodo reparte hoy", () => {
+  it("el monolito de prod cabe en los 2 CPU que el nodo reparte hoy", () => {
     expect(
-      auditarCapacidad(manifiestosDe("prod"), {
+      auditarCapacidad(soloElMonolitoDe("prod"), {
         cpuAsignable: "2",
         memoriaAsignable: "6029348Ki",
       }),
@@ -221,9 +244,9 @@ describe("y se demuestra que puede fallar", () => {
    * Esto es lo que ata `Pulumi.prod.yaml` al guion del nodo. El dia que alguien
    * devuelva la duplicacion —o suba la demanda— una de las dos mitades se pone roja.
    */
-  it("con los 3 CPU que deja la reserva repartida, prod cabe", () => {
+  it("con los 3 CPU que deja la reserva repartida, el monolito de prod cabe", () => {
     expect(
-      auditarCapacidad(manifiestosDe("prod"), {
+      auditarCapacidad(soloElMonolitoDe("prod"), {
         cpuAsignable: "3",
         memoriaAsignable: "6029348Ki",
       }),
@@ -248,7 +271,7 @@ describe("y se demuestra que puede fallar", () => {
   });
 
   it("con 4 GB —el nodo que el issue #158 ya probo insuficiente—, NO cabe por memoria", () => {
-    const problemas = auditarCapacidad(manifiestosDe("prod"), {
+    const problemas = auditarCapacidad(soloElMonolitoDe("prod"), {
       cpuAsignable: "16",
       memoriaAsignable: "4Gi",
     });
@@ -273,5 +296,46 @@ describe("y se demuestra que puede fallar", () => {
     expect(
       auditarCapacidad(manifiestosDe("prod"), { cpuAsignable: "8", memoriaAsignable: "16Gi" }),
     ).toEqual([]);
+  });
+});
+
+/**
+ * C-16: que la cuenta cubra **todos** los espacios de nombres del ambiente.
+ *
+ * Esta guarda no comprueba una aritmetica: comprueba que la aritmetica se aplique a todo. Es
+ * la clase de defecto que C-16 se pago — `manifiestosDeLosSistemas` se extrajo en C-14 «para
+ * que `capacidad.ts` pueda sumarlos» y el llamador nunca se cambio, asi que `yarn capacidad`
+ * contestaba «cabe» habiendo mirado uno de los cinco espacios de nombres—. Ninguna de las
+ * pruebas de arriba podia verlo: todas miden lo que se les da.
+ *
+ * Se compara contra los namespaces **derivados de la misma fuente que compone el despliegue**
+ * —`namespaceName` para la plataforma y `entornoDe(...).namespace` para cada sistema—, no
+ * contra una lista escrita a mano: un sistema nuevo entra solo en la cuenta esperada, que es
+ * lo unico que hace que esta guarda siga valiendo cuando haya cinco.
+ */
+describe("C-16 · la cuenta cubre TODOS los espacios de nombres del ambiente", () => {
+  it.each(ENVIRONMENTS)("«%s»: la plataforma y los cuatro sistemas, sin dejarse ninguno", (ambiente) => {
+    const entornoDe = entornoDelAmbiente(invariantesDe(ambiente));
+    const esperados = [
+      namespaceName(ambiente),
+      ...SISTEMAS.map(({ descriptor }) => entornoDe(descriptor.sistema).namespace),
+    ].sort();
+
+    const medidos = [
+      ...new Set(demandaDelStack(manifiestosDe(ambiente)).pods.map((p) => p.espacio)),
+    ].sort();
+
+    expect(
+      medidos,
+      "la cuenta de capacidad se esta dejando fuera algun espacio de nombres del ambiente. " +
+        "El nodo es UNO: un namespace no es una maquina, y sus pods compiten por la misma CPU " +
+        "y la misma memoria. Decir «cabe» sin haberlos sumado todos devuelve el colgado del " +
+        "issue #252 con la guarda en verde.",
+    ).toEqual(esperados);
+  });
+
+  it("y son cinco, no uno: la comprobacion de arriba no puede pasar por lista vacia", () => {
+    const medidos = new Set(demandaDelStack(manifiestosDe("prod")).pods.map((p) => p.espacio));
+    expect(medidos.size).toBe(1 + SISTEMAS.length);
   });
 });

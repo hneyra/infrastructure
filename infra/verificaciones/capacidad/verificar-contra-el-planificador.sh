@@ -79,14 +79,45 @@ fi
 
 echo
 echo "── Aplicando el stack de «${AMBIENTE}» (sin los recursos de Traefik: sus CRD no estan en kind)"
+MANIFIESTOS="$(mktemp)"
+trap 'rm -f "$MANIFIESTOS"' EXIT
 (cd "$INFRA" && yarn --silent manifiestos --ambiente "$AMBIENTE") \
     | node -e '
         const entrada = JSON.parse(require("fs").readFileSync(0, "utf8"));
         const deTraefik = ["IngressRoute", "Middleware", "TLSOption", "HelmChartConfig"];
         entrada.items = entrada.items.filter((i) => !deTraefik.includes(i.kind));
         process.stdout.write(JSON.stringify(entrada));
-      ' \
-    | kubectl apply --filename - >/dev/null
+      ' > "$MANIFIESTOS"
+kubectl apply --filename "$MANIFIESTOS" >/dev/null
+
+# LOS ESPACIOS DE NOMBRES QUE SE APLICARON, no uno.
+#
+# C-16: este guion aplicaba los CINCO —`yarn manifiestos` emite la plataforma y los cuatro
+# sistemas desde ADR-0031— y despues miraba solo `sgtm-<ambiente>`. Un pod de `kamayuk-caja`
+# rechazado por «Insufficient cpu» no lo veia nadie, de modo que el guion podia dar por
+# comprobada la direccion peligrosa —«capacidad.ts dijo cabe y el planificador lo ubico todo»—
+# habiendo mirado una quinta parte de lo que aplico.
+#
+# Se derivan del propio JSON que se acaba de aplicar y no de una lista escrita a mano: un
+# sistema nuevo entra solo, que es lo unico que hace que esto siga valiendo cuando haya cinco.
+ESPACIOS="$(node -e '
+    const entrada = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+    const nombres = new Set();
+    for (const i of entrada.items ?? []) {
+        if (i.kind === "Namespace") nombres.add(i.metadata.name);
+        else if (i.metadata?.namespace) nombres.add(i.metadata.namespace);
+    }
+    process.stdout.write([...nombres].sort().join(" "));
+  ' "$MANIFIESTOS")"
+echo "   espacios de nombres aplicados: ${ESPACIOS}"
+# `wc -w` y no acentos graves en el mensaje: un acento grave dentro de una cadena entre comillas
+# dobles se EJECUTA como orden, que es la errata que #434 encontro en un aviso de otro guion.
+if [ "$(echo "$ESPACIOS" | wc -w)" -lt 2 ]; then
+    echo "::error::Solo se aplico un espacio de nombres. Desde ADR-0031 el ambiente tiene cinco," \
+         "asi que o «yarn manifiestos» se dejo los cuatro sistemas fuera, o esta comprobacion" \
+         "esta mirando menos de lo que aplica. Es C-16, y pasa en verde sin decir nada."
+    exit 1
+fi
 
 # Los pods que el planificador RECHAZA POR RECURSOS, que es lo unico que `capacidad.ts`
 # predice.
@@ -98,17 +129,23 @@ echo "── Aplicando el stack de «${AMBIENTE}» (sin los recursos de Traefik:
 # `WaitForFirstConsumer`, asi que esperaban a que se aprovisionara, no a que hubiera
 # CPU—. Contarlos como "no caben" daba un rojo por un motivo que no es el que se mide.
 sin_recursos() {
-    kubectl get pods -n "$NAMESPACE" -o jsonpath='{range .items[*]}{.metadata.name}{" -> "}{range .status.conditions[?(@.type=="PodScheduled")]}{.message}{end}{"\n"}{end}' \
-        2>/dev/null | grep -i "insufficient" || true
+    local espacio
+    for espacio in $ESPACIOS; do
+        kubectl get pods -n "$espacio" -o jsonpath="{range .items[*]}${espacio}/{.metadata.name}{\" -> \"}{range .status.conditions[?(@.type=='PodScheduled')]}{.message}{end}{\"\n\"}{end}" \
+            2>/dev/null | grep -i "insufficient" || true
+    done
 }
 
 # Y los que todavia no tienen nodo asignado, para saber cuando dejar de esperar.
 sin_ubicar() {
-    local total ubicados
-    total="$(kubectl get pods -n "$NAMESPACE" --no-headers 2>/dev/null | grep -c . || true)"
-    ubicados="$(kubectl get pods -n "$NAMESPACE" \
-        -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' 2>/dev/null | grep -c . || true)"
-    echo "$(( total - ubicados ))"
+    local espacio total ubicados falta=0
+    for espacio in $ESPACIOS; do
+        total="$(kubectl get pods -n "$espacio" --no-headers 2>/dev/null | grep -c . || true)"
+        ubicados="$(kubectl get pods -n "$espacio" \
+            -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' 2>/dev/null | grep -c . || true)"
+        falta=$(( falta + total - ubicados ))
+    done
+    echo "$falta"
 }
 
 echo "   esperando al planificador (hasta 2 min)..."
@@ -123,7 +160,7 @@ done
 
 echo
 echo "── ¿Ubico el planificador todos los pods?"
-kubectl get pods -n "$NAMESPACE" -o wide 2>/dev/null || true
+for espacio in $ESPACIOS; do kubectl get pods -n "$espacio" -o wide 2>/dev/null || true; done
 echo "   sin ubicar todavia: $(sin_ubicar) (volumen o imagen; no es lo que se mide)"
 
 if [ -n "$FALTAN" ]; then

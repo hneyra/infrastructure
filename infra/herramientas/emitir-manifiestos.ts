@@ -4,7 +4,7 @@ import { componerOFallar } from "../descriptor";
 import { entornoPara } from "../descriptor/entorno";
 import { SISTEMAS } from "../descriptor/sistemas";
 import { secretos } from "../componentes/convenciones";
-import { namespaceName, ENVIRONMENTS, type Environment } from "../config";
+import { namespaceName, ENVIRONMENTS, type Environment, type Invariants } from "../config";
 import type { Manifiesto } from "../componentes/tipos";
 import { invariantesDe } from "../verificaciones/stacks";
 
@@ -65,10 +65,9 @@ export function leerOpciones(argv: string[]): Opciones {
  * MISMOS manifiestos, y una segunda composicion del entorno seria un segundo sitio donde olvidar
  * un campo.
  */
-export function entornoDelAmbiente(ambiente: Environment) {
-  const invariantes = invariantesDe(ambiente);
+export function entornoDelAmbiente(invariantes: Invariants) {
   return entornoPara(
-    ambiente,
+    invariantes.environment,
     invariantes.ingress.domain,
     invariantes.application.bootstrapVersion,
     invariantes.operacion,
@@ -80,17 +79,22 @@ export function entornoDelAmbiente(ambiente: Environment) {
 /**
  * Los manifiestos de los cuatro sistemas, ya auditados.
  *
- * Separado de `emitir` para que `capacidad.ts` pueda sumarlos sin pasar por el JSON: hasta C-14
- * `yarn capacidad` solo veia la plataforma, asi que las cinco replicas de los cuatro sistemas no
- * entraban en la cuenta de lo que cabe en el nodo.
+ * Separado de `emitir` para que se puedan sumar sin pasar por el JSON. Quien pregunta «¿cabe?»
+ * no llama a esto sino a `manifiestosDelAmbiente`, que es la lista entera: separarlos aqui es lo
+ * que dejo a `herramientas/capacidad.ts` midiendo solo la plataforma durante C-14 y C-16.
+ *
+ * Recibe `Invariants` y no un `Environment` a proposito: `index.ts` corre dentro de Pulumi y ya
+ * tiene su configuracion cargada (`loadSettings()`). Con un `Environment` habria que volver a
+ * leer el `Pulumi.<ambiente>.yaml` desde dentro del programa, y entonces habria dos lecturas de
+ * la misma configuracion que se pueden separar.
  */
 export function manifiestosDeLosSistemas(
-  ambiente: Environment,
+  invariantes: Invariants,
   plataforma: Manifiesto[],
 ): Manifiesto[] {
-  const entornoDe = entornoDelAmbiente(ambiente);
+  const entornoDe = entornoDelAmbiente(invariantes);
   return componerOFallar(SISTEMAS, entornoDe, {
-    secretoDeOwner: secretos(ambiente).owner,
+    secretoDeOwner: secretos(invariantes.environment).owner,
     basesDelClustre: SISTEMAS.map(
       (s) => s.descriptor.baseDeDatos(entornoDe(s.descriptor.sistema)).nombre,
     ),
@@ -98,21 +102,34 @@ export function manifiestosDeLosSistemas(
   });
 }
 
+/**
+ * **Todo lo que este ambiente pone sobre el nodo**: la plataforma y los cuatro sistemas.
+ *
+ * Una sola funcion, y no una lista que cada herramienta se compone por su cuenta. C-16 se
+ * pago por eso: `manifiestosDeLosSistemas` se extrajo en C-14 «para que `capacidad.ts` pueda
+ * sumarlos», y `herramientas/capacidad.ts` nunca se cambio — siguio llamando a
+ * `construirManifiestos` a secas. El resultado es una guarda que contesta «cabe» habiendo
+ * mirado **un** espacio de nombres de los cinco, y decir «cabe» cuando no se cabe es la
+ * direccion peligrosa: devuelve exactamente el colgado del issue #252, en silencio, con la
+ * comprobacion en verde.
+ *
+ * El nodo es **uno**. Los cuatro sistemas tienen namespace propio desde ADR-0031, pero un
+ * namespace no es una maquina: sus pods compiten por la misma CPU y la misma memoria que los
+ * de la plataforma. Cualquiera que pregunte «¿cabe?» tiene que sumar los cinco.
+ */
+export function manifiestosDelAmbiente(invariantes: Invariants): Manifiesto[] {
+  const plataforma = construirManifiestos(invariantes);
+  // Los cuatro sistemas (ADR-0031 §2). `componerOFallar` los audita con las MISMAS reglas que
+  // la plataforma y lanza antes de emitir nada: un descriptor ajeno mal formado no puede entrar
+  // por ser ajeno.
+  return [...plataforma, ...manifiestosDeLosSistemas(invariantes, plataforma)];
+}
+
 export function emitir(opciones: Opciones): string {
   const ambiente = opciones.ambiente;
   const invariantes = invariantesDe(ambiente);
   const plataforma = construirManifiestos(invariantes);
-
-  // Y los cuatro sistemas (ADR-0031 §2). `componerOFallar` los audita con las MISMAS reglas
-  // que la plataforma y lanza antes de emitir nada: un descriptor ajeno mal formado no puede
-  // entrar por ser ajeno.
-  //
-  // La composicion vive en `manifiestosDeLosSistemas` y no aqui porque `capacidad.ts` necesita
-  // los MISMOS manifiestos: hasta C-14 `yarn capacidad` solo veia la plataforma, y las cinco
-  // replicas de los cuatro sistemas no entraban en la cuenta de lo que cabe en el nodo.
-  const deLosSistemas = manifiestosDeLosSistemas(ambiente, plataforma);
-
-  const todos = [...plataforma, ...deLosSistemas];
+  const todos = manifiestosDelAmbiente(invariantes);
 
   // Se audita SIEMPRE, aunque se emita un componente: un manifiesto que incumple no se copia a
   // un archivo para aplicarlo a mano. Lo que se audita aqui es la PLATAFORMA; los cuatro

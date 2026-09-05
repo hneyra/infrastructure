@@ -53,6 +53,23 @@ config:
   #   kubectl get node -o jsonpath='{.items[0].status.allocatable.cpu}{"/"}{.items[0].status.allocatable.memory}'
   sgtm:nodeAllocatableCpu: "2"
   sgtm:nodeAllocatableMemory: 6029348Ki
+  #
+  # BRECHA DECLARADA (issue #1, C-16). Este nodo NO da para el monolito y los cuatro
+  # sistemas juntos. Medido con `yarn capacidad --ambiente prod`, que desde C-16 suma los
+  # CINCO espacios de nombres y no solo la plataforma:
+  #
+  # pico del arranque 2710m / 10208Mi contra 1800m / 5728Mi disponibles:
+  #   NO CABE por CPU, faltan 910m (0,91 CPU); y por memoria, faltan 4480Mi (4,37 Gi).
+  #
+  # No se «arregla» bajando peticiones hasta que cuadre: eso seria inventar una holgura que no
+  # existe. Lo que hay que decidir es si el monolito y los cuatro conviven en el mismo nodo, y
+  # eso es ADR-0029 y D-22. Mientras tanto la marca solo hace que `index.ts` AVISE en vez de
+  # lanzar —lanzar ahi rompe `pulumi preview`, que corre en cada PR—; el bloqueo duro sigue en
+  # el paso «El stack cabe en su nodo» de `aplicar-prod`, que corre `yarn capacidad --estricto`
+  # antes de invocar a Pulumi y se pone rojo con las cifras. Y no se puede quedar puesta de mas:
+  # `capacidad.test.ts` exige que la brecha SIGA AHI, asi que el dia que el nodo crezca la
+  # prueba se pone roja y obliga a retirarla.
+  sgtm:nodeCapacityGapIssue: "1"
   sgtm:domain: vmd120205.contaboserver.net
   # A QUIEN se le avisa cuando algo de operacion necesita una persona, y DONDE (C-7 §4).
   # El primero que lo consume es `caja`: ADR-0026 §4 exige que un pago que no se pudo imputar

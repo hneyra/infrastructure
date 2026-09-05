@@ -486,6 +486,13 @@ jobs:
       # el peor de los estados posibles. Lleva dentro su propia demostración: un pod
       # que pide más CPU de la que el nodo tiene se queda `Pending` por «Insufficient
       # cpu», y sin eso el caso principal podría estar pasando por otro motivo.
+      # Y desde C-16 mira LOS CINCO espacios de nombres que aplica, no solo el de la
+      # plataforma: aplicaba los cinco y despues buscaba pods rechazados en uno, asi que
+      # podia dar por comprobada la direccion peligrosa habiendo mirado una quinta parte.
+      #
+      # ESTE TRABAJO TAMPOCO CLONA LOS CUATRO HERMANOS (hueco 4 de C-14): `yarn manifiestos`
+      # y `yarn capacidad` los necesitan desde ADR-0031 y C-16 respectivamente. Lo mismo que
+      # el trabajo `manifiestos`, y se cierra igual.
       - name: verificar-contra-el-planificador.sh
         run: infra/verificaciones/capacidad/verificar-contra-el-planificador.sh
 
@@ -1022,6 +1029,14 @@ jobs:
       # empieza espera indefinidamente a que queden `Ready` y nunca lo estaran.
       # `index.ts` solo AVISA cuando la brecha esta declarada -lanzar alli rompe
       # tambien `pulumi preview`, que corre en cada PR-; el bloqueo duro vive aqui.
+      # DESDE C-16 ESTE PASO NECESITA LOS CUATRO CLONES HERMANOS. `yarn capacidad` compone
+      # ahora los cinco espacios de nombres —la plataforma y los cuatro sistemas—, y
+      # `descriptor/sistemas.ts` los importa de `../<sistema>/infrastructure/src/descriptor`.
+      # Este trabajo hace `checkout` solo de este repositorio, asi que hoy el paso no puede
+      # correr: es el hueco 4 de C-14, el mismo que ya tiene el trabajo `manifiestos`, y se
+      # cierra igual —los cuatro `actions/checkout` con `path:` y `GH_CLONE_KEY`, como en
+      # `verificar`—. No se hace aqui porque exige reestructurar el `path` de este trabajo
+      # entero y no hay forma de ejercitarlo sin empujar.
       - name: 'El stack cabe en su nodo (issue #252)'
         if: steps.credenciales.outputs.hay == 'si'
         working-directory: infra
@@ -1202,6 +1217,14 @@ jobs:
       # empieza espera indefinidamente a que queden `Ready` y nunca lo estaran.
       # `index.ts` solo AVISA cuando la brecha esta declarada -lanzar alli rompe
       # tambien `pulumi preview`, que corre en cada PR-; el bloqueo duro vive aqui.
+      # DESDE C-16 ESTE PASO NECESITA LOS CUATRO CLONES HERMANOS. `yarn capacidad` compone
+      # ahora los cinco espacios de nombres —la plataforma y los cuatro sistemas—, y
+      # `descriptor/sistemas.ts` los importa de `../<sistema>/infrastructure/src/descriptor`.
+      # Este trabajo hace `checkout` solo de este repositorio, asi que hoy el paso no puede
+      # correr: es el hueco 4 de C-14, el mismo que ya tiene el trabajo `manifiestos`, y se
+      # cierra igual —los cuatro `actions/checkout` con `path:` y `GH_CLONE_KEY`, como en
+      # `verificar`—. No se hace aqui porque exige reestructurar el `path` de este trabajo
+      # entero y no hay forma de ejercitarlo sin empujar.
       - name: 'El stack cabe en su nodo (issue #252)'
         working-directory: infra
         run: yarn --silent capacidad --ambiente prod --estricto
