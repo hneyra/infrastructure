@@ -1,6 +1,7 @@
 # C-9a — El CI no puede clonar repositorios hermanos
 
-> **Estado: cerrado, con dos huecos declarados en §6.** Los **diez** `path: ../` de los cinco
+> **Estado: cerrado, con tres huecos declarados en §6** —el tercero es un rojo ANTERIOR a esto,
+> de C-7, que aparecio al medir el criterio 4—. Los **diez** `path: ../` de los cinco
 > repositorios estan arreglados, y lo que decide donde estan los clones **deja de poder
 > equivocarse en silencio**: una guarda nueva lee los flujos de los **seis** clones y se pone roja
 > si un `actions/checkout` apunta fuera del espacio de trabajo, nombrando el archivo y la linea.
@@ -10,7 +11,8 @@
 > `.github/workflows/infraestructura.yml`, que ningun proceso de Gradle lee.
 >
 > Lo que **no** se pudo verificar esta en §6: los cuatro repositorios de sistema quedan arreglados
-> y **sin publicar**, asi que su CI no ha corrido ni una vez con el arreglo dentro.
+> y **sin publicar**, asi que su CI no ha corrido ni una vez con el arreglo dentro — y ademas su
+> trabajo `descriptor` esta rojo por otra causa, que se declara y no se arregla aqui.
 
 ---
 
