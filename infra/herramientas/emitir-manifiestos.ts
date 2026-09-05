@@ -4,7 +4,13 @@ import { componerOFallar } from "../descriptor";
 import { entornoPara } from "../descriptor/entorno";
 import { SISTEMAS } from "../descriptor/sistemas";
 import { secretos } from "../componentes/convenciones";
-import { namespaceName, ENVIRONMENTS, type Environment, type Invariants } from "../config";
+import {
+  claveDeVersion,
+  namespaceName,
+  ENVIRONMENTS,
+  type Environment,
+  type Invariants,
+} from "../config";
 import type { Manifiesto } from "../componentes/tipos";
 import { invariantesDe } from "../verificaciones/stacks";
 
@@ -59,6 +65,34 @@ export function leerOpciones(argv: string[]): Opciones {
 }
 
 /**
+ * La version que le toca a cada sistema, o el fallo que dice cual falta.
+ *
+ * No se replieg a `applicationBootstrapVersion` cuando no hay ninguna declarada, y ese es el
+ * punto: esa version es la del MONOLITO —un `sha` de `sgtm`— y usarla para etiquetar
+ * `kamayuk-catastro` produce una referencia que no resuelve contra ningun `git log` de
+ * `catastro`. El repliegue seria ademas invisible: el manifiesto sale, es valido, el planificador
+ * ubica el pod, y el fallo aparece como `ImagePullBackOff` cuando ya se desplego.
+ */
+function versionDelSistema(invariantes: Invariants): (sistema: string) => string {
+  return (sistema) => {
+    const version = invariantes.sistemas.versiones[sistema];
+    if (version === undefined) {
+      throw new Error(
+        `El ambiente «${invariantes.environment}» compone el sistema «${sistema}» y su stack no ` +
+          `declara \`kamayuk:${claveDeVersion(sistema)}\`, asi que no hay con que etiquetar sus ` +
+          "imagenes.\n" +
+          "  No se hereda ninguna otra: `applicationBootstrapVersion` es la version del " +
+          "monolito, un `sha` de `sgtm`, y con ella la etiqueta no resolveria contra el `git " +
+          `log\` de hneyra/${sistema} — y probablemente no existiria en el registro.\n` +
+          `  Remedio: declarar \`kamayuk:${claveDeVersion(sistema)}\` con un \`sha\` de main de ` +
+          `hneyra/${sistema} cuyas imagenes haya publicado \`publicar-imagenes.yml\`.`,
+      );
+    }
+    return version;
+  };
+}
+
+/**
  * El entorno que reciben los cuatro descriptores de este ambiente.
  *
  * Exportado porque lo usan tanto `emitir` como `capacidad.ts`: los dos tienen que mirar los
@@ -69,7 +103,7 @@ export function entornoDelAmbiente(invariantes: Invariants) {
   return entornoPara(
     invariantes.environment,
     invariantes.ingress.domain,
-    invariantes.application.bootstrapVersion,
+    versionDelSistema(invariantes),
     invariantes.operacion,
     { ...invariantes.implantacion, esDemostracion: invariantes.application.isDemonstration },
     invariantes.identity.realm,

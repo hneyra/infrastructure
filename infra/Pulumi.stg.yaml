@@ -130,6 +130,29 @@ config:
   # **cuatro** PR de dos lineas en hora y media (#705, #715, #717, #719), y el tercero
   # obsoleto durante su propio CI porque otra migracion entro mientras corria.
   kamayuk:applicationBootstrapVersion: c755de2149344b8033736958ee8ae6f643c90281
+  # LA VERSION DE CADA SISTEMA, que es un `sha` de SU repositorio (D, bloqueo 1).
+  #
+  # Hasta hoy las ocho imagenes de los cuatro sistemas se etiquetaban con
+  # `applicationBootstrapVersion`, que es un `sha` de `sgtm`: una revision que no describe este
+  # codigo y que ni siquiera existe en esos clones. Medido contra ghcr.io el 2026-09-05, las ocho
+  # contestaban `404 MANIFEST_UNKNOWN` — o sea que un `pulumi up` habria dejado los cuatro
+  # `Deployment` y los cuatro `Job` de migracion en `ImagePullBackOff`, sin que nada lo predijera.
+  #
+  # Cada una es el `sha` de un commit de `main` de su repositorio cuyas dos imagenes publico
+  # `publicar-imagenes.yml` (que desde hoy existe en los cuatro, y no filtra por `paths`
+  # precisamente para que TODO commit de `main` tenga sus dos imagenes). Que la etiqueta exista lo
+  # comprueba `yarn imagenes --ambiente <amb>` contra el registro, y que sea una revision de `main`
+  # —lo unico que se puede saber sin hablar con el registro— lo comprueba
+  # `verificaciones/imagenes-publicadas.test.ts` en cada corrida.
+  #
+  # Subir una de estas cuatro lineas NO reemplaza la imagen de un `Deployment` que ya corre
+  # (ADR-0011 §5, `ignoreChanges`), pero **no es inerte**: el `Job` de migracion de ese sistema
+  # lleva la version en el nombre, asi que un valor nuevo no modifica un Job — crea otro, y ese
+  # Job aplica las migraciones de esa version.
+  kamayuk:versionDeRentas: ddcaf7828a3130d7bc655e13b603ae20ac00cdfc
+  kamayuk:versionDeCatastro: da06fdc895239ac77f8b45bceac8493eeb9ebe65
+  kamayuk:versionDeNormativa: 38b7ddc0aaf229cd6cd81a3a21e628f658c76370
+  kamayuk:versionDeCaja: 90919433a0253769c37039c24b50d9334e89aa35
   kamayuk:webReplicas: "1"
   # La municipalidad de ensayo. El ubigeo es el de Catacaos, igual que en prod (D-01,
   # 2026-08-24), porque stg restaura los respaldos de prod anonimizados (INF-03 §2 y

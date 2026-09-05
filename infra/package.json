@@ -17,7 +17,8 @@
     "secretos": "vite-node herramientas/secretos.ts --",
     "capacidad": "vite-node herramientas/capacidad.ts --",
     "grafo": "vite-node herramientas/grafo.ts --",
-    "observabilidad-del-corte": "vite-node herramientas/escribir-observabilidad.ts"
+    "observabilidad-del-corte": "vite-node herramientas/escribir-observabilidad.ts",
+    "imagenes": "verificaciones/imagenes/comprobar-imagenes.sh"
   },
   "dependencies": {
     "@pulumi/kubernetes": "^4.18.0",

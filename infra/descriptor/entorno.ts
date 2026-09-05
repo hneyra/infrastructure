@@ -32,7 +32,18 @@ export function namespaceDelSistema(ambiente: Environment, sistema: string): str
 export function entornoPara(
   ambiente: Environment,
   dominio: string,
-  etiquetaDeImagen: string,
+  /**
+   * La version de CADA sistema, que es un `sha` de SU repositorio.
+   *
+   * Antes era una sola cadena —`applicationBootstrapVersion`, un `sha` de `sgtm`— y con ella se
+   * etiquetaban las ocho imagenes de los cuatro sistemas. Una etiqueta que no resuelve contra el
+   * `git log` del repositorio que construyo la imagen no identifica nada, y ademas ninguna de las
+   * ocho existia: medido contra el registro el 2026-09-05, `404 MANIFEST_UNKNOWN` en las ocho.
+   *
+   * Sigue siendo `infrastructure` quien la pone, que es lo que ADR-0011 §5 protege: el descriptor
+   * de un sistema **no** compone su etiqueta, la pide. Lo que cambia es de donde sale el valor.
+   */
+  versionDe: (sistema: string) => string,
   operacion: { readonly responsable: string; readonly canal: string },
   implantacion: EntornoDelDescriptor["implantacion"],
   realm: string,
@@ -42,7 +53,7 @@ export function entornoPara(
     namespace: namespaceDelSistema(ambiente, sistema),
     dominio,
     etiquetas: { ...commonLabels(ambiente, sistema), sistema },
-    imagenDe: (componente) => `${REGISTRO}/kamayuk-${componente}:${etiquetaDeImagen}`,
+    imagenDe: (componente) => `${REGISTRO}/kamayuk-${componente}:${versionDe(sistema)}`,
     secretoDe: (clave) => `kamayuk-${sistema}-${ambiente}-${clave}`,
     prioridadDe: (clase) => nombreDePrioridad(ambiente, clase),
     operacion,
@@ -52,7 +63,11 @@ export function entornoPara(
     namespaceDe: (otro) => namespaceDelSistema(ambiente, otro),
     // Y el MISMO `sufijoDeVersion` que usa el monolito desde el issue #150, por lo mismo: dos
     // formas de recortar una version son dos formas de que un Job inmutable choque.
-    nombreConVersion: (base) => `${base}-${sufijoDeVersion(etiquetaDeImagen)}`,
+    // Y con la version de ESTE sistema, no con la del monolito: el `Job` de migracion lleva la
+    // version en el nombre, asi que una version nueva no modifica un Job — crea otro. Con la
+    // version compartida, publicar una migracion de `rentas` no creaba ningun Job nuevo para
+    // `rentas` y si lo creaba para los otros tres, que no habian cambiado.
+    nombreConVersion: (base) => `${base}-${sufijoDeVersion(versionDe(sistema))}`,
     plataforma: {
       namespace: namespaceName(ambiente),
       // Las MISMAS dos funciones con que se compone la aplicacion del monolito. Componerlas

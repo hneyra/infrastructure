@@ -98,6 +98,7 @@ configuración **no contradiga lo que el proyecto ya decidió por escrito**.
 | Las imágenes fijan versión; nada de `latest` | `INF-01` §5 |
 | El `server` del kubeconfig apunta al bucle local | `INF-01` §1.4 — la cicatriz de `../iaac` |
 | `applicationBootstrapVersion` fija una versión, y es una etiqueta, no una imagen | `ADR-0011` §5 |
+| `versionDe<Sistema>` es un `sha` de **cuarenta hexadecimales** del repositorio de ESE sistema | [D-23](../docs/00-gobierno/D-23-quien-publica-las-imagenes.md) |
 | En `prod`, `esDemostracion` **se declara**; heredarlo del valor por omisión no cuenta | #150, D-02a |
 | El ubigeo son seis dígitos y el tipo de municipalidad es DISTRITAL o PROVINCIAL | #150 |
 | `nodeAllocatableCpu`/`nodeAllocatableMemory` son obligatorios, y **medidos** | `INF-01` §2, #252 |
@@ -269,6 +270,15 @@ yarn manifiestos --ambiente prod --componente migracion | kubectl apply -f -
 
 El nombre del Job lleva la versión, así que una versión nueva crea un Job nuevo y
 volver a aplicar la misma no hace nada: el migrador es idempotente.
+
+### Y no es la única versión: cada sistema declara la suya (D-23)
+
+`applicationBootstrapVersion` es la del **monolito**, un `sha` de `sgtm`. Las ocho imágenes
+de los cuatro sistemas se etiquetan con `kamayuk:versionDe<Sistema>`, un `sha` del repositorio
+que construye cada una — porque una etiqueta que no resuelve contra ningún `git log` no
+identifica nada. `yarn imagenes --ambiente <amb>` le pregunta al registro si esas etiquetas
+existen, y ese mismo guion corre **antes de cada `pulumi up`**: un `up` que pida una etiqueta
+inexistente no falla, deja los pods en `ImagePullBackOff` y sale en verde.
 
 ### Y por eso hay que subir `applicationBootstrapVersion` (issue #675)
 
