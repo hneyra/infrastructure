@@ -24,6 +24,7 @@ historial de por que se hizo algo vale mas que la coherencia del documento.
 | [0030](ADR-0030-cuatro-interfaces-una-sesion.md) | Cuatro interfaces, una sesión, y las librerias comunes que impiden que sean cuatro productos | Propuesto |
 | [0031](ADR-0031-infraestructura-comun-y-propia.md) | La infraestructura: un repositorio común y una carpeta por sistema | Propuesto |
 | [0032](ADR-0032-el-esquema-nace-en-baseline.md) | El esquema de cada sistema nace en un baseline; la historia se queda en `sgtm` | Propuesto |
+| [0033](ADR-0033-cinco-sistemas-el-territorio-y-la-calle.md) | Cinco sistemas: `catastro` absorbe el territorio y `seguridad` se separa | Propuesto |
 
 ## El reparto: donde el enunciado y GOB-05 §4 discrepaban
 
@@ -138,6 +139,11 @@ el corte puede cambiar legitimamente son los enlaces, y la decision no.
 | 0030 | Cuatro interfaces, una sesión, y las librerias comunes que impiden que sean cuatro productos | Propuesto | Propuesto | `infrastructure` |
 | 0031 | La infraestructura: un repositorio común y una carpeta por sistema | Propuesto | Propuesto | `infrastructure` |
 | 0032 | El esquema de cada sistema nace en un baseline; la historia se queda en `sgtm` | Propuesto | Propuesto | `infrastructure` |
+| 0033 | Cinco sistemas: `catastro` absorbe el territorio y `seguridad` se separa | Propuesto | Propuesto | `infrastructure` |
+| 0034 | Toda tabla de tenant con geometría lleva su marco, y el operador espacial no entra en el SQL de aplicación | Propuesto | Propuesto | `catastro` |
+| 0035 | El hallazgo catastral es una entidad con acto y evidencia, no un informe | Propuesto | Propuesto | `catastro` |
+| 0036 | El Código Único Catastral del SNCP es una identidad distinta del código de referencia municipal | Propuesto | Propuesto | `catastro` |
+| 0037 | Dos carriles de mapa: lo publicado se tesela, lo vivo se sirve | Propuesto | Propuesto | `catastro` |
 
 `ADR-0003` **no se marca Obsoleto**, y no es un olvido: los ADR 0024-0032 estan en `Propuesto`.
 Mientras la direccion no los acepte, el monolito modular es la arquitectura vigente. Cuando

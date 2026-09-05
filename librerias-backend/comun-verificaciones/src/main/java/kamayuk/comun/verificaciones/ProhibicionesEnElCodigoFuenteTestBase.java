@@ -7,9 +7,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import kamayuk.comun.verificaciones.RevisorDeCodigoFuente.Hallazgo;
+import kamayuk.comun.verificaciones.RevisorDeEsquema.Migracion;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -1133,6 +1137,252 @@ public abstract class ProhibicionesEnElCodigoFuenteTestBase {
                                 fuente))
                 .as("el papel no tiene serializador y la unidad va en el rotulo de la fila")
                 .isEmpty();
+    }
+
+    // ==================================================================
+    // ADR-0034 — el marco y el operador espacial
+    // ==================================================================
+
+    @Test
+    @DisplayName("ADR-0034 regla 1: toda tabla de tenant con geometria lleva su marco y su indice")
+    void todaTablaDeTenantConGeometriaLlevaSuMarco() throws IOException {
+        Path raiz = raizDelBackend();
+        List<Migracion> migraciones = migracionesDelEsquema(raiz);
+
+        // Sin esto, un repositorio cuyo recorrido no encuentre migraciones pasaria sin revisar
+        // nada. No es hipotetico: es como se pierde una verificacion.
+        assertThat(migraciones)
+                .as("el recorrido desde %s debe encontrar las migraciones del esquema", raiz)
+                .isNotEmpty();
+        assertThat(RevisorDeEsquema.tablasDe(migraciones))
+                .as("y el revisor tiene que entender su SQL, no solo leerlo")
+                .isNotEmpty();
+
+        assertThat(RevisorDeEsquema.revisar(migraciones)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("el revisor de esquema detecta la tabla con geometria y sin marco")
+    void elRevisorDeEsquemaDetectaLaTablaSinMarco() {
+        List<Hallazgo> hallazgos =
+                RevisorDeEsquema.revisar(
+                        List.of(migracionDeMuestra("V900__muestra_sin_marco.sql")));
+
+        assertThat(hallazgos)
+                .as("las cuatro columnas que faltan, y el indice que no puede existir sin ellas")
+                .hasSize(5);
+        assertThat(hallazgos)
+                .allSatisfy(h -> assertThat(h.regla()).contains("ADR-0034 regla 1"))
+                .allSatisfy(h -> assertThat(h.fragmento()).contains("zona_riesgo_de_muestra"));
+    }
+
+    @Test
+    @DisplayName("el revisor de esquema detecta el marco en numeric, el escrito a mano y el suelto")
+    void elRevisorDeEsquemaDetectaElMarcoFlojo() {
+        List<Hallazgo> hallazgos =
+                RevisorDeEsquema.revisar(
+                        List.of(migracionDeMuestra("V901__muestra_con_marco_flojo.sql")));
+
+        // Cuatro columnas en `numeric`, cuatro sin generar, y una tabla sin indice: 4 + 4 + 1.
+        assertThat(hallazgos).as("son tres defectos distintos y ninguno tapa al otro").hasSize(9);
+        assertThat(hallazgos)
+                .filteredOn(h -> h.fragmento().contains("numeric"))
+                .as("numeric_le tampoco es leakproof: las cuatro columnas dejarian de servir")
+                .hasSize(4);
+        assertThat(hallazgos)
+                .filteredOn(h -> h.regla().contains("GENERATED ALWAYS AS"))
+                .as("escritas a mano se quedan viejas, que es peor que no tenerlas")
+                .hasSize(4);
+        assertThat(hallazgos)
+                .filteredOn(h -> h.regla().contains("ningun indice"))
+                .as("las cuatro columnas sin su indice no compran nada")
+                .hasSize(1);
+    }
+
+    @Test
+    @DisplayName("el revisor de esquema no se queja de la plantilla ni de un daterange que solapa")
+    void elRevisorDeEsquemaNoSeQuejaDeLoCorrecto() {
+        assertThat(
+                        RevisorDeEsquema.revisar(
+                                List.of(migracionDeMuestra("V902__muestra_en_regla.sql"))))
+                .as(
+                        "la plantilla de ADR-0034 §4.1, el EXCLUDE temporal, la tabla sin RLS y la"
+                                + " de tenant sin geometria: si alguna saliera roja, la regla"
+                                + " estaria prohibiendo lo unico correcto")
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("el revisor de esquema ve la geometria que llega en OTRA migracion")
+    void elRevisorDeEsquemaVeLaGeometriaQueLlegaDespues() {
+        Migracion nace = migracionDeMuestra("V902__muestra_en_regla.sql");
+        Migracion recibeLaGeometria =
+                migracionDeMuestra("V903__muestra_de_la_geometria_que_llega_despues.sql");
+
+        assertThat(RevisorDeEsquema.revisar(List.of(nace, recibeLaGeometria)))
+                .as("las cuatro columnas y el indice, sobre la tabla que nacio sin poligono")
+                .hasSize(5)
+                .allSatisfy(h -> assertThat(h.fragmento()).contains("establecimiento_de_muestra"))
+                .allSatisfy(
+                        h ->
+                                assertThat(h.archivo())
+                                        .as(
+                                                "el hallazgo apunta a la migracion que trajo la"
+                                                        + " geometria, que es la que hay que abrir")
+                                        .isEqualTo(recibeLaGeometria.nombre()));
+
+        assertThat(RevisorDeEsquema.revisar(List.of(nace)))
+                .as("y sin la segunda no hay defecto: la tabla nace en regla")
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("el escaner detecta la muestra que cruza con el operador espacial y con LIKE")
+    void elEscanerDetectaLaMuestraDelOperadorEspacial() {
+        FuenteDeMuestra muestra =
+                FuenteDeMuestra.de(
+                        "infraestructura/MuestraDeRepositorioQueCruzaConElOperadorEspacial.java");
+
+        assertThat(muestra.texto())
+                .as("la muestra tiene que existir para poder detectarla")
+                .isNotBlank();
+
+        List<Hallazgo> hallazgos =
+                RevisorDeCodigoFuente.revisarJava(muestra.nombre(), muestra.texto());
+
+        assertThat(hallazgos)
+                .as(
+                        "los tres operadores espaciales y los dos LIKE, y ninguno de los"
+                                + " comentarios que los explican —el javadoc los nombra decenas de"
+                                + " veces")
+                .hasSize(5);
+        assertThat(hallazgos.stream().map(Hallazgo::fragmento).toList())
+                .anySatisfy(f -> assertThat(f).containsIgnoringCase("st_intersects("))
+                .anySatisfy(f -> assertThat(f).containsIgnoringCase("st_within("))
+                .anySatisfy(f -> assertThat(f).containsIgnoringCase("&&"))
+                .anySatisfy(f -> assertThat(f).containsIgnoringCase("like :codigo"))
+                .anySatisfy(f -> assertThat(f).containsIgnoringCase("like '%avenida%'"));
+    }
+
+    @Test
+    @DisplayName("el revisor deja pasar el && de un daterange, que es solapamiento temporal")
+    void elRevisorDejaPasarElSolapamientoTemporal() {
+        String fuente =
+                """
+                class Bueno {
+                    static final String SQL =
+                        "SELECT f.id FROM ficha_catastral f"
+                        + " WHERE daterange(f.vigencia_desde, f.vigencia_hasta) && :rango";
+                }
+                """;
+        assertThat(RevisorDeCodigoFuente.revisarEspacial("Bueno.java", fuente))
+                .as(
+                        "«&&» esta sobrecargado: sobre un rango de fechas es como el esquema"
+                                + " impide que dos vigencias se pisen, y marcarlo dejaria la regla"
+                                + " gritando el primer dia")
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("el revisor deja pasar el operador espacial cuando va detras del marco")
+    void elRevisorDejaPasarElRefinadoDetrasDelMarco() {
+        String fuente =
+                """
+                class Bueno {
+                    static final String SQL =
+                        "SELECT p.id FROM predio p"
+                        + " WHERE p.marco_oeste <= :este AND p.marco_este >= :oeste"
+                        + " AND p.marco_sur <= :norte AND p.marco_norte >= :sur"
+                        + " AND ST_Intersects(p.geometria::geometry, :marco)";
+                }
+                """;
+        assertThat(RevisorDeCodigoFuente.revisarEspacial("Bueno.java", fuente))
+                .as(
+                        "ADR-0034 regla 2 lo admite como refinado exacto DETRAS del marco; sin esta"
+                                + " salida, la consulta que si necesita el poligono no se podria"
+                                + " escribir")
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("el revisor deja pasar el LIKE de repliegue del prefijo sin sucesor")
+    void elRevisorDejaPasarElLikeDeRepliegue() {
+        String fuente =
+                """
+                class Bueno {
+                    void condicion(StringBuilder donde, String columna, String alias) {
+                        if (siguienteA(columna) == null) {
+                            donde.append(" AND ").append(columna).append(" LIKE :").append(alias)
+                                 .append(" || '%'");
+                            return;
+                        }
+                        donde.append(" AND ").append(columna).append(" ~>=~ :").append(alias)
+                             .append("Desde AND ").append(columna).append(" ~<~ :").append(alias)
+                             .append("Hasta");
+                    }
+
+                    String siguienteA(String prefijo) {
+                        return null;
+                    }
+                }
+                """;
+        assertThat(RevisorDeCodigoFuente.revisarPrefijo("RangoDePrefijo.java", fuente))
+                .as(
+                        "el archivo SI sabe escribir el rango: el LIKE es el repliegue del prefijo"
+                                + " que no tiene sucesor, y marcarlo pondria rojos cuatro archivos"
+                                + " correctos en tres repositorios el primer dia (#437)")
+                .isEmpty();
+    }
+
+    /** Las migraciones de este repositorio, ordenadas por version. */
+    private static List<Migracion> migracionesDelEsquema(Path raiz) throws IOException {
+        try (Stream<Path> rutas = Files.walk(raiz)) {
+            List<Path> archivos =
+                    rutas.filter(Files::isRegularFile)
+                            .filter(ProhibicionesEnElCodigoFuenteTestBase::esMigracion)
+                            .sorted(
+                                    Comparator.comparingInt(
+                                            ProhibicionesEnElCodigoFuenteTestBase::versionDe))
+                            .toList();
+            List<Migracion> migraciones = new ArrayList<>();
+            for (Path archivo : archivos) {
+                migraciones.add(
+                        new Migracion(
+                                raiz.relativize(archivo).toString(),
+                                Files.readString(archivo, StandardCharsets.UTF_8)));
+            }
+            return migraciones;
+        }
+    }
+
+    private static boolean esMigracion(Path ruta) {
+        String texto = ruta.toString().replace('\\', '/');
+        return texto.contains("/src/main/")
+                && texto.contains("/db/migration/")
+                && !texto.contains("/build/")
+                && VERSION_DE_LA_MIGRACION.matcher(ruta.getFileName().toString()).find();
+    }
+
+    /**
+     * El numero de version del nombre del archivo.
+     *
+     * <p>Ordenar por nombre daria {@code V1, V10, V2}, y con ese orden la tabla que recibe su
+     * geometria en {@code V10} se revisaria antes de existir. Se ordena por el numero.
+     */
+    private static int versionDe(Path ruta) {
+        Matcher version = VERSION_DE_LA_MIGRACION.matcher(ruta.getFileName().toString());
+        return version.find() ? Integer.parseInt(version.group(1)) : Integer.MAX_VALUE;
+    }
+
+    private static final Pattern VERSION_DE_LA_MIGRACION = Pattern.compile("^V(\\d+)__.*\\.sql$");
+
+    /** Una migracion de muestra, leida del jar como las demas muestras. */
+    private static Migracion migracionDeMuestra(String nombre) {
+        FuenteDeMuestra fuente = FuenteDeMuestra.de("esquema/" + nombre);
+        assertThat(fuente.texto())
+                .as("la muestra tiene que existir para poder detectarla")
+                .isNotBlank();
+        return new Migracion(fuente.nombre(), fuente.texto());
     }
 
     private static List<Path> fuentesDeProduccion(Path raiz) throws IOException {

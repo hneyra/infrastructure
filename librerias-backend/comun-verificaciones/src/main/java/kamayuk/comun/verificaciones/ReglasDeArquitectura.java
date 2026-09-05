@@ -542,6 +542,70 @@ public final class ReglasDeArquitectura {
                                     + " repositorio corre sin el SET LOCAL que RLS exige y contesta 500,"
                                     + " no una lista vacia (#486)");
 
+    /**
+     * ADR-0035 punto 4: un hallazgo firme NO corrige la ficha.
+     *
+     * <p>ADR-0021 cierra con una frase exacta —«que las dos areas no coincidan es un <b>hallazgo
+     * que se informa</b>, no una correccion que se aplica»— y ADR-0035 la completa dandole al
+     * hallazgo su tabla, su acto y su evidencia. Lo que esta regla protege es la mitad que se
+     * pierde sola: un hallazgo firme <b>habilita</b> el acto que una persona ejecuta, y ese acto es
+     * el que ya existe —versionar la ficha con su observacion obligatoria—.
+     *
+     * <p>El defecto tiene una forma concreta y llega siempre por el mismo camino: la campania deja
+     * cuatro mil hallazgos con su delta de area calculado, alguien mira la cifra y le parece obvio
+     * «aplicarlos». Lo que produce es un padron corregido sin acto administrativo detras: el
+     * contribuyente no recibe papel, no hay plazo que impugnar, y el autovaluo de todo el distrito
+     * cambia sin que nadie lo haya decidido. Es la consecuencia que ADR-0021 evita al negarse a
+     * derivar el area del poligono, por el mismo motivo.
+     *
+     * <p><b>El criterio es el nombre, y hay que decir por que.</b> La regla no puede ser «ninguna
+     * clase de {@code fiscalizacion} escribe la ficha»: la transferencia SI la escribe, es
+     * legitimo, y {@link #SOLO_LA_TRANSFERENCIA_ESCRIBE_FUERA_DE_FISCALIZACION} ya la nombra como
+     * el unico camino. Lo que ADR-0035 prohibe es el OTRO camino, el que sale del hallazgo, y el
+     * hallazgo se distingue por lo que es: {@code candidato} es lo que la maquina sospecha y {@code
+     * hallazgo} lo que una persona verifico, dos tablas y no un estado. Su limite, dicho: una clase
+     * que haga esto y no se llame asi se escapa. Lo que la regla garantiza es que el camino corto
+     * —el que se escribe sin pensarlo, y por eso se llama como lo que tiene delante— sale rojo.
+     */
+    public static final ArchRule NINGUN_HALLAZGO_CORRIGE_LA_FICHA =
+            ArchRuleDefinition.classes()
+                    .that(new EsDelHallazgo())
+                    .should(new SinCorregirLaFicha())
+                    // Ningun repositorio tiene todavia contexto de fiscalizacion catastral: la
+                    // regla nace con la decision y antes que el modulo, que es el orden que este
+                    // proyecto usa a proposito. El permiso NO la deja muda: su muestra viaja en
+                    // esta libreria y la pone roja en los cinco.
+                    .allowEmptyShould(true)
+                    .because(
+                            "un hallazgo firme habilita el acto, no lo ejecuta: corregir el area"
+                                    + " desde aqui deja el padron cambiado sin resolucion que lo"
+                                    + " justifique (ADR-0021, ADR-0035 punto 4)");
+
+    /**
+     * ADR-0021: la geometria entra por la carga, nunca por una peticion HTTP.
+     *
+     * <p>Hoy es una frase del ADR y del javadoc de {@code CatastroRepository} —«la geometria no
+     * entra por ninguna operacion del contrato»— y una frase no es una barrera. El dia que alguien
+     * anada un {@code @RequestBody} con un poligono, el area del predio pasa a poder cambiarla
+     * quien tenga el endpoint, sin brigada, sin plano y sin acto: exactamente lo que ADR-0021
+     * decide que no ocurra cuando se niega a derivar el area del poligono.
+     *
+     * <p><b>Mira lo que ENTRA y no lo que sale</b>, y esa distincion es la regla entera: el visor
+     * publica GeoJSON y eso es el producto (ADR-0022, ADR-0037). Un tipo de respuesta con geometria
+     * dentro es correcto; un parametro con geometria dentro, no.
+     *
+     * <p>Un {@code bbox} no es geometria y no se marca: es un marco, que es justamente la forma que
+     * ADR-0034 obliga a usar.
+     */
+    public static final ArchRule TODA_GEOMETRIA_ENTRA_POR_BATCH =
+            ArchRuleDefinition.classes()
+                    .that(new EsControlador())
+                    .should(new SinGeometriaEnLaPeticion())
+                    .because(
+                            "la geometria entra por la carga cartografica, con su plano y su acta;"
+                                    + " un poligono que entra por HTTP cambia el padron sin que"
+                                    + " nadie lo haya levantado (ADR-0021)");
+
     public static List<ArchRule> todas() {
         return List.of(
                 EL_DOMINIO_NO_CONOCE_FRAMEWORKS,
@@ -561,7 +625,9 @@ public final class ReglasDeArquitectura {
                 EL_PANEL_NO_HABLA_CON_LA_BASE,
                 SOLO_EL_RECORRIDO_MUEVE_EL_CONTEXTO_EN_WEB,
                 EL_CENTINELA_DEL_CIUDADANO_SOLO_SIRVE_AL_PORTAL,
-                NINGUN_CONTROLADOR_SOSTIENE_UN_REPOSITORIO);
+                NINGUN_CONTROLADOR_SOSTIENE_UN_REPOSITORIO,
+                NINGUN_HALLAZGO_CORRIGE_LA_FICHA,
+                TODA_GEOMETRIA_ENTRA_POR_BATCH);
     }
 
     /** Clases del sistema, sin las de prueba ni las de fixtures. */
@@ -996,6 +1062,218 @@ public final class ReglasDeArquitectura {
             return metodo.getAnnotations().stream()
                     .filter(a -> a.getRawType().getName().equals(TRANSACTIONAL))
                     .anyMatch(a -> !Boolean.TRUE.equals(a.get("readOnly").orElse(Boolean.FALSE)));
+        }
+    }
+
+    /**
+     * Las clases del hallazgo catastral: las que ADR-0035 pone del lado de «lo que se informa».
+     *
+     * <p>Se reconocen por el nombre y dentro de {@code ..fiscalizacion..}. Las dos condiciones
+     * juntas: fuera de ese contexto, {@code Hallazgo} puede significar otra cosa —el revisor de
+     * codigo fuente de esta misma libreria devuelve {@code Hallazgo}, y no tiene nada que ver—.
+     */
+    private static final class EsDelHallazgo extends DescribedPredicate<JavaClass> {
+
+        private static final Set<String> LO_QUE_LA_MAQUINA_CREE_Y_LO_QUE_ALGUIEN_FIRMO =
+                Set.of("hallazgo", "candidato");
+
+        EsDelHallazgo() {
+            super("son del hallazgo catastral, dentro de fiscalizacion");
+        }
+
+        @Override
+        public boolean test(JavaClass clase) {
+            if (!clase.getPackageName().contains(".fiscalizacion")) {
+                return false;
+            }
+            String nombre = clase.getSimpleName().toLowerCase(java.util.Locale.ROOT);
+            return LO_QUE_LA_MAQUINA_CREE_Y_LO_QUE_ALGUIEN_FIRMO.stream()
+                    .anyMatch(nombre::contains);
+        }
+    }
+
+    /**
+     * El hallazgo no toca la ficha: ni por el puerto de la transferencia ni por su repositorio.
+     *
+     * <p>Mira las dependencias del bytecode y no los {@code import}, por lo mismo que {@link
+     * SinEscribirFueraDeLaTransferencia}: un {@code import} sin uso no deja rastro y un uso por
+     * nombre completo no deja {@code import}.
+     */
+    private static final class SinCorregirLaFicha extends ArchCondition<JavaClass> {
+
+        /**
+         * Lo que escribe una version de ficha, por el nombre de su tipo.
+         *
+         * <p>{@code TransferenciaDeFiscalizacion} es el puerto que ARQ-01 §3.5 llama la frontera
+         * delicada. Los demas son la forma corta: llamar directamente al repositorio.
+         */
+        private static boolean escribeLaFicha(JavaClass tipo) {
+            String nombre = tipo.getSimpleName();
+            if (nombre.equals("TransferenciaDeFiscalizacion")) {
+                return true;
+            }
+            boolean nombraLaFicha = nombre.contains("Ficha");
+            return nombraLaFicha
+                    && (nombre.endsWith("Repository")
+                            || nombre.endsWith("Repositorio")
+                            || nombre.startsWith("Inscribir")
+                            || nombre.startsWith("Versionar")
+                            || nombre.startsWith("Corregir")
+                            || nombre.startsWith("Actualizar"));
+        }
+
+        SinCorregirLaFicha() {
+            super("no depender de ningun camino de escritura de la ficha catastral");
+        }
+
+        @Override
+        public void check(JavaClass clase, ConditionEvents eventos) {
+            clase.getDirectDependenciesFromSelf().stream()
+                    .map(com.tngtech.archunit.core.domain.Dependency::getTargetClass)
+                    .filter(SinCorregirLaFicha::escribeLaFicha)
+                    .distinct()
+                    .forEach(
+                            destino ->
+                                    eventos.add(
+                                            SimpleConditionEvent.violated(
+                                                    clase,
+                                                    clase.getSimpleName()
+                                                            + " depende de "
+                                                            + destino.getSimpleName()
+                                                            + ": un hallazgo se INFORMA, no corrige"
+                                                            + " el area. Corregirla es versionar la"
+                                                            + " ficha con su observacion, y ese"
+                                                            + " acto lo ejecuta una persona"
+                                                            + " (ADR-0021, ADR-0035 punto 4)")));
+        }
+    }
+
+    /**
+     * Ningun controlador acepta geometria en la peticion (ADR-0021).
+     *
+     * <p>Revisa los parametros, y por cada uno tres cosas: su tipo, el nombre que el cliente usa
+     * —lo que dicen {@code @RequestParam} y compania— y, si el parametro es un {@code record} de la
+     * capa web, los nombres de sus componentes, que es donde vive de verdad un
+     * {@code @RequestBody}.
+     *
+     * <p><b>Un nivel de profundidad y no mas</b>, dicho para que nadie lo descubra tarde: un
+     * poligono escondido dentro de un {@code record} que a su vez esta dentro del cuerpo no se ve.
+     * Recorrer el arbol entero de tipos exigiria decidir donde parar y acabaria marcando cualquier
+     * cosa que arrastre un {@code Map}. El caso que la regla atrapa es el que ocurre: el campo
+     * anadido al DTO de la peticion.
+     */
+    private static final class SinGeometriaEnLaPeticion extends ArchCondition<JavaClass> {
+
+        /** Los nombres con que una geometria entra: el campo, el formato o el tipo PostGIS. */
+        private static final Set<String> NOMBRES_DE_GEOMETRIA =
+                Set.of(
+                        "geometria",
+                        "geometry",
+                        "geography",
+                        "wkt",
+                        "wkb",
+                        "geojson",
+                        "poligono",
+                        "polygon",
+                        "multipolygon",
+                        "linestring",
+                        "coordenadas");
+
+        SinGeometriaEnLaPeticion() {
+            super("no recibir geometria en ningun parametro de la peticion");
+        }
+
+        @Override
+        public void check(JavaClass clase, ConditionEvents eventos) {
+            for (JavaMethod metodo : clase.getMethods()) {
+                for (JavaParameter parametro : metodo.getParameters()) {
+                    JavaClass tipo = parametro.getRawType();
+                    String motivo = motivoDe(metodo, parametro, tipo);
+                    if (motivo != null) {
+                        eventos.add(
+                                SimpleConditionEvent.violated(
+                                        metodo,
+                                        "el metodo "
+                                                + metodo.getFullName()
+                                                + " recibe geometria por la peticion ("
+                                                + motivo
+                                                + "). La geometria entra por la carga, con su plano"
+                                                + " y su acta: un poligono que llega por HTTP mueve"
+                                                + " el padron sin que nadie lo haya levantado"
+                                                + " (ADR-0021)"));
+                    }
+                }
+            }
+        }
+
+        private static String motivoDe(JavaMethod metodo, JavaParameter parametro, JavaClass tipo) {
+            if (nombraGeometria(tipo.getSimpleName())) {
+                return "el tipo " + tipo.getSimpleName();
+            }
+            for (var anotacion : parametro.getAnnotations()) {
+                for (Object valor : anotacion.getProperties().values()) {
+                    if (nombraGeometria(valor.toString())) {
+                        return "el parametro «" + valor + "»";
+                    }
+                }
+            }
+            String nombre = nombreDelParametro(metodo, parametro.getIndex());
+            if (nombre != null && nombraGeometria(nombre)) {
+                return "el parametro «" + nombre + "»";
+            }
+            if (tipo.isRecord()) {
+                for (JavaField componente : tipo.getFields()) {
+                    if (nombraGeometria(componente.getName())) {
+                        return "el componente «"
+                                + componente.getName()
+                                + "» de "
+                                + tipo.getSimpleName();
+                    }
+                }
+            }
+            return null;
+        }
+
+        /**
+         * El nombre del parametro tal y como se escribio, o {@code null} si el bytecode no lo trae.
+         *
+         * <p><b>Hace falta, y se midio.</b> ArchUnit no expone el nombre de un parametro: solo su
+         * tipo y sus anotaciones. Y la forma en que la geometria entra de verdad es
+         * {@code @RequestParam(required = false) String wkt} —sin nombre explicito en la anotacion,
+         * porque Spring lo toma del bytecode—, de modo que mirando solo la anotacion la regla
+         * pasaba en VERDE sobre exactamente el defecto que existe para atrapar. Medido sobre {@code
+         * PlanoCatastralController}.
+         *
+         * <p>El nombre esta en el bytecode porque los cinco backends compilan con {@code
+         * -parameters}, que es tambien lo que Spring necesita para resolverlo. Si algun dia dejara
+         * de estarlo, aqui se devuelve {@code null} y esta mitad de la regla deja de mirar — pero
+         * entonces Spring tampoco sabria enlazar el parametro, asi que el defecto no llegaria a
+         * existir por otro camino.
+         */
+        private static String nombreDelParametro(JavaMethod metodo, int indice) {
+            try {
+                java.lang.reflect.Parameter[] parametros = metodo.reflect().getParameters();
+                if (indice >= parametros.length || !parametros[indice].isNamePresent()) {
+                    return null;
+                }
+                return parametros[indice].getName();
+            } catch (RuntimeException | LinkageError inalcanzable) {
+                // La clase esta en el classpath —ArchUnit la importo de ahi—, pero si no se
+                // pudiera resolver, no mirar es mejor que fallar por una causa que no es la regla.
+                return null;
+            }
+        }
+
+        /**
+         * El nombre dice geometria.
+         *
+         * <p>Compara por segmentos y no por «contiene», para que {@code bbox} y {@code marco} sigan
+         * pasando: un marco es lo que ADR-0034 obliga a mandar, y una regla que lo prohibiera
+         * estaria prohibiendo la unica forma correcta de pedir una tesela.
+         */
+        private static boolean nombraGeometria(String nombre) {
+            String limpio = nombre.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z]", " ");
+            return Arrays.stream(limpio.split(" +")).anyMatch(NOMBRES_DE_GEOMETRIA::contains);
         }
     }
 
