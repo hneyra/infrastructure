@@ -254,7 +254,15 @@ level=error msg="Error opening connection to database"
   err="… pq: role \"sgtm_monitor\" does not exist"
 ```
 
-O sea: `stg` está **sin métricas de PostgreSQL** hasta el `up`. Es el precio del orden que C fijó y
+O sea: `stg` está **sin métricas de PostgreSQL** hasta el `up`. Si se quiere recuperarlas antes,
+es una línea que mueve el clúster **hacia** lo que el código ya declara —el `up` la asienta igual—:
+
+```
+kubectl -n sgtm-stg set env deployment/sgtm-stg-postgres \
+  -c postgres-exporter DATA_SOURCE_USER=kamayuk_monitor
+```
+
+(no se ejecutó: el entorno de esta sesión no lo autorizó). Es el precio del orden que C fijó y
 que no es negociable —`asignar-claves.sh` y `bootstrap-secretos.sh` ya piden `kamayuk_*` y contra un
 motor sin renombrar fallan con «role "kamayuk_app" does not exist»—, y se anota aquí en vez de
 descubrirse. No afecta a `prod`, que está a cero.
