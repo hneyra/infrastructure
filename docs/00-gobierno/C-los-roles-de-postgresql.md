@@ -162,12 +162,15 @@ Nada de esto es un descuido: cada bloque se miró. El criterio es el que `R-AB` 
 | 2 | `rentas/docs/40-datos/baselines/**` — los cuatro `V1__baseline.sql` fechados, su `README.md` y los tres `.java` del arnés | **419** | Es el artefacto de **DAT-02**, generado el 2026-09-03, y su arnés `verificar-baselines.sh`, que compara los baselines **contra las `V1..V78` del monolito**. Renombrarlo haría falsa la afirmación central de su README —«el diff es vacío»— porque el lado del monolito no se puede renombrar. Además el arnés ya es **vestigial** desde C-3 §7 —resuelve `RAIZ` a la raíz de `rentas`, donde no hay `backend/sgtm-esquema`— y las cuatro copias ya divergían de los baselines vivos desde P5E. Lo que de ese directorio sí consume código vivo son `Retrato.java` y `canonizar.py` (el simulacro de restauración lógica), y **ninguno de los dos nombra un rol**. |
 | 3 | `*/docs/00-gobierno/{C-*,P*,R-*,D-*}.md` e `inventario-del-corte.md`, más `rentas/docs/00-gobierno/plan-de-marcha-blanca.md` | **109** | Son **actas**: cada una registra lo que se midió el día que se midió, con su salida literal. Reescribirles los nombres falsificaría la medida. Es el mismo criterio de `R-AB` §4. Incluye `D-plan-del-renombrado-desplegado.md`, que además lo está escribiendo otro agente ahora mismo y **no se tocó ni una línea**. |
 | 4 | `infrastructure/CLAUDE.md`, tres filas de la tabla «Verificar antes de afirmar» (C-7, C-12, C-17) | **3** | Misma razón: son filas históricas. La **prosa viva** del mismo archivo —la línea 156, «`ALTER ROLE` sobre `kamayuk_owner` y `kamayuk_app` vale para todas las bases del clúster»— **sí** se renombró. |
+| 5 | `infrastructure/.github/workflows/infra.yml` | **7** | Seis comentarios y **una invocación viva**, que es el hueco H-1. El encargo prohíbe editar ese directorio; se revirtió entero. De las siete, la que importa es la de la línea 262. |
 
-Reparto por repositorio: `infrastructure` 271 (178 + 90 + 3), `rentas` 430 (419 + 11), `catastro` 3,
-`normativa` 2, `caja` 3. **Ninguna mención viva de los cinco roles queda fuera de esta tabla.**
+Reparto por repositorio: `infrastructure` 278 (178 + 90 + 3 + 7), `rentas` 430 (419 + 11),
+`catastro` 3, `normativa` 2, `caja` 3 — **716 en total**. **Ninguna mención viva de los cinco roles
+queda fuera de esta tabla.**
 
-Las 709 se contaron **sobre el árbol antes de escribir este documento**, que añade 37 más al hablar
-del nombre viejo: es la quinta acta de la lista, y por el mismo motivo que las otras cuatro.
+Las 716 se contaron **sobre el árbol antes de escribir este documento y su fila**, que añaden 44
+más al hablar del nombre viejo: son la quinta acta de la lista, por el mismo motivo que las otras
+cuatro. Contadas después, el árbol dice 322 · 430 · 3 · 2 · 3.
 
 ### Lo que lleva `sgtm` y **no** es un rol — se declara aquí
 
