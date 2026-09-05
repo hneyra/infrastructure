@@ -120,6 +120,40 @@ done
 [ "$(comoSuperusuario "SELECT has_database_privilege('sgtm_readonly','sgtm','CONNECT')")" = "t" ] \
     || { echo "FALLO: sgtm_readonly perdio el CONNECT sobre la base del padron" >&2; exit 1; }
 
+# ── 5c. Las CUATRO bases del producto, con sus roles aplicados (C-14, punto 2) ─
+#
+# Hasta C-14 esto no lo hacia nadie en el cluster (C-7, hueco 3): `baseDeDatos()` de los
+# cuatro descriptores existia y **solo se usaba para auditar**, y los cuatro `Deployment`
+# apuntaban a `jdbc:postgresql://postgres:5432/<sistema>` — una base que no existia.
+#
+# Y crear la base no basta: `crear-roles.sql` de cada sistema concede `USAGE, CREATE` sobre
+# `public` DE ESA BASE, y sin eso el migrador muere en la primera sentencia. Medido contra
+# PostgreSQL 16.15 con el migrador de `catastro` de verdad: sin `06-roles-de-los-sistemas.sh`,
+# «42501 permission denied for schema public»; con el, «Successfully applied 5 migrations».
+#
+# Y el `REVOKE CONNECT ... FROM PUBLIC` de ese mismo archivo, que es la otra mitad: PostgreSQL
+# concede `CONNECT` a PUBLIC al crear una base, los roles son del CLUSTER, y los cuatro sistemas
+# lo comparten. Sin el, la credencial de cualquiera abre una sesion contra la base de cualquier
+# otro (C-7 §2.6).
+echo "· Las cuatro bases del producto, con sus roles"
+for base in rentas catastro normativa caja; do
+    [ "$(comoSuperusuario "SELECT 1 FROM pg_database WHERE datname='$base'" postgres)" = "1" ] \
+        || { echo "FALLO: la base «${base}» no existe. La crea 05-crear-bases.sh, de la lista de archivos de roles que el ConfigMap monta en /etc/kamayuk/roles" >&2; exit 1; }
+    [ "$(comoSuperusuario "SELECT has_schema_privilege('sgtm_owner','public','CREATE')" "$base")" = "t" ] \
+        || { echo "FALLO: sgtm_owner no puede crear en «public» de «${base}»: la migracion moriria en la primera sentencia con 42501. Lo concede 06-roles-de-los-sistemas.sh aplicando el crear-roles.sql de ese sistema contra SU base" >&2; exit 1; }
+    [ "$(comoSuperusuario "SELECT has_database_privilege('public','$base','CONNECT')" postgres)" = "f" ] \
+        || { echo "FALLO: PUBLIC conserva el CONNECT sobre «${base}». Los roles son del CLUSTER: sin el REVOKE, la credencial de cualquier sistema abre una sesion contra la base de otro" >&2; exit 1; }
+    echo "  $base → sgtm_owner puede crear, y PUBLIC no se conecta"
+done
+# Y las extensiones, cada una donde su sistema la declara (C-10). `caja` no declara ninguna a
+# proposito —«la ventanilla tiene que poder correr en el motor mas simple que exista»— y esa
+# frase solo la ejercita alguien si se comprueba.
+[ "$(comoSuperusuario "SELECT 1 FROM pg_extension WHERE extname='postgis'" catastro)" = "1" ] \
+    || { echo "FALLO: catastro no tiene PostGIS, y la usa desde V61" >&2; exit 1; }
+[ -z "$(comoSuperusuario "SELECT extname FROM pg_extension WHERE extname <> 'plpgsql'" caja)" ] \
+    || { echo "FALLO: la base de caja tiene extensiones. No declara ninguna a proposito (P5D)" >&2; exit 1; }
+echo "  catastro tiene PostGIS; caja, ninguna extension"
+
 # ── 5b. El rol de carga no llega a la base de Keycloak ───────────────────────
 #
 # La leccion de `sgtm_respaldo` (#155), aplicada al otro rol privilegiado, y en la

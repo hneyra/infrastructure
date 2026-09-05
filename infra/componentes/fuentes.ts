@@ -195,6 +195,67 @@ export function ciudadanosJson(): FuenteDeMunicipalidad[] {
 }
 
 /**
+ * `05-crear-bases.sh` y `06-roles-de-los-sistemas.sh`, de la inicializacion del motor (C-10, C-14).
+ *
+ * **Los mismos archivos que monta el compose**, no copias. El primero crea las cuatro bases del
+ * producto y las extensiones que cada una DECLARA en su propio `crear-roles.sql`; el segundo
+ * aplica ese archivo entero contra su base, que es lo que le da a `sgtm_owner` el `CREATE` sobre
+ * `public` sin el cual la migracion muere con «42501 permission denied for schema public»
+ * —medido contra PostgreSQL 16.15— y lo que le quita a PUBLIC el `CONNECT` que PostgreSQL le
+ * regala al crear una base.
+ */
+export function crearBasesSh(): string {
+  return leer(join(raizDelRepositorio(), "despliegue/inicializacion-del-motor/05-crear-bases.sh"));
+}
+
+export function rolesDeLosSistemasSh(): string {
+  return leer(
+    join(raizDelRepositorio(), "despliegue/inicializacion-del-motor/06-roles-de-los-sistemas.sh"),
+  );
+}
+
+/**
+ * `lib-extensiones.sh`: la unica implementacion de «que cuenta como extension declarada» (C-10).
+ *
+ * La comparten los dos guiones de arriba y `crear-extensiones.sh`. Dos copias del mismo `grep`
+ * serian dos sitios donde una extension se puede dejar de ver, que es el defecto un escalon mas
+ * abajo.
+ */
+export function libExtensionesSh(): string {
+  return leer(join(raizDelRepositorio(), "despliegue/inicializacion-del-motor/lib-extensiones.sh"));
+}
+
+/**
+ * El `crear-roles.sql` de un sistema, leido de SU clon hermano.
+ *
+ * Es el mismo archivo que su modulo del esquema versiona y que su prueba de aislamiento aplica.
+ * Se lee de alli y no se copia por lo mismo que `crearRolesSql`: una copia aqui seria un segundo
+ * sitio donde olvidar que el rol no puede ser superusuario.
+ *
+ * **Exige el clon hermano y no se salta si falta.** Un `ConfigMap` compuesto sin el dejaria una
+ * base sin sus `GRANT` y sin sus extensiones, y eso no falla al crearse: falla a mitad de la
+ * migracion, una hora despues, con un error que no se parece a su causa (#742).
+ */
+export function crearRolesDeSistema(sistema: string): string {
+  const raiz = resolve(raizDelRepositorio(), "..", sistema);
+  const ruta = join(
+    raiz,
+    "backend",
+    `kamayuk-${sistema}-esquema`,
+    "src/main/resources/db/roles/crear-roles.sql",
+  );
+  if (!existsSync(ruta)) {
+    throw new Error(
+      `No esta «${ruta}», el \`crear-roles.sql\` de «${sistema}». Sin el, su base se crearia ` +
+        "sin los privilegios que su propio esquema declara y la migracion moriria con «42501 " +
+        "permission denied for schema public».\n" +
+        `  Remedio: git clone https://github.com/hneyra/${sistema} ${raiz}`,
+    );
+  }
+  return readFileSync(ruta, "utf8");
+}
+
+/**
  * `40-rol-de-respaldo.sh` (issue #155). Este tambien es de `infra/`: el compose no
  * archiva WAL ni respalda fuera del contenedor, asi que no necesita el rol.
  */

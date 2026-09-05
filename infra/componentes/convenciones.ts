@@ -466,6 +466,35 @@ export function emisorPublico(domain: string, realm: string): string {
  * claves y le conviene no salir al ingreso para volver a entrar. Confundirlos cuesta
  * una tarde y produce un 401 mudo (issue #151).
  */
+/**
+ * La etiqueta con la que un `Namespace` dice que es **de un sistema** y no de la plataforma.
+ *
+ * Existe por una regla de Kubernetes: un `podSelector` sin `namespaceSelector` selecciona pods
+ * **del mismo namespace**, y desde ADR-0031 cada sistema tiene el suyo. Sin esto, las politicas de
+ * la plataforma que abren PostgreSQL y Keycloak solo abren para los pods de la plataforma, de modo
+ * que los cuatro sistemas quedan sin base y sin poder validar un token — y no falla ruidosamente:
+ * el pod arranca, la sonda de arranque no pasa nunca y el `pulumi up` espera.
+ *
+ * Se selecciona por etiqueta y no por nombre porque los nombres son cuatro y crecerian con cada
+ * sistema; y no se reutiliza `proyecto`/`ambiente` porque esos los lleva **tambien** el namespace
+ * de la plataforma, y entonces la regla abriria PostgreSQL a la interfaz, que es justo lo que
+ * `permitirIngresoPostgres` existe para impedir.
+ */
+/**
+ * Los cuatro sistemas del producto, en el orden de ADR-0029.
+ *
+ * Vive aqui —y no en `descriptor/sistemas.ts`— porque quien la necesita es la PLATAFORMA: es de
+ * esta lista de donde salen las cuatro bases que el motor provisiona al arrancar. `componentes/`
+ * no puede importar de `descriptor/`, que es quien compone los descriptores ajenos.
+ *
+ * Y no es una quinta lista escrita a mano: `descriptor.test.ts` comprueba que estos cuatro sean
+ * exactamente los que `SISTEMAS` compone, de modo que un sistema nuevo no puede entrar por un
+ * lado y quedarse sin base por el otro.
+ */
+export const SISTEMAS_DEL_PRODUCTO = ["rentas", "catastro", "normativa", "caja"] as const;
+
+export const ETIQUETA_DE_NAMESPACE_DE_SISTEMA = { "kamayuk-sistema": "si" } as const;
+
 export function jwksInterno(environment: Environment, realm: string): string {
   const servicio = servicioDeIdentidad(environment);
   return `http://${servicio}:8080/keycloak/realms/${realm}/protocol/openid-connect/certs`;

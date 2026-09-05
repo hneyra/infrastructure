@@ -5,6 +5,7 @@ import { entornoPara } from "../descriptor/entorno";
 import { SISTEMAS } from "../descriptor/sistemas";
 import { secretos } from "../componentes/convenciones";
 import { namespaceName, ENVIRONMENTS, type Environment } from "../config";
+import type { Manifiesto } from "../componentes/tipos";
 import { invariantesDe } from "../verificaciones/stacks";
 
 /**
@@ -57,6 +58,46 @@ export function leerOpciones(argv: string[]): Opciones {
     : { ambiente: ambiente as Environment, componente };
 }
 
+/**
+ * El entorno que reciben los cuatro descriptores de este ambiente.
+ *
+ * Exportado porque lo usan tanto `emitir` como `capacidad.ts`: los dos tienen que mirar los
+ * MISMOS manifiestos, y una segunda composicion del entorno seria un segundo sitio donde olvidar
+ * un campo.
+ */
+export function entornoDelAmbiente(ambiente: Environment) {
+  const invariantes = invariantesDe(ambiente);
+  return entornoPara(
+    ambiente,
+    invariantes.ingress.domain,
+    invariantes.application.bootstrapVersion,
+    invariantes.operacion,
+    { ...invariantes.implantacion, esDemostracion: invariantes.application.isDemonstration },
+    invariantes.identity.realm,
+  );
+}
+
+/**
+ * Los manifiestos de los cuatro sistemas, ya auditados.
+ *
+ * Separado de `emitir` para que `capacidad.ts` pueda sumarlos sin pasar por el JSON: hasta C-14
+ * `yarn capacidad` solo veia la plataforma, asi que las cinco replicas de los cuatro sistemas no
+ * entraban en la cuenta de lo que cabe en el nodo.
+ */
+export function manifiestosDeLosSistemas(
+  ambiente: Environment,
+  plataforma: Manifiesto[],
+): Manifiesto[] {
+  const entornoDe = entornoDelAmbiente(ambiente);
+  return componerOFallar(SISTEMAS, entornoDe, {
+    secretoDeOwner: secretos(ambiente).owner,
+    basesDelClustre: SISTEMAS.map(
+      (s) => s.descriptor.baseDeDatos(entornoDe(s.descriptor.sistema)).nombre,
+    ),
+    manifiestosDeLaPlataforma: plataforma,
+  });
+}
+
 export function emitir(opciones: Opciones): string {
   const ambiente = opciones.ambiente;
   const invariantes = invariantesDe(ambiente);
@@ -65,12 +106,11 @@ export function emitir(opciones: Opciones): string {
   // Y los cuatro sistemas (ADR-0031 §2). `componerOFallar` los audita con las MISMAS reglas
   // que la plataforma y lanza antes de emitir nada: un descriptor ajeno mal formado no puede
   // entrar por ser ajeno.
-  const deLosSistemas = componerOFallar(SISTEMAS, entornoPara(ambiente, invariantes.ingress.domain, invariantes.application.bootstrapVersion, invariantes.operacion), {
-    secretoDeOwner: secretos(ambiente).owner,
-    basesDelClustre: SISTEMAS.map((s) => s.descriptor.baseDeDatos(
-      entornoPara(ambiente, invariantes.ingress.domain, invariantes.application.bootstrapVersion, invariantes.operacion)(s.descriptor.sistema)).nombre),
-    manifiestosDeLaPlataforma: plataforma,
-  });
+  //
+  // La composicion vive en `manifiestosDeLosSistemas` y no aqui porque `capacidad.ts` necesita
+  // los MISMOS manifiestos: hasta C-14 `yarn capacidad` solo veia la plataforma, y las cinco
+  // replicas de los cuatro sistemas no entraban en la cuenta de lo que cabe en el nodo.
+  const deLosSistemas = manifiestosDeLosSistemas(ambiente, plataforma);
 
   const todos = [...plataforma, ...deLosSistemas];
 

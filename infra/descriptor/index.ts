@@ -23,6 +23,7 @@
  * primero se vea en el diff de los manifiestos y no de sorpresa.
  */
 
+import { ETIQUETA_DE_NAMESPACE_DE_SISTEMA } from "../componentes/convenciones";
 import type { Manifiesto } from "../componentes/tipos";
 import {
   auditarDescriptor,
@@ -85,7 +86,13 @@ export function componerDescriptores(
     manifiestos.push({
       apiVersion: "v1",
       kind: "Namespace",
-      metadata: { name: entorno.namespace, labels: { ...entorno.etiquetas } },
+      metadata: {
+        name: entorno.namespace,
+        // La etiqueta que dice que este namespace es DE UN SISTEMA. Es lo que las politicas de
+        // red de la plataforma seleccionan para abrirle PostgreSQL y Keycloak (C-14, punto 3):
+        // sin ella, un `podSelector` de la plataforma solo alcanza a los pods de la plataforma.
+        labels: { ...entorno.etiquetas, ...ETIQUETA_DE_NAMESPACE_DE_SISTEMA },
+      },
     });
     manifiestos.push(...manifiestosDe(descriptor, entorno));
   }

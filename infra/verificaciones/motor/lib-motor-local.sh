@@ -56,17 +56,43 @@ echo "· Extrayendo la inicializacion del manifiesto de «${AMBIENTE}»"
 (cd "$LIB_MOTOR_INFRA" && yarn --silent manifiestos --ambiente "$AMBIENTE" --componente postgres) \
     > "$TRABAJO/postgres.json"
 
+# DOS ConfigMap desde C-14, y no valen lo mismo:
+#
+#   · `postgres-inicializacion` va a `docker-entrypoint-initdb.d` y el entrypoint lo EJECUTA;
+#   · `postgres-roles-de-los-sistemas` va a `/etc/kamayuk` y los guiones lo LEEN —los cuatro
+#     `crear-roles.sql`, de donde salen las bases del producto y sus extensiones (C-10)—.
+#
+# Se distinguen por el volumen que los monta, no por el orden en que aparecen: cual sea el
+# primero del arreglo es un detalle de composicion, y `find` se quedaria con el que fuera.
+# Y las rutas de los `.sql` salen de los `items` del volumen, porque una clave de ConfigMap no
+# puede llevar `/` y el subdirectorio lo pone ahi el kubelet.
 node --input-type=module -e "
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 const lista = JSON.parse(readFileSync('$TRABAJO/postgres.json', 'utf8'));
-const configuracion = lista.items.find((i) => i.kind === 'ConfigMap');
-if (!configuracion) throw new Error('El manifiesto no trae el ConfigMap de inicializacion');
-mkdirSync('$TRABAJO/inicializacion', { recursive: true });
-for (const [nombre, contenido] of Object.entries(configuracion.data)) {
-  writeFileSync('$TRABAJO/inicializacion/' + nombre, contenido);
-}
 const motor = lista.items.find((i) => i.kind === 'Deployment');
-writeFileSync('$TRABAJO/imagen', motor.spec.template.spec.containers[0].image);
+const pod = motor.spec.template.spec;
+const porNombre = new Map(lista.items.filter((i) => i.kind === 'ConfigMap').map((i) => [i.metadata.name, i]));
+
+const destinoDe = { '/docker-entrypoint-initdb.d': 'inicializacion', '/etc/kamayuk': 'kamayuk' };
+for (const c of pod.containers) {
+  for (const montaje of c.volumeMounts ?? []) {
+    const carpeta = destinoDe[montaje.mountPath];
+    if (carpeta === undefined) continue;
+    const volumen = pod.volumes.find((v) => v.name === montaje.name);
+    const configuracion = porNombre.get(volumen?.configMap?.name);
+    if (!configuracion) throw new Error('No esta el ConfigMap de ' + montaje.mountPath);
+    const rutas = volumen.configMap.items
+      ? volumen.configMap.items.map((i) => [i.path, configuracion.data[i.key]])
+      : Object.entries(configuracion.data);
+    for (const [ruta, contenido] of rutas) {
+      const archivo = join('$TRABAJO', carpeta, ruta);
+      mkdirSync(dirname(archivo), { recursive: true });
+      writeFileSync(archivo, contenido);
+    }
+  }
+}
+writeFileSync('$TRABAJO/imagen', pod.containers[0].image);
 "
 chmod +x "$TRABAJO"/inicializacion/*.sh
 MOTOR_IMAGEN=$(cat "$TRABAJO/imagen")
@@ -98,6 +124,7 @@ motor_docker_run() {
         --env SGTM_CLAVE_MONITOREO="$CLAVE_MONITOREO" \
         --env PGDATA=/var/lib/postgresql/data/pgdata \
         --volume "$TRABAJO/inicializacion:/docker-entrypoint-initdb.d:ro" \
+        --volume "$TRABAJO/kamayuk:/etc/kamayuk:ro" \
         --publish "127.0.0.1:$PUERTO:5432" \
         "$MOTOR_IMAGEN" >/dev/null
 }
@@ -140,7 +167,10 @@ motor_arrancar_localmente() {
         case "$guion" in
             *.sql) psql --quiet -v ON_ERROR_STOP=1 --username=postgres --file="$guion" sgtm \
                        >/dev/null ;;
+            # `SGTM_DIR_KAMAYUK` existe justo para esto: los dos guiones de C-14 leen de
+            # `/etc/kamayuk` dentro del contenedor y de aqui cuando se corren fuera.
             *.sh) POSTGRES_USER=postgres POSTGRES_DB=sgtm \
+                  SGTM_DIR_KAMAYUK="$TRABAJO/kamayuk" \
                   SGTM_CLAVE_OWNER="$CLAVE_OWNER" SGTM_CLAVE_APP="$CLAVE_APP" \
                   SGTM_CLAVE_CARGA="$CLAVE_CARGA" \
                   SGTM_CLAVE_IDENTIDAD="$CLAVE_IDENTIDAD" \

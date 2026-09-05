@@ -1,6 +1,7 @@
 import { commonLabels, resourceName, type Environment } from "../config";
 import {
   BASE_DEL_PADRON,
+  SISTEMAS_DEL_PRODUCTO,
   CLAVES,
   RECURSOS,
   contenedorDeDescargaDeWalg,
@@ -22,9 +23,13 @@ import {
 import {
   asignarClavesSh,
   baseDeKeycloakSh,
+  crearBasesSh,
+  crearRolesDeSistema,
   crearRolesSql,
+  libExtensionesSh,
   rolDeMonitoreoSh,
   rolDeRespaldoSh,
+  rolesDeLosSistemasSh,
 } from "./fuentes";
 import type { ConfigMap, Deployment, Manifiesto, PersistentVolumeClaim, Service } from "./tipos";
 
@@ -131,11 +136,50 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
     },
     data: {
       // El orden alfabetico es el orden de ejecucion. Es el mismo que en el compose.
+      //
+      // Los dos primeros son de C-14, punto 2, y cierran el hueco 3 de C-7: hasta entonces
+      // NADA creaba las cuatro bases del producto ni sus roles en el cluster —`baseDeDatos()`
+      // de los cuatro descriptores existia y solo se usaba para auditar—, asi que los cuatro
+      // `Deployment` apuntaban a `jdbc:postgresql://postgres:5432/<sistema>` y esa base no
+      // existia. El `05` va antes que el `10` a proposito: el del monolito corre contra la base
+      // por omision, y estos crean las suyas.
+      "05-crear-bases.sh": crearBasesSh(),
+      "06-roles-de-los-sistemas.sh": rolesDeLosSistemasSh(),
       "10-crear-roles.sql": crearRolesSql(),
       "20-asignar-claves.sh": asignarClavesSh(),
       "30-base-de-keycloak.sh": baseDeKeycloakSh(),
       "40-rol-de-respaldo.sh": rolDeRespaldoSh(),
       "50-rol-de-monitoreo.sh": rolDeMonitoreoSh(),
+    },
+  };
+
+  /**
+   * Lo que los dos guiones nuevos LEEN, y que por eso NO puede caer en
+   * `docker-entrypoint-initdb.d`.
+   *
+   * Todo `.sql` que caiga alli lo **ejecuta** el entrypoint contra la base por omision. Los
+   * cuatro `crear-roles.sql` hay que leerlos —para derivar las extensiones— y aplicarlos **cada
+   * uno contra su base**; ejecutados contra `postgres` crearian ahi las extensiones de todos y
+   * ninguna donde toca, que es justo al reves de lo que C-10 decidio. Es el mismo reparto que el
+   * compose ya hace con sus dos montajes.
+   */
+  const deLosSistemas: ConfigMap = {
+    apiVersion: "v1",
+    kind: "ConfigMap",
+    metadata: {
+      name: resourceName(environment, "postgres-roles-de-los-sistemas"),
+      namespace,
+      labels: etiquetas,
+    },
+    data: {
+      "lib-extensiones.sh": libExtensionesSh(),
+      // Un archivo por sistema, y el NOMBRE es el de la base: de estos nombres sale la lista de
+      // bases que los dos guiones crean y provisionan. Anadir un sistema es anadir una linea
+      // aqui, no editar ningun guion.
+      // La clave es PLANA —`rentas.sql`— y el subdirectorio lo pone el `path` del volumen:
+      // una clave de `ConfigMap` solo admite `[-._a-zA-Z0-9]+` y una barra no cabe. El nombre
+      // sin extension es el de la base, que es de donde los dos guiones sacan la lista.
+      ...Object.fromEntries(SISTEMAS_DEL_PRODUCTO.map((s) => [`${s}.sql`, crearRolesDeSistema(s)])),
     },
   };
 
@@ -281,6 +325,9 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
               volumeMounts: [
                 { name: "datos", mountPath: "/var/lib/postgresql/data" },
                 { name: "inicializacion", mountPath: "/docker-entrypoint-initdb.d", readOnly: true },
+                // Lo que los guiones LEEN. Fuera de `initdb.d` a proposito: ver el comentario
+                // de `deLosSistemas`.
+                { name: "roles-de-los-sistemas", mountPath: "/etc/kamayuk", readOnly: true },
                 montajeDeWalg(),
               ],
               // El arranque de un motor con un padron grande no es instantaneo, y
@@ -353,6 +400,29 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
             // ejecucion: el motor los ignoraria en silencio y la base arrancaria sin
             // claves asignadas.
             { name: "inicializacion", configMap: { name: inicializacion.metadata.name, defaultMode: 493 } },
+            // 0o444: aqui no se ejecuta nada, se lee. `lib-extensiones.sh` se hace `source`, no
+            // se invoca.
+            //
+            // Las claves con `/` dentro —`roles/<sistema>.sql`— las proyecta el kubelet como
+            // subdirectorio, que es lo que hace que `$DIR/roles/*.sql` encuentre los cuatro sin
+            // que ningun guion tenga que saber cuantos hay.
+            {
+              name: "roles-de-los-sistemas",
+              configMap: {
+                name: deLosSistemas.metadata.name,
+                defaultMode: 292,
+                // `items` y no la proyeccion por omision: los cuatro `.sql` tienen que caer en
+                // `roles/`, que es donde `$DIR/roles/*.sql` los busca, y una clave de ConfigMap
+                // no puede llevar la barra dentro.
+                items: [
+                  { key: "lib-extensiones.sh", path: "lib-extensiones.sh" },
+                  ...SISTEMAS_DEL_PRODUCTO.map((s) => ({
+                    key: `${s}.sql`,
+                    path: `roles/${s}.sql`,
+                  })),
+                ],
+              },
+            },
             volumenDeWalg(),
             volumenDeTmpDeWalg(),
           ],
@@ -380,5 +450,5 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
     },
   };
 
-  return [inicializacion, volumen, motor, servicio];
+  return [inicializacion, deLosSistemas, volumen, motor, servicio];
 }

@@ -8,15 +8,15 @@
  *
  *   yarn grafo --ambiente stg
  */
-import { invariantesDe } from "../verificaciones/stacks";
-import { entornoPara } from "../descriptor/entorno";
+import { entornoDelAmbiente } from "./emitir-manifiestos";
 import { grafoDeEgreso, SISTEMAS } from "../descriptor/sistemas";
 import type { Environment } from "../config";
 
 const i = process.argv.indexOf("--ambiente");
 const ambiente = (i >= 0 ? process.argv[i + 1] : "stg") as Environment;
-const inv = invariantesDe(ambiente);
-const grafo = grafoDeEgreso(entornoPara(ambiente, inv.ingress.domain, inv.application.bootstrapVersion, inv.operacion));
+// El MISMO entorno con que se componen los manifiestos. Componerlo aqui a mano seria un segundo
+// sitio donde olvidar un campo, y el grafo hablaria de un ambiente que no es el que se despliega.
+const grafo = grafoDeEgreso(entornoDelAmbiente(ambiente));
 
 console.log(`Grafo de egreso de «${ambiente}» — ${SISTEMAS.length} sistemas\n`);
 for (const sistema of Object.keys(grafo).sort()) {

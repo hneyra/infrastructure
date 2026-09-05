@@ -103,6 +103,12 @@ config:
   sgtm:tipoDeMunicipalidad: DISTRITAL
   sgtm:administrador: administrador
   sgtm:nombreDelAdministrador: Administrador del sistema
+  # El `id` de la fila que crea el Job de implantacion, y que los procesos por lotes de
+  # los cuatro sistemas fijan como contexto de tenant (C-14 §3). `municipalidad.id` es
+  # una columna `IDENTITY`: en una base recien creada vale 1 por construccion. Se declara
+  # y no se deriva —componer manifiestos no habla con ninguna base—, y por eso
+  # `checkInvariants` solo puede exigir que sea un entero mayor que cero.
+  sgtm:municipalidadId: "1"
   # La municipalidad de stg se da de alta MARCADA: todo documento que emita sale
   # marcado en los tres formatos (INF-03 §3.2, issue #122). `config.ts` lo exige.
   sgtm:esDemostracion: "true"

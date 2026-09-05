@@ -34,6 +34,22 @@ const ENTORNO: EntornoDelDescriptor = {
   secretoDe: (c) => `kamayuk-stg-${c}`,
   prioridadDe: (clase) => nombreDePrioridad("stg", clase),
   operacion: { responsable: "Jefa de Tesoreria", canal: "tesoreria@example.pe" },
+  implantacion: {
+    ubigeo: "200105",
+    nombre: "Municipalidad Distrital de Catacaos",
+    tipo: "DISTRITAL",
+    administrador: "administrador",
+    nombreDelAdministrador: "Administrador del sistema",
+    esDemostracion: true,
+    municipalidadId: 1,
+  },
+  namespaceDe: (sistema) => `kamayuk-${sistema}-stg`,
+  nombreConVersion: (base) => `${base}-0eee58e43e04`,
+  plataforma: {
+    namespace: "sgtm-stg",
+    emisor: "https://stg.sgtm.example/keycloak/realms/sgtm",
+    jwks: "http://sgtm-stg-identidad.sgtm-stg:8080/keycloak/realms/sgtm/protocol/openid-connect/certs",
+  },
 };
 
 /**

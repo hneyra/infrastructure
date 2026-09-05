@@ -83,6 +83,96 @@ export interface EntornoDelDescriptor {
     /** Donde se le avisa: un correo, un canal de mensajeria, un telefono. */
     readonly canal: string;
   };
+  /**
+   * La municipalidad que este ambiente implanta (C-14, punto 4).
+   *
+   * Del **ambiente** y no del sistema, como `operacion`: la pregunta que contesta es «a que
+   * municipalidad sirve stg» y «a cual prod», no «cual implanta catastro». Los cuatro sistemas
+   * implantan **la misma**, cada uno en su base: `municipalidad` existe en los cuatro baselines
+   * con su `es_demostracion`, y `SoloEnDemostracion` la consulta en la base de su propio sistema.
+   *
+   * Sale de `Pulumi.<ambiente>.yaml` —las mismas claves que ya alimentan el Job de implantacion
+   * del monolito desde el issue #150— y `checkInvariants` la valida antes de componer nada: seis
+   * digitos de ubigeo, tipo DISTRITAL o PROVINCIAL, y `esDemostracion` **declarado** en prod.
+   */
+  readonly implantacion: {
+    /** Seis digitos. Es la clave por la que la implantacion es idempotente. */
+    readonly ubigeo: string;
+    readonly nombre: string;
+    readonly tipo: "DISTRITAL" | "PROVINCIAL";
+    /** Cuenta del primer administrador. La MISMA que exista en Keycloak. */
+    readonly administrador: string;
+    readonly nombreDelAdministrador: string;
+    /** Si la instalacion sale marcada en todo documento que emita (INF-03 §3.2, #122). */
+    readonly esDemostracion: boolean;
+    /**
+     * El `id` de la fila que la implantacion crea, que es lo que los procesos por lotes
+     * fijan como contexto de tenant.
+     *
+     * **Se declara y no se deriva, y hay que decir lo que eso cuesta**: es una columna
+     * `IDENTITY`, asi que en una base recien creada vale 1 por construccion, pero nada aqui lo
+     * comprueba contra la fila. Un valor que no corresponda a la municipalidad del `ubigeo` deja
+     * al ingestor y al publicador proyectando bajo otro contexto — y RLS no lo delata, porque la
+     * base hace exactamente lo que se le pide. Cerrarlo exige que esos procesos resuelvan el
+     * ubigeo ellos mismos, que es un cambio de backend en `rentas` y en `catastro` (C-14 §6).
+     */
+    readonly municipalidadId: number;
+  };
+  /**
+   * El namespace de OTRO sistema en este ambiente.
+   *
+   * Hace falta para dos cosas que no se pueden componer a mano sin repetir la convencion:
+   * la direccion de un servicio ajeno —`catastro` es quien sirve el buzon que `rentas`
+   * consume (C-8)— y el `namespaceSelector` de una politica de egreso.
+   *
+   * **Lo segundo no es un adorno.** Cada sistema tiene su namespace desde ADR-0031, y un
+   * `podSelector` sin `namespaceSelector` selecciona pods **del mismo namespace**: una regla
+   * de egreso escrita asi no abre nada, y el sintoma es trafico denegado con una politica que
+   * dice permitirlo.
+   *
+   * No da acceso a nada: es una cadena. Lo que un sistema puede llamar sigue siendo lo que
+   * declara en `egreso()`, revisable en un PR.
+   */
+  namespaceDe(sistema: string): string;
+  /**
+   * Un nombre de recurso que **cambia con la version desplegada**.
+   *
+   * Existe por una regla de Kubernetes y no por gusto: **un `Job` es inmutable**. Su plantilla de
+   * pod no se puede modificar, asi que un Job cuyo nombre no cambie hace fallar el `pulumi up` de
+   * la version siguiente al intentar actualizarlo —la imagen lleva la etiqueta dentro—. El
+   * monolito lo resolvio asi desde el issue #150 (`sufijoDeVersion`), y los cuatro sistemas
+   * nacieron sin ello: sus Jobs se llamaban igual en toda version.
+   *
+   * Devuelve el sufijo **recortado y saneado**, no la version: con doce caracteres no se puede
+   * recomponer la referencia de una imagen, asi que esto no abre una puerta a la prohibicion (b).
+   *
+   * Volver a aplicar la MISMA version no crea nada: el Job ya existe y ya termino. Migrar e
+   * implantar son idempotentes los dos.
+   */
+  nombreConVersion(base: string): string;
+  /**
+   * Lo que la plataforma sirve, y donde vive.
+   *
+   * Los cuatro sistemas comparten **un** motor y **un** emisor de identidad: son de
+   * `infrastructure`, viven en su namespace y ningun descriptor los despliega. Lo que se
+   * entrega aqui son las tres cosas que un sistema necesita saber de ellos y no puede componer
+   * sin repetir una convencion ajena.
+   *
+   * El reparto entre `emisor` y `jwks` **no es un detalle**: el emisor es una IDENTIDAD —es lo
+   * que se compara con el `iss` del token, y lo que hace que un token de otro realm no valga— y
+   * el JWKS es una DIRECCION DE RED. En un despliegue con contenedores las dos no coinciden: el
+   * navegador llega a Keycloak por el nombre publico y el backend lo alcanza por el interno. Usar
+   * el publico para las dos cosas deja al backend descargando las claves por el ingreso para
+   * volver a entrar, y **todo token seria invalido por un motivo que no se parece a su causa**.
+   */
+  readonly plataforma: {
+    /** Su namespace. Hace falta para el `namespaceSelector` de las politicas de egreso. */
+    readonly namespace: string;
+    /** El emisor OIDC, publico. Es lo que se compara con el `iss`. */
+    readonly emisor: string;
+    /** El JWKS, direccion de red **interna**, ya cruzando el namespace. */
+    readonly jwks: string;
+  };
 }
 
 /**
@@ -146,7 +236,7 @@ export interface PanelDeclarado {
 /**
  * Lo que un sistema aporta.
  *
- * Ocho miembros, y los seis que producen manifiestos son **funciones puras que reciben
+ * Diez miembros, y los ocho que producen manifiestos son **funciones puras que reciben
  * el entorno y devuelven objetos planos**. Estan separadas en vez de en un solo
  * `manifiestos()` para que el mensaje de la auditoria pueda decir *que* parte del
  * descriptor esta mal, que es la mitad del valor de una auditoria.
@@ -168,8 +258,35 @@ export interface DescriptorDeSistema {
   baseDeDatos(entorno: EntornoDelDescriptor): BaseDeDatosDeclarada;
   /** Su `Deployment` y su `Service`. Si tiene mas de un perfil, uno por perfil. */
   despliegue(entorno: EntornoDelDescriptor): Manifiesto[];
-  /** Su `Job` de migracion. Cada base tiene sus migraciones y su prueba de aislamiento. */
+  /**
+   * Su `Job` de migracion. Cada base tiene sus migraciones y su prueba de aislamiento.
+   *
+   * **Corre la imagen del migrador, no la de la aplicacion** (C-14, punto 1). Son dos objetivos
+   * del mismo `Dockerfile` y dos imagenes publicadas: la aplicacion arranca con
+   * `spring.flyway.enabled: false` a proposito (ARQ-03 §4), asi que un Job que corriera la imagen
+   * de la aplicacion **no migraria** — arrancaria el proceso web con las credenciales de
+   * `sgtm_owner`, que es lo peor de las dos cosas.
+   */
   migracion(entorno: EntornoDelDescriptor): Manifiesto[];
+  /**
+   * Su `Job` de implantacion: la fila de `municipalidad` en SU base, y la copia local de
+   * usuarios, grupos y accesos (C-7 §2.3).
+   *
+   * Va detras de la migracion y **no se puede pedir que la espere mirando el API de Kubernetes**:
+   * eso exigiria una cuenta de servicio con permiso para leer Jobs. Lo que hace es asegurarse de
+   * que el esquema esta, corriendo el migrador —que es idempotente— como contenedor de
+   * inicializacion. Es mas fuerte que la espera del monolito, que solo comprueba que
+   * `flyway_schema_history` tenga una fila.
+   */
+  implantacion(entorno: EntornoDelDescriptor): Manifiesto[];
+  /**
+   * Sus procesos por lotes con ventana: los `CronJob` del perfil `batch`.
+   *
+   * Vacio es una respuesta legitima —`normativa` y `caja` no tienen ninguno— y no es lo mismo que
+   * un `CronJob` suspendido: lo primero dice «este sistema no corre nada de madrugada» y lo
+   * segundo «corre esto, y hoy no puede».
+   */
+  lotes(entorno: EntornoDelDescriptor): Manifiesto[];
   /** Sus rutas, **bajo su prefijo**. */
   ingreso(entorno: EntornoDelDescriptor): Manifiesto[];
   /**
@@ -193,7 +310,9 @@ export function manifiestosDe(
 ): Manifiesto[] {
   return [
     ...d.migracion(entorno),
+    ...d.implantacion(entorno),
     ...d.despliegue(entorno),
+    ...d.lotes(entorno),
     ...d.ingreso(entorno),
     ...d.egreso(entorno),
   ];

@@ -229,6 +229,18 @@ export interface ImplantacionSettings {
   /** Cuenta del primer administrador. La misma que existe en Keycloak. */
   administrador: string;
   nombreDelAdministrador: string;
+  /**
+   * El `id` de la fila que crea el Job de implantación, y que los procesos por lotes de los
+   * cuatro sistemas fijan como contexto de tenant (C-14, punto 3).
+   *
+   * **Se declara y no se deriva.** `municipalidad.id` es una columna `IDENTITY`, así que en una
+   * base recién creada vale 1 por construcción; lo que este repositorio no puede hacer es
+   * comprobarlo contra la fila, porque componer manifiestos no habla con ninguna base. Un valor
+   * que no corresponda al `ubigeo` deja al ingestor de `rentas` y al publicador de `catastro`
+   * proyectando bajo otro contexto, y RLS no lo delata: la base hace exactamente lo que se le
+   * pide. Cerrarlo exige que esos dos procesos resuelvan el ubigeo ellos mismos (C-14 §6).
+   */
+  municipalidadId: number;
 }
 
 /**
@@ -409,6 +421,21 @@ function requireText(reader: ConfigReader, key: string, purpose: string): string
 }
 
 /**
+ * Lo mismo para un número, y con la misma exigencia: sin valor por omisión.
+ *
+ * `Number.isFinite` y no `!isNaN`: `Number("")` es 0 e `Infinity` es un número. Un cero o un
+ * infinito colados aquí serían un `id` de municipalidad que no existe, y el síntoma llegaría como
+ * «el ingestor no proyecta nada» en vez de como «esta clave está mal».
+ */
+function requireNumber(reader: ConfigReader, key: string, purpose: string): number {
+  const value = reader.number(key);
+  if (value === undefined || !Number.isFinite(value)) {
+    throw new MissingConfigError(key, purpose);
+  }
+  return value;
+}
+
+/**
  * El relay SMTP, o `undefined` si el ambiente no lo declara.
  *
  * `keycloakSmtpHost` es el interruptor: sin él no hay relay (ADR-0012, Opción B).
@@ -524,6 +551,14 @@ export function readInvariants(environment: Environment, reader: ConfigReader): 
       ),
       nombreDelAdministrador:
         reader.text("nombreDelAdministrador") ?? "Administrador del sistema",
+      // Sin valor por omisión: un `?? 1` haría que olvidarlo se leyera igual que declararlo, y
+      // lo que se declara aquí decide bajo qué municipalidad escriben los procesos por lotes.
+      municipalidadId: requireNumber(
+        reader,
+        "municipalidadId",
+        "el `id` de la fila de `municipalidad` que crea el Job de implantación; es lo que los" +
+          " procesos por lotes de los cuatro sistemas fijan como contexto de tenant (C-14)",
+      ),
     },
     observability: {
       ...(reader.text("alertWebhookUrl") === undefined
@@ -767,6 +802,22 @@ export function checkInvariants(s: Invariants): string[] {
         "a medias y aquí llega antes de tocar el clúster.",
     );
   }
+  // C-14 §3 — el `id` con que los procesos por lotes fijan el contexto de tenant.
+  //
+  // Entero y mayor que cero, que es lo que puede valer una columna `IDENTITY`. No se comprueba
+  // contra ninguna base —componer manifiestos no habla con ninguna—, así que lo que esto impide
+  // es lo único que se puede impedir sin clúster: un `0`, un decimal o un negativo, que no son
+  // ninguna fila y dejarían al ingestor escribiendo bajo un contexto que no existe.
+  if (!Number.isInteger(s.implantacion.municipalidadId) || s.implantacion.municipalidadId < 1) {
+    problems.push(
+      `\`municipalidadId\` vale «${String(s.implantacion.municipalidadId)}» y tiene que ser un ` +
+        "entero mayor que cero: es el `id` de la fila de `municipalidad` que crea el Job de " +
+        "implantación, y en una base recién creada vale 1. Con un valor que no sea una fila, el " +
+        "ingestor de `rentas` y el publicador de `catastro` proyectan bajo un contexto que no " +
+        "existe, y RLS no lo delata: la base hace exactamente lo que se le pide.",
+    );
+  }
+
   if (s.implantacion.tipo !== "DISTRITAL" && s.implantacion.tipo !== "PROVINCIAL") {
     problems.push(
       `\`tipoDeMunicipalidad\` vale «${s.implantacion.tipo}»: es DISTRITAL o PROVINCIAL.`,

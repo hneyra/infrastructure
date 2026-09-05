@@ -29,6 +29,7 @@ export type {
 export type {
   ConfigMap,
   Contenedor,
+  CronJob,
   Deployment,
   EspecificacionDePod,
   IngressRoute,

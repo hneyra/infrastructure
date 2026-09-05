@@ -12,37 +12,60 @@ import { SISTEMAS_CON_APLICACION, exigidasPor, variablesSinOmision } from "./var
  * antes de atender nada — que es lo que le pasaba al pod de `caja` desde P5D, con el hueco escrito
  * en su propio descriptor y nadie midiendolo.
  *
- * ## Solo los `Deployment`, y hay que decir por que
+ * ## Todo pod que corra la imagen de la APLICACION, y hay que decir por que
  *
- * Los `Job` de migracion de los cuatro sistemas quedan FUERA, y no por comodidad: hoy **no
- * migran**. Medido sobre los manifiestos de `stg`, el de `catastro` es
- * `ghcr.io/hneyra/kamayuk-catastro:<tag>` —la MISMA imagen que el Deployment, porque el descriptor
- * declara `imagenes: [SISTEMA]`, una sola— con `SGTM_DB_USUARIO=sgtm_owner` y **sin**
- * `SPRING_PROFILES_ACTIVE`. O sea: arranca la aplicacion, no el migrador, y la aplicacion tiene
- * `spring.flyway.enabled: false` a proposito (ARQ-03 §4). Incluir esos Jobs aqui pondria esta
- * guarda roja por un defecto que no es el que mide, y arreglarlo exige decidir antes que imagen
- * publica cada repositorio —el `Dockerfile` tiene dos objetivos, `aplicacion` y `migrador`, y el
- * descriptor declara una— . Queda declarado en C-7 §huecos.
+ * Hasta C-14 esto miraba **solo** los `Deployment`, y no por comodidad: los `Job` de migracion de
+ * los cuatro sistemas corrian la MISMA imagen que el `Deployment` con `SGTM_DB_USUARIO=sgtm_owner`
+ * y sin `SPRING_PROFILES_ACTIVE`, o sea que arrancaban la aplicacion sin migrar nada. Incluirlos
+ * habria puesto esta guarda roja por un defecto que no era el que mide.
+ *
+ * Con C-14 cada sistema publica **dos** imagenes —`aplicacion` y `migrador`, los dos objetivos de
+ * su `Dockerfile`— y el Job de migracion corre la suya, que no es una aplicacion de Spring. Asi
+ * que el criterio deja de ser la clase del objeto y pasa a ser **la imagen**: se mide todo
+ * contenedor cuya imagen sea la de la aplicacion de ese sistema —`Deployment`, el `Job` de
+ * implantacion y los `CronJob` del perfil `batch`— y se deja fuera el migrador, que no lee ningun
+ * `application.yaml`.
+ *
+ * Derivar el criterio de la imagen y no de una lista es lo que hace que un `CronJob` nuevo entre
+ * solo: su pod arranca la misma aplicacion y falla igual si le falta una variable.
  */
 
 interface Contenedor {
   name: string;
+  image: string;
   env?: { name: string; value?: string; valueFrom?: unknown }[];
 }
 
-function contenedoresDe(ambiente: (typeof ENVIRONMENTS)[number], sistema: string) {
-  const lista = JSON.parse(emitir({ ambiente })) as {
-    items: {
-      kind: string;
-      metadata: { name: string; namespace?: string };
-      spec?: { template?: { spec?: { containers?: Contenedor[] } } };
-    }[];
+interface PlantillaDePodJson {
+  spec?: { containers?: Contenedor[] };
+}
+
+interface ManifiestoJson {
+  kind: string;
+  metadata: { name: string; namespace?: string };
+  spec?: {
+    template?: PlantillaDePodJson;
+    jobTemplate?: { spec?: { template?: PlantillaDePodJson } };
   };
+}
+
+/**
+ * Todo contenedor de ese sistema que corra la imagen de su APLICACION.
+ *
+ * El migrador queda fuera **por su imagen**, no por su clase: no es una aplicacion de Spring, no
+ * lleva `application.yaml` dentro y sus variables son otras tres. Y los `initContainers` no se
+ * miran, que es lo mismo dicho por el otro lado: el unico que hay es el migrador.
+ */
+function contenedoresDe(ambiente: (typeof ENVIRONMENTS)[number], sistema: string) {
+  const lista = JSON.parse(emitir({ ambiente })) as { items: ManifiestoJson[] };
+  const imagenDeLaAplicacion = new RegExp(`/kamayuk-${sistema}:`);
   return lista.items
-    .filter((m) => m.kind === "Deployment" && m.metadata.namespace?.startsWith(`kamayuk-${sistema}-`))
-    .flatMap((m) =>
-      (m.spec?.template?.spec?.containers ?? []).map((c) => ({ pod: m.metadata.name, contenedor: c })),
-    );
+    .filter((m) => m.metadata.namespace?.startsWith(`kamayuk-${sistema}-`) === true)
+    .flatMap((m) => {
+      const plantilla = m.spec?.template ?? m.spec?.jobTemplate?.spec?.template;
+      return (plantilla?.spec?.containers ?? []).map((c) => ({ pod: m.metadata.name, contenedor: c }));
+    })
+    .filter(({ contenedor }) => imagenDeLaAplicacion.test(contenedor.image));
 }
 
 describe("toda variable sin valor por omision la pone el descriptor", () => {
@@ -76,6 +99,21 @@ describe("toda variable sin valor por omision la pone el descriptor", () => {
       });
     }
   }
+
+  /**
+   * C-14 — y se miden mas cosas que los `Deployment`: el Job de implantacion y los `CronJob`
+   * corren la MISMA aplicacion y fallan igual si les falta una variable.
+   *
+   * Sin esto, extender el criterio de la clase a la imagen podria no haber anadido ni un
+   * contenedor y las ocho pruebas de arriba seguirian midiendo lo mismo que antes.
+   */
+  it("y no son solo los Deployment: entran la implantacion y los CronJob", () => {
+    const pods = contenedoresDe("stg", "rentas").map((c) => c.pod);
+    expect(pods.some((p) => p.includes("implantacion"))).toBe(true);
+    expect(pods.some((p) => p.includes("ingestor"))).toBe(true);
+    // Y el migrador NO, porque no es una aplicacion de Spring: su imagen es otra.
+    expect(pods.some((p) => p.includes("migracion"))).toBe(false);
+  });
 
   /**
    * El contraste. Sin el, un lector que no encontrara ninguna variable —un regex roto, un archivo

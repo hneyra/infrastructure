@@ -141,6 +141,89 @@ function migracionDe(sistema: string, e: EntornoDelDescriptor, imagen: string): 
   ];
 }
 
+/**
+ * El Job de implantacion (C-14, punto 4): la fila de `municipalidad` en SU base.
+ *
+ * Con el migrador de contenedor de inicializacion, que es el reparto que los cuatro descriptores
+ * de verdad usan: un `Deployment` no sabe esperar a un `Job`, y la salida del monolito —un
+ * contenedor con `psql`— no vale aqui, porque un descriptor solo puede nombrar SUS imagenes.
+ */
+function implantacionDe(sistema: string, e: EntornoDelDescriptor, imagen: string): Manifiesto[] {
+  const nombre = e.nombreConVersion(`kamayuk-${sistema}-implantacion`);
+  const etiquetas = { ...e.etiquetas, componente: sistema };
+  return [
+    {
+      apiVersion: "batch/v1",
+      kind: "Job",
+      metadata: { name: nombre, namespace: e.namespace, labels: etiquetas },
+      spec: {
+        backoffLimit: 3,
+        template: {
+          metadata: { labels: { ...etiquetas, app: nombre } },
+          spec: {
+            restartPolicy: "Never",
+            priorityClassName: e.prioridadDe("lote"),
+            containers: [
+              {
+                name: "implantacion",
+                image: e.imagenDe(imagen),
+                env: [
+                  { name: "SPRING_PROFILES_ACTIVE", value: "batch" },
+                  { name: "KAMAYUK_IMPLANTACION_UBIGEO", value: e.implantacion.ubigeo },
+                  { name: "SGTM_DB_CLAVE", valueFrom: { secretKeyRef: { name: e.secretoDe("app"), key: "clave" } } },
+                ],
+                resources: RECURSOS,
+                securityContext: seguridadBase({ runAsNonRoot: true }),
+              },
+            ],
+          },
+        },
+      },
+    },
+  ];
+}
+
+/** Un `CronJob` del perfil `batch`, con su ventana. La imagen es la de la APLICACION. */
+function loteDe(sistema: string, e: EntornoDelDescriptor, imagen: string): Manifiesto[] {
+  const nombre = `kamayuk-${sistema}-lote`;
+  const etiquetas = { ...e.etiquetas, componente: sistema };
+  return [
+    {
+      apiVersion: "batch/v1",
+      kind: "CronJob",
+      metadata: { name: nombre, namespace: e.namespace, labels: etiquetas },
+      spec: {
+        schedule: "0 7 * * *",
+        concurrencyPolicy: "Forbid",
+        jobTemplate: {
+          spec: {
+            backoffLimit: 1,
+            template: {
+              metadata: { labels: { ...etiquetas, app: nombre } },
+              spec: {
+                restartPolicy: "Never",
+                priorityClassName: e.prioridadDe("lote"),
+                containers: [
+                  {
+                    name: "lote",
+                    image: e.imagenDe(imagen),
+                    env: [
+                      { name: "SPRING_PROFILES_ACTIVE", value: "batch" },
+                      { name: "SGTM_DB_CLAVE", valueFrom: { secretKeyRef: { name: e.secretoDe("app"), key: "clave" } } },
+                    ],
+                    resources: RECURSOS,
+                    securityContext: seguridadBase({ runAsNonRoot: true }),
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    },
+  ];
+}
+
 function ingresoDe(sistema: string, prefijo: string, e: EntornoDelDescriptor): Manifiesto[] {
   return [
     {
@@ -206,6 +289,10 @@ export const catastro: DescriptorDeSistema = {
   },
   despliegue: (e) => despliegueDe("catastro", "web", e, "catastro"),
   migracion: (e) => migracionDe("catastro", e, "catastro"),
+  implantacion: (e) => implantacionDe("catastro", e, "catastro"),
+  // Sin ningun proceso por lotes. Vacio es una respuesta legitima, y es la mitad que hace que
+  // esta muestra valga: si el contrato solo aguantara al que tiene `CronJob`, se veria aqui.
+  lotes: (): Manifiesto[] => [],
   ingreso: (e) => ingresoDe("catastro", "catastro", e),
   egreso: (e) => egresoAlMotor("catastro", e),
   alertas: () => [alertaDeCaida("catastro")],
@@ -231,6 +318,8 @@ export const rentas: DescriptorDeSistema = {
   },
   despliegue: (e) => [...despliegueDe("rentas", "web", e, "rentas"), ...despliegueDe("rentas", "batch", e, "rentas", false)],
   migracion: (e) => migracionDe("rentas", e, "rentas"),
+  implantacion: (e) => implantacionDe("rentas", e, "rentas"),
+  lotes: (e) => loteDe("rentas", e, "rentas"),
   ingreso: (e) => ingresoDe("rentas", "rentas", e),
   egreso: (e) => egresoAlMotor("rentas", e),
   alertas: () => [alertaDeCaida("rentas")],

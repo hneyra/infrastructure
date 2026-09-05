@@ -134,6 +134,13 @@ describe("los manifiestos de los dos ambientes pasan su propia auditoria", () =>
 // #149 — PostgreSQL en el clúster
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Una clave del `data` de un `ConfigMap`, con el fallo dicho si no esta. */
+function datosDe(cm: { data: Record<string, string> }, clave: string): string {
+  const valor = cm.data[clave];
+  expect(valor, `el ConfigMap no trae la clave «${clave}»`).toBeDefined();
+  return valor as string;
+}
+
 describe("#149 · la base de datos", () => {
   const ms = manifiestosDe(AMBIENTE);
 
@@ -153,6 +160,109 @@ describe("#149 · la base de datos", () => {
     expect(datos["20-asignar-claves.sh"]).toBe(
       enElRepositorio("despliegue/inicializacion-del-motor/20-asignar-claves.sh"),
     );
+  });
+
+  /**
+   * C-14, punto 2 — el motor crea las CUATRO bases del producto y les aplica sus roles.
+   *
+   * Hasta C-14 no lo hacia nadie (C-7, hueco 3): `baseDeDatos()` de los cuatro descriptores
+   * existia y **solo se usaba para auditar**, y los cuatro `Deployment` apuntaban a
+   * `jdbc:postgresql://postgres:5432/<sistema>` — una base que no existia. El unico guion de
+   * inicializacion que provisionaba algo era el de la base de Keycloak.
+   *
+   * Los dos guiones son **los del repositorio**, los mismos que monta el compose: una copia aqui
+   * seria un segundo sitio donde olvidar que el rol no puede ser superusuario.
+   */
+  it("crea las cuatro bases del producto y les aplica SUS roles", () => {
+    const datos = (buscar(ms, "ConfigMap", "postgres-inicializacion") as { data: Record<string, string> })
+      .data;
+    const enElRepositorio = (ruta: string) => readFileSync(join(raizDelRepositorio(), ruta), "utf8");
+
+    expect(datos["05-crear-bases.sh"]).toBe(
+      enElRepositorio("despliegue/inicializacion-del-motor/05-crear-bases.sh"),
+    );
+    expect(datos["06-roles-de-los-sistemas.sh"]).toBe(
+      enElRepositorio("despliegue/inicializacion-del-motor/06-roles-de-los-sistemas.sh"),
+    );
+
+    // El orden es lo unico que ordena estos guiones, y el `06` no tiene donde aplicar nada si
+    // el `05` no ha creado las bases.
+    const claves = Object.keys(datos).sort();
+    expect(claves.indexOf("06-roles-de-los-sistemas.sh")).toBeGreaterThan(
+      claves.indexOf("05-crear-bases.sh"),
+    );
+    // Y los dos van DELANTE del `10`, que es el del monolito y corre contra otra base.
+    expect(claves.indexOf("10-crear-roles.sql")).toBeGreaterThan(
+      claves.indexOf("06-roles-de-los-sistemas.sh"),
+    );
+  });
+
+  /**
+   * Lo que esos dos guiones LEEN, y por que va en OTRO `ConfigMap`.
+   *
+   * Todo `.sql` que caiga en `docker-entrypoint-initdb.d` lo **ejecuta** el entrypoint contra la
+   * base por omision. Los cuatro `crear-roles.sql` hay que leerlos —para derivar las extensiones
+   * (C-10)— y aplicarlos **cada uno contra su base**: ejecutados contra `postgres` crearian ahi
+   * las extensiones de todos y ninguna donde toca.
+   */
+  it("y monta los cuatro `crear-roles.sql` FUERA de initdb.d, identicos a los de su clon", () => {
+    const configuracion = buscar(ms, "ConfigMap", "postgres-roles-de-los-sistemas") as {
+      metadata: { name: string };
+      data: Record<string, string>;
+    };
+    const sistemas = ["rentas", "catastro", "normativa", "caja"];
+
+    for (const sistema of sistemas) {
+      const enSuClon = join(
+        raizDelRepositorio(),
+        "..",
+        sistema,
+        "backend",
+        `kamayuk-${sistema}-esquema`,
+        "src/main/resources/db/roles/crear-roles.sql",
+      );
+      expect(datosDe(configuracion, `${sistema}.sql`)).toBe(readFileSync(enSuClon, "utf8"));
+    }
+    // La unica implementacion de «que cuenta como extension declarada» (C-10): dos copias del
+    // mismo `grep` serian dos sitios donde una extension se puede dejar de ver.
+    expect(datosDe(configuracion, "lib-extensiones.sh")).toBe(
+      readFileSync(
+        join(raizDelRepositorio(), "despliegue/inicializacion-del-motor/lib-extensiones.sh"),
+        "utf8",
+      ),
+    );
+
+    // Y se proyecta en `/etc/kamayuk`, con los `.sql` bajo `roles/`. La clave de un `ConfigMap`
+    // solo admite `[-._a-zA-Z0-9]+` —una barra NO cabe—, asi que el subdirectorio lo pone el
+    // `path` del volumen: sin eso el API server rechaza el ConfigMap entero.
+    const motor = buscar(ms, "Deployment", "postgres") as {
+      spec: {
+        template: {
+          spec: {
+            containers: { name: string; volumeMounts?: { name: string; mountPath: string }[] }[];
+            volumes: { name: string; configMap?: { name: string; items?: { key: string; path: string }[] } }[];
+          };
+        };
+      };
+    };
+    const volumen = motor.spec.template.spec.volumes.find((v) => v.name === "roles-de-los-sistemas");
+    expect(volumen?.configMap?.name).toBe(configuracion.metadata.name);
+    expect(volumen?.configMap?.items?.map((i) => i.path).sort()).toEqual([
+      "lib-extensiones.sh",
+      ...sistemas.map((s) => `roles/${s}.sql`).sort(),
+    ]);
+    for (const item of volumen?.configMap?.items ?? []) {
+      expect(item.key, "una clave de ConfigMap no puede llevar `/`").not.toContain("/");
+    }
+    const montaje = motor.spec.template.spec.containers
+      .flatMap((c) => c.volumeMounts ?? [])
+      .find((v) => v.name === "roles-de-los-sistemas");
+    expect(montaje?.mountPath).toBe("/etc/kamayuk");
+    expect(
+      montaje?.mountPath,
+      "si esto cayera en `docker-entrypoint-initdb.d`, el entrypoint EJECUTARIA los cuatro " +
+        "contra la base por omision: las extensiones de todos en `postgres` y ninguna donde toca.",
+    ).not.toContain("initdb");
   });
 
   it("los cuatro roles se crean, y ninguno es superusuario", () => {

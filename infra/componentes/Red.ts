@@ -1,5 +1,6 @@
 import { namespaceName, resourceName, type Environment, type SmtpSettings } from "../config";
 import {
+  ETIQUETA_DE_NAMESPACE_DE_SISTEMA,
   servicioDeAlertmanager,
   servicioDeAplicacion,
   servicioDeBaseDeDatos,
@@ -74,6 +75,9 @@ interface ArgsDeRed {
 
 /** El namespace de sistema donde vive Traefik, en k3s. Kubernetes etiqueta todo namespace con este nombre desde 1.21. */
 const KUBE_SYSTEM = { matchLabels: { "kubernetes.io/metadata.name": "kube-system" } };
+
+/** Los namespaces de los cuatro sistemas, por la etiqueta que dice que lo son. */
+const DE_LOS_SISTEMAS = { namespaceSelector: { matchLabels: ETIQUETA_DE_NAMESPACE_DE_SISTEMA } };
 
 function deApp(app: string) {
   return { podSelector: { matchLabels: { app } } };
@@ -171,6 +175,13 @@ function permitirIngresoPublico(environment: Environment, namespace: string): Ne
             ...desdeTraefik,
             deApp(servicioDeAplicacion(environment)),
             deApp("realm"),
+            // Y los cuatro sistemas, por el JWKS interno (C-14, punto 3). Su `issuer-uri` es el
+            // publico —es lo que se compara con el `iss` del token—, pero las claves se traen por
+            // la red interna: salir al ingreso para volver a entrar convierte cada validacion en
+            // un viaje por Traefik. Sin esta linea, el perfil `web` de los cuatro no puede
+            // descargar el JWKS y **todo token seria invalido por un motivo que no se parece a su
+            // causa** (la misma trampa que anota `application.yaml`).
+            DE_LOS_SISTEMAS,
           ],
           ports: [puerto(8080)],
         },
@@ -203,6 +214,17 @@ function permitirIngresoPostgres(environment: Environment, namespace: string): N
           deApp("implantacion"),
           deApp("lote"),
           deApp(resourceName(environment, "respaldo")),
+          // Y los cuatro sistemas, cada uno a SU base (C-14, punto 2). Van por
+          // `namespaceSelector` porque desde ADR-0031 viven en otro namespace, y un
+          // `podSelector` a secas selecciona pods del MISMO —de modo que sin esto los cuatro
+          // quedan sin base y el sintoma no es un error: el pod arranca, la sonda de arranque
+          // no pasa nunca y `pulumi up` espera—.
+          //
+          // Sin `podSelector` que lo acompane, a proposito: en el namespace de un sistema TODOS
+          // los pods son de ese sistema, y los cuatro se conectan como `sgtm_app` o —solo en un
+          // Job— como `sgtm_owner`. Quien decide que puede hacer cada credencial es el motor,
+          // no esta politica.
+          DE_LOS_SISTEMAS,
         ],
         ports: [puerto(5432)],
       },

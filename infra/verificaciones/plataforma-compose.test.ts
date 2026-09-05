@@ -145,7 +145,31 @@ describe("la plataforma levanta lo que todo el mundo necesita", () => {
     const enInitdb = montajes.filter((v) => v.includes(":/docker-entrypoint-initdb.d/"));
 
     expect(enInitdb.filter((v) => v.includes("/etc/kamayuk/"))).toEqual([]);
-    expect(enInitdb).toHaveLength(3); // 05-crear-bases, 10-crear-roles, 20-asignar-claves
+    // 05-crear-bases, 06-roles-de-los-sistemas, 10-crear-roles, 20-asignar-claves.
+    expect(enInitdb).toHaveLength(4);
+  });
+
+  /**
+   * C-14, punto 2. Hasta entonces las cuatro bases recibian sus extensiones —derivadas de su
+   * `crear-roles.sql` (C-10)— y **no** los `GRANT` sobre `public` que ese mismo archivo declara.
+   *
+   * La consecuencia no se ve al crear la base: se ve a mitad de la migracion. Medido contra
+   * PostgreSQL 16.15, con las cuatro bases creadas por `05-crear-bases.sh` y el migrador de
+   * `catastro` de verdad: sin este guion, `42501 permission denied for schema public`; con el,
+   * «Successfully applied 5 migrations».
+   */
+  it("y los roles de cada sistema se aplican EN SU BASE, detras de las bases", () => {
+    const montajes = (PLATAFORMA.services["base"]?.volumes ?? []).filter((v) =>
+      v.includes(":/docker-entrypoint-initdb.d/"),
+    );
+    const bases = montajes.findIndex((v) => v.includes("05-crear-bases"));
+    const roles = montajes.findIndex((v) => v.includes("06-roles-de-los-sistemas"));
+    expect(roles, "falta el montaje de `06-roles-de-los-sistemas.sh`").toBeGreaterThanOrEqual(0);
+    expect(
+      roles,
+      "el `06` tiene que ir DETRAS del `05`: sin las bases creadas no hay donde aplicar nada, y " +
+        "lo unico que ordena estos guiones es el numero de delante.",
+    ).toBeGreaterThan(bases);
   });
 
   it("el guion de las bases corre ANTES que el de los roles", () => {

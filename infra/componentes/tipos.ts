@@ -127,7 +127,15 @@ export interface Contenedor {
 
 export interface Volumen {
   name: string;
-  configMap?: { name: string; defaultMode?: number };
+  /**
+   * `items` proyecta claves concretas en RUTAS concretas, y no es un adorno.
+   *
+   * Una clave de `ConfigMap` solo admite `[-._a-zA-Z0-9]+`: **una barra no cabe**. Cuando lo que
+   * hay que montar es un subdirectorio —los cuatro `crear-roles.sql` en `roles/<sistema>.sql`,
+   * C-14— la clave se llama plano y el `path` lleva la carpeta. Sin esto el API server rechaza
+   * el `ConfigMap` entero.
+   */
+  configMap?: { name: string; defaultMode?: number; items?: { key: string; path: string }[] };
   secret?: { secretName: string; defaultMode?: number };
   persistentVolumeClaim?: { claimName: string };
   emptyDir?: Record<string, never>;

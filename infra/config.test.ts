@@ -83,6 +83,9 @@ function baseline(environment: Environment = "prod"): Invariants {
       tipo: "PROVINCIAL",
       administrador: "administrador",
       nombreDelAdministrador: "Administrador del sistema",
+      // El `id` de la fila que crea el Job de implantacion (C-14 §3). En una base recien creada
+      // vale 1: `municipalidad.id` es una columna `IDENTITY`.
+      municipalidadId: 1,
     },
     observability: {
       // Declarado en los dos: en prod es obligatorio (issue #156).
@@ -363,6 +366,11 @@ const VALORES_MINIMOS = {
   // dos ambientes: `caja` no arranca sin ellos, y `stg` es donde se ensaya el procedimiento.
   responsableDeOperacion: "Jefa de Tesoreria",
   canalDeOperacion: "tesoreria@example.pe",
+  // El `id` de la fila que crea el Job de implantacion (C-14 §3). Sin valor por omision, y por
+  // el mismo motivo que las dos de arriba: un `?? 1` haria que olvidarlo se leyera igual que
+  // declararlo, y lo que se declara aqui decide bajo que municipalidad escriben los procesos por
+  // lotes de los cuatro sistemas.
+  municipalidadId: 1,
 };
 
 /**
@@ -381,6 +389,34 @@ const MINIMOS_ADMISIBLES = {
   alertWebhookUrl: "https://hooks.example.pe/sgtm-alertas",
 };
 
+describe("C-14 §3 — el `id` de la municipalidad que los procesos por lotes fijan", () => {
+  /**
+   * No se comprueba contra ninguna base —componer manifiestos no habla con ninguna—, asi que lo
+   * unico que se puede impedir sin cluster es que no sea una fila posible. Lo que un valor
+   * equivocado produce no es un error: el ingestor de `rentas` y el publicador de `catastro`
+   * escriben bajo un contexto que no existe, y RLS no lo delata porque la base hace exactamente
+   * lo que se le pide.
+   */
+  it.each([0, -1, 1.5])("«%s» no es una fila de `municipalidad`", (valor) => {
+    const invariantes = baseline();
+    const problemas = checkInvariants({
+      ...invariantes,
+      implantacion: { ...invariantes.implantacion, municipalidadId: valor },
+    });
+    expect(problemas.join("\n")).toContain("municipalidadId");
+  });
+
+  it("y el contraste: 1 —lo que vale en una base recien creada— pasa", () => {
+    const invariantes = baseline();
+    expect(
+      checkInvariants({
+        ...invariantes,
+        implantacion: { ...invariantes.implantacion, municipalidadId: 1 },
+      }),
+    ).toEqual([]);
+  });
+});
+
 describe("un valor obligatorio que falta revienta al principio, y dice cuál", () => {
   it("con todos los valores mínimos, la lectura pasa y no incumple nada", () => {
     const leidas = readInvariants("prod", reader(MINIMOS_ADMISIBLES));
@@ -388,7 +424,11 @@ describe("un valor obligatorio que falta revienta al principio, y dice cuál", (
   });
 
   it.each(Object.keys(VALORES_MINIMOS))("falta «%s»", (clave) => {
-    const valores: Record<string, string> = { ...VALORES_MINIMOS };
+    // `unknown` y no `string`: `municipalidadId` es un numero, y el lector del stack lo
+    // convierte al leerlo. Un fixture que lo pusiera como cadena no lo encontraria.
+    const valores: Record<string, string | number | boolean | unknown[]> = {
+      ...VALORES_MINIMOS,
+    };
     delete valores[clave];
 
     let error: unknown;
