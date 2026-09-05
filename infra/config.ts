@@ -373,6 +373,51 @@ export interface RecursosSettings {
   perfil: PerfilDeRecursos;
 }
 
+/**
+ * Los cuatro sistemas de ADR-0031 que ponen una imagen sobre el nodo, y la clave con que
+ * cada uno declara **su** version.
+ *
+ * ## Por que una version POR SISTEMA, y no la del monolito
+ *
+ * Hasta hoy `entorno.imagenDe()` etiquetaba **las ocho** imagenes de los cuatro sistemas con
+ * `applicationBootstrapVersion`, que es un `sha` de `sgtm`. Eso no es un detalle de nombre: una
+ * etiqueta tiene que ser una revision **del repositorio que construyo esa imagen**, porque es lo
+ * unico que permite contestar «que esta corriendo en la municipalidad» y volver de ahi al codigo.
+ * Un `sha` de `sgtm` en `ghcr.io/hneyra/kamayuk-catastro:` no resuelve contra ningun `git log`
+ * de `catastro` — y, de hecho, ninguna de las ocho existia en el registro (medido el 2026-09-05:
+ * `404 MANIFEST_UNKNOWN` en las ocho).
+ *
+ * Lo dice ya, con todas las letras, el error de `unicoSistemaDesplegado` en
+ * `verificaciones/deriva-de-migraciones.ts`: «una sola linea solo puede fechar un `git log`: con
+ * varios sistemas hay que declarar una version POR SISTEMA». Esto es esa linea.
+ *
+ * `applicationBootstrapVersion` **se queda**, y sigue siendo lo que siempre fue: la version del
+ * MONOLITO, un `sha` de `sgtm`. Las dos cosas conviven porque son de dos repositorios.
+ *
+ * ## Por que cuatro claves y no un mapa
+ *
+ * Porque el lector de estos archivos —`verificaciones/stacks.ts`— entiende exactamente la forma
+ * que Pulumi lee de ellos: una linea `kamayuk:clave: valor` por valor, sin estructuras anidadas.
+ * Un mapa obligaria a meter JSON en una linea y a confiar en que `getObject` de Pulumi y ese
+ * lector minimo lo interpreten igual, que es una suposicion que nadie ha medido.
+ *
+ * Lo que un mapa daba gratis —que un sistema nuevo no se pueda olvidar— lo da aqui esta lista
+ * mas la prueba que la ata a `descriptor/sistemas.ts`: un quinto sistema que se componga sin su
+ * clave pone esa prueba roja **nombrandolo**, en vez de heredar en silencio la version de otro.
+ */
+export const SISTEMAS_CON_IMAGEN = ["rentas", "catastro", "normativa", "caja"] as const;
+
+/** La clave del stack que declara la version de un sistema: `rentas` -> `versionDeRentas`. */
+export function claveDeVersion(sistema: string): string {
+  return `versionDe${sistema.charAt(0).toUpperCase()}${sistema.slice(1)}`;
+}
+
+/** La version —el `sha` de su propio repositorio— con que se etiqueta cada sistema. */
+export interface SistemasSettings {
+  /** Por nombre de sistema. Siempre estan los cuatro: `readInvariants` no admite que falte uno. */
+  versiones: Readonly<Record<string, string>>;
+}
+
 export interface Invariants {
   environment: Environment;
   node: NodeSettings;
@@ -382,6 +427,7 @@ export interface Invariants {
   backup: BackupSettings;
   identity: IdentitySettings;
   application: ApplicationSettings;
+  sistemas: SistemasSettings;
   implantacion: ImplantacionSettings;
   observability: ObservabilitySettings;
   operacion: OperacionSettings;
@@ -622,6 +668,24 @@ export function readInvariants(environment: Environment, reader: ConfigReader): 
           " lote y sus dos Job de arranque—. La plataforma (motor, identidad, correo, realm," +
           " respaldo y observabilidad) NO depende de esto: los cuatro sistemas se conectan a" +
           " ella (C-19)",
+      ),
+    },
+    sistemas: {
+      // Una version por sistema, cada una un `sha` de SU repositorio. Sin `??`: un valor por
+      // omision haria que olvidarse de declarar la version de un sistema se leyera igual que
+      // declararla, y lo que decide es que imagen baja el nodo.
+      versiones: Object.fromEntries(
+        SISTEMAS_CON_IMAGEN.map((sistema) => [
+          sistema,
+          requireText(
+            reader,
+            claveDeVersion(sistema),
+            `la version de «${sistema}» con que se etiquetan sus dos imagenes ` +
+              `(kamayuk-${sistema} y kamayuk-${sistema}-migrador). Es un \`sha\` de ` +
+              `hneyra/${sistema}, no de este repositorio: la etiqueta tiene que ser una ` +
+              "revision del repositorio que construyo la imagen",
+          ),
+        ]),
       ),
     },
     implantacion: {
@@ -888,6 +952,27 @@ export function checkInvariants(s: Invariants): string[] {
       "`applicationBootstrapVersion` es una etiqueta, no una imagen: no lleva `:`. El " +
         "repositorio va en `applicationImageRepository`.",
     );
+  }
+
+  // ── La version de cada sistema es un `sha` de SU repositorio ───────────────
+  //
+  // Cuarenta hexadecimales, y no solo «no es una etiqueta movil» como se le pide al monolito.
+  // Es mas estricto a proposito: la guarda de `verificaciones/imagenes-publicadas.ts` contesta
+  // «esa etiqueta existe» comprobando que el `sha` este en la historia de `origin/main` del
+  // repositorio que la construye —las imagenes se publican al integrar—, y un `sha` corto o una
+  // etiqueta con nombre no se pueden resolver asi. Una version que no se puede comprobar deja el
+  // despliegue pidiendo una etiqueta que quiza nadie construyo, que es el defecto que esta
+  // familia de guardas existe para cerrar.
+  for (const [sistema, version] of Object.entries(s.sistemas.versiones)) {
+    if (!/^[0-9a-f]{40}$/.test(version)) {
+      problems.push(
+        `\`${claveDeVersion(sistema)}\` vale «${version}» y no es un \`sha\` de cuarenta ` +
+          "caracteres hexadecimales. La etiqueta de las dos imagenes de un sistema es una " +
+          `revision de hneyra/${sistema}, y tiene que poder resolverse contra su \`git log\`: ` +
+          "de eso depende poder decir que corre en la municipalidad, y que la guarda de " +
+          "imagenes publicadas pueda comprobar que la etiqueta existe.",
+      );
+    }
   }
 
   // ── issue #150 — la marca de demostración en prod se decide a mano ─────────

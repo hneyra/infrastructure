@@ -128,6 +128,12 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  # Solo LECTURA del registro, y hace falta en tres sitios: el trabajo `imagenes` y los dos
+  # `aplicar-*`, que preguntan a `ghcr.io` si las etiquetas que su manifiesto pide existen antes
+  # de invocar a Pulumi. Sin este alcance el registro contesta `403 DENIED` a los paquetes
+  # privados —los tres del monolito lo son—, que NO es «no existe» y que el guion trata como
+  # fallo: sin el, esos pasos saldrian rojos por falta de permiso y no por falta de imagen.
+  packages: read
 
 jobs:
   verificar:
@@ -200,6 +206,59 @@ jobs:
 
       - name: yarn verificar
         run: yarn verificar
+
+  imagenes:
+    name: Las etiquetas que el manifiesto pide existen en el registro
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name != 'schedule'
+    # `packages: read` es lo que separa un 200 de un 403: un token sin ese alcance recibe
+    # `DENIED` y no puede distinguir «no existe» de «no puedo mirar». El guion lo trata como
+    # fallo, asi que sin este permiso este trabajo sale rojo diciendo por que — nunca en verde.
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      # `path: infrastructure` y la accion de al lado: componer el manifiesto necesita los
+      # cuatro descriptores hermanos (C-9a, C-20).
+      - uses: actions/checkout@v4
+        with:
+          path: infrastructure
+
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: infrastructure/infra/yarn.lock
+
+      - name: Instalar dependencias
+        working-directory: infrastructure/infra
+        run: yarn install --frozen-lockfile
+
+      # La otra mitad —«¿hay alguien que publique esa imagen?»— la contesta sin red
+      # `verificaciones/imagenes-publicadas.test.ts`, que corre en `yarn verificar`. Esta es la
+      # que solo puede contestar el registro, y es la que decide si el pod arranca.
+      - name: Los dos ambientes, preguntados al registro
+        working-directory: infrastructure/infra
+        env:
+          # `REGISTRY_PULL_TOKEN`, y no el `GITHUB_TOKEN`, por un motivo medido: un `GITHUB_TOKEN`
+          # solo alcanza los paquetes ligados a SU repositorio, asi que desde `infrastructure`
+          # los tres del monolito —que son de `sgtm`— contestan `403 DENIED`. Se comprobo en la
+          # corrida `33985637872`: las ocho del corte, `200`; las tres de `sgtm`, `403`.
+          #
+          # Y es ademas la credencial CORRECTA: `registryPullToken` es la que el nodo usa para
+          # traerse las imagenes (issue #257). Preguntar con ella no es preguntar «¿existe?» sino
+          # «¿la puede bajar quien va a bajarla?», que es la pregunta que decide si el pod arranca.
+          GHCR_USUARIO: ${{ github.repository_owner }}
+          GHCR_CLAVE: ${{ secrets.REGISTRY_PULL_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          yarn --silent imagenes --ambiente stg
+          yarn --silent imagenes --ambiente prod
 
   motor:
     name: El motor, levantado y con el aislamiento verificado
@@ -1104,6 +1163,27 @@ jobs:
         working-directory: infrastructure/infra
         run: yarn --silent capacidad --ambiente stg --estricto
 
+      # ANTES de `pulumi up`, y por el mismo motivo que los dos pasos de abajo: un `up` que pida
+      # una etiqueta inexistente **no falla**. Deja los pods en `ImagePullBackOff` con el
+      # manifiesto valido, el API de Kubernetes conforme y el planificador habiendo ubicado el
+      # pod — y el `up` sale en verde. Es el estado en que estaban las ocho imagenes del corte
+      # hasta el 2026-09-05: ningun repositorio publicaba ninguna.
+      - name: Las etiquetas que este manifiesto pide existen en el registro
+        if: steps.credenciales.outputs.hay == 'si'
+        working-directory: infrastructure/infra
+        env:
+          # `REGISTRY_PULL_TOKEN`, y no el `GITHUB_TOKEN`, por un motivo medido: un `GITHUB_TOKEN`
+          # solo alcanza los paquetes ligados a SU repositorio, asi que desde `infrastructure`
+          # los tres del monolito —que son de `sgtm`— contestan `403 DENIED`. Se comprobo en la
+          # corrida `33985637872`: las ocho del corte, `200`; las tres de `sgtm`, `403`.
+          #
+          # Y es ademas la credencial CORRECTA: `registryPullToken` es la que el nodo usa para
+          # traerse las imagenes (issue #257). Preguntar con ella no es preguntar «¿existe?» sino
+          # «¿la puede bajar quien va a bajarla?», que es la pregunta que decide si el pod arranca.
+          GHCR_USUARIO: ${{ github.repository_owner }}
+          GHCR_CLAVE: ${{ secrets.REGISTRY_PULL_TOKEN || secrets.GITHUB_TOKEN }}
+        run: yarn --silent imagenes --ambiente stg
+
       # ANTES de `pulumi up`: los Deployment y Job que va a crear referencian estos
       # Secret por nombre, y sin ellos los pods se quedan en Pending. Idempotente —
       # correrlo en cada integración no cambia nada una vez que existen— y nunca pasa
@@ -1294,6 +1374,25 @@ jobs:
       - name: 'El stack cabe en su nodo (issue #252)'
         working-directory: infrastructure/infra
         run: yarn --silent capacidad --ambiente prod --estricto
+
+      # ANTES de `pulumi up`, por lo mismo que en `stg`: un `up` que pida una etiqueta
+      # inexistente no falla, deja los pods en `ImagePullBackOff` y sale en verde. Aqui ademas
+      # se comprueban las TRES del monolito, que salen del archivo historico y cuyo flujo si
+      # filtra por `paths`: un commit suyo que no toque `backend/` no publica nada.
+      - name: Las etiquetas que este manifiesto pide existen en el registro
+        working-directory: infrastructure/infra
+        env:
+          # `REGISTRY_PULL_TOKEN`, y no el `GITHUB_TOKEN`, por un motivo medido: un `GITHUB_TOKEN`
+          # solo alcanza los paquetes ligados a SU repositorio, asi que desde `infrastructure`
+          # los tres del monolito —que son de `sgtm`— contestan `403 DENIED`. Se comprobo en la
+          # corrida `33985637872`: las ocho del corte, `200`; las tres de `sgtm`, `403`.
+          #
+          # Y es ademas la credencial CORRECTA: `registryPullToken` es la que el nodo usa para
+          # traerse las imagenes (issue #257). Preguntar con ella no es preguntar «¿existe?» sino
+          # «¿la puede bajar quien va a bajarla?», que es la pregunta que decide si el pod arranca.
+          GHCR_USUARIO: ${{ github.repository_owner }}
+          GHCR_CLAVE: ${{ secrets.REGISTRY_PULL_TOKEN || secrets.GITHUB_TOKEN }}
+        run: yarn --silent imagenes --ambiente prod
 
       - name: Generar los secretos que falten (INF-06)
         working-directory: infrastructure/infra

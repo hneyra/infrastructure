@@ -232,7 +232,12 @@ describe("C-14 §1 · cada sistema publica DOS imagenes, y el migrador corre la 
    */
   it.each(SISTEMAS_DEL_PRODUCTO)("los dos Jobs de «%s» llevan la version en el nombre", (sistema) => {
     const ms = delSistema(AMBIENTE, sistema);
-    const sufijo = invariantesDe(AMBIENTE).application.bootstrapVersion.slice(0, 12);
+    // La version de ESTE sistema, no la del monolito: desde D cada sistema declara la suya
+    // (`kamayuk:versionDe<Sistema>`), porque la etiqueta de una imagen es una revision del
+    // repositorio que la construyo. Leerla de `application.bootstrapVersion` volveria a atar los
+    // cuatro Jobs al `git log` de `sgtm`.
+    const version = invariantesDe(AMBIENTE).sistemas.versiones[sistema] ?? "";
+    const sufijo = version.slice(0, 12);
     for (const prefijo of ["migracion", "implantacion"]) {
       const { nombre } = jobLlamado(ms, `kamayuk-${sistema}-${prefijo}`);
       expect(nombre).toBe(`kamayuk-${sistema}-${prefijo}-${sufijo}`);

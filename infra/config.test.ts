@@ -83,6 +83,19 @@ function baseline(environment: Environment = "prod"): Invariants {
       // nadie y era su mayor consumidor. Los dos lo declaran, sin valor por omision.
       deployMonolith: !isStg,
     },
+    sistemas: {
+      // Una version por sistema, cada una un `sha` de SU repositorio (D, bloqueo 1). Aqui son
+      // cuarenta hexadecimales inventados a proposito: lo que `checkInvariants` puede comprobar
+      // es la FORMA; que la etiqueta exista de verdad lo contesta el registro
+      // (`verificaciones/imagenes/comprobar-imagenes.sh`) y que sea una revision de `main` lo
+      // contesta `verificaciones/imagenes-publicadas.test.ts` contra el clon hermano.
+      versiones: {
+        rentas: "1111111111111111111111111111111111111111",
+        catastro: "2222222222222222222222222222222222222222",
+        normativa: "3333333333333333333333333333333333333333",
+        caja: "4444444444444444444444444444444444444444",
+      },
+    },
     implantacion: {
       ubigeo: "200101",
       nombre: "Municipalidad Provincial de Sullana",
@@ -365,6 +378,13 @@ const VALORES_MINIMOS = {
   keycloakImage: "quay.io/keycloak/keycloak:26.0",
   applicationImageRepository: "ghcr.io/hneyra/sgtm",
   applicationBootstrapVersion: "64de42b4c56eb2491e2a61287bceb4b66b6e53d1",
+  // Una por sistema, y las cuatro obligatorias: `readInvariants` no admite que falte ninguna,
+  // porque un valor por omision haria que olvidarse de declarar la version de un sistema se
+  // leyera igual que declararla — y lo que decide es que imagen baja el nodo.
+  versionDeRentas: "1111111111111111111111111111111111111111",
+  versionDeCatastro: "2222222222222222222222222222222222222222",
+  versionDeNormativa: "3333333333333333333333333333333333333333",
+  versionDeCaja: "4444444444444444444444444444444444444444",
   ubigeo: "200101",
   municipalidad: "Municipalidad Provincial de Sullana",
   administrador: "administrador",
