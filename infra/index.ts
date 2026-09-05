@@ -229,10 +229,19 @@ const recursos = new k8s.yaml.v2.ConfigGroup(
     transformations: [
       (args) => {
         const props = conPatchForce(args.props as Record<string, unknown>);
+        // El alias va POR HIJO, y no basta con ponerselo al grupo: el nombre de cada hijo
+        // **lleva dentro el del padre** —`kamayuk-<amb>-sistema:kube-system/traefik`—, asi que
+        // aliasar solo el grupo no renombra a nadie. Se intento el 2026-09-05 y el `up` volvio a
+        // morir con el mismo conflicto, que es como se supo.
+        const nombreViejo = args.name.replace(`kamayuk-${env}-sistema`, `sgtm-${env}-sistema`);
+        const opts =
+          nombreViejo === args.name
+            ? args.opts
+            : { ...args.opts, aliases: [{ name: nombreViejo }] };
         if (args.type.startsWith("kubernetes:apps/v1:Deployment")) {
-          return { props, opts: { ...args.opts, ignoreChanges: IGNORAR_LA_VERSION } };
+          return { props, opts: { ...opts, ignoreChanges: IGNORAR_LA_VERSION } };
         }
-        return { props, opts: args.opts };
+        return { props, opts };
       },
     ],
   },
