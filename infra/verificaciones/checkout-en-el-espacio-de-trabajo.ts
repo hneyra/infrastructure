@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, normalize } from "node:path";
 
 /**
@@ -144,9 +144,27 @@ export function checkoutsQueEscapan(fuente: string, archivo: string): CheckoutQu
     .map(({ linea, ruta }) => ({ archivo, linea, ruta }));
 }
 
-/** Los flujos de un clon: `.github/workflows/*.yml`, ordenados. */
+/**
+ * Los flujos de un clon: `.github/workflows/*.yml`, ordenados.
+ *
+ * Si la carpeta no esta, **lanza diciendo cual y por que**, en vez de devolver la lista
+ * vacia. Un clon sin flujos pasaria esta comprobacion en verde sin haber mirado nada, que
+ * es el modo de fallo de #188 con `verificar-cuadros.mjs`; y hoy es un estado alcanzable
+ * de verdad: los cuatro repositorios del corte existen en GitHub **con un `README.md` y
+ * nada mas**, asi que un checkout suyo trae `.git` y ninguna otra cosa.
+ */
 export function flujosDe(raiz: string): string[] {
   const carpeta = join(raiz, ".github", "workflows");
+  if (!existsSync(carpeta)) {
+    throw new Error(
+      `No esta «${carpeta}», asi que no se puede saber si los flujos de ese clon sacan ` +
+        "algun `actions/checkout` fuera del espacio de trabajo.\n" +
+        "  Un clon sin flujos no es «nada que comprobar»: es una comprobacion que no se " +
+        "hizo, y en verde no se distingue de una que paso.\n" +
+        "  Suele ser un clon vacio o a medias — los cuatro repositorios del corte estan " +
+        "hoy publicados con un README.md y nada mas.",
+    );
+  }
   return readdirSync(carpeta)
     .filter((nombre) => nombre.endsWith(".yml") || nombre.endsWith(".yaml"))
     .sort();

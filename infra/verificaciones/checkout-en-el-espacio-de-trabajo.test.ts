@@ -60,6 +60,19 @@ describe("ningun actions/checkout escribe fuera del espacio de trabajo", () => {
   it.each(CLONES)("$nombre tiene flujos que mirar", ({ raiz }) => {
     expect(flujosDe(raiz()).length).toBeGreaterThan(0);
   });
+
+  /**
+   * Y un clon a medias **no concluye**, en vez de decir «cero hallazgos».
+   *
+   * No es hipotetico: los cuatro repositorios del corte estan hoy en GitHub con un
+   * `README.md` y nada mas, asi que un checkout suyo trae `.git` y ninguna carpeta de
+   * flujos. Devolver la lista vacia ahi seria el verde falso de #188.
+   */
+  it("un clon sin flujos no pasa en verde: lanza diciendo cual y por que", () => {
+    expect(() => flujosDe(join(MUESTRAS, "no-existe-este-clon"))).toThrowError(
+      /no se hizo|no se puede saber/,
+    );
+  });
 });
 
 describe("la guarda muerde", () => {

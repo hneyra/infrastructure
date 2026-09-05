@@ -7,7 +7,7 @@
 > equivocarse en silencio**: una guarda nueva lee los flujos de los **seis** clones y se pone roja
 > si un `actions/checkout` apunta fuera del espacio de trabajo, nombrando el archivo y la linea.
 >
-> Cifras: **infrastructure 461 → 485** (+24 pruebas). **rentas 3 142 · catastro 991 · caja 687 ·
+> Cifras: **infrastructure 461 → 486** (+25 pruebas). **rentas 3 142 · catastro 991 · caja 687 ·
 > normativa 617**, ninguna baja: en los cuatro sistemas el unico archivo tocado es su
 > `.github/workflows/infraestructura.yml`, que ningun proceso de Gradle lee.
 >
@@ -288,3 +288,30 @@ exactamente que se comprobo y que no:
 verde y las guardas mirando un clon que no esta. Es exactamente lo que `clonDe` se niega a hacer
 desde #675 —«un ambiente cuya deriva no se puede medir es el estado que esto existe para
 impedir»—, y seria cambiar un rojo honesto por un verde falso.
+
+### Y hacen falta DOS cosas, no una
+
+Medido con `gh api` sobre los cuatro remotos: existen, y su rama `main` tiene **un
+`README.md` y nada mas** —`daff171 «first commit»`, `bd84f84`, `7a8652e`, `4061046`, todos del
+2026-09-03—. Asi que el token, por si solo, no pondria este trabajo en verde: traeria cuatro clones
+con `.git` y ninguna otra cosa, y entonces caerian `extensiones-de-las-migraciones` (que busca su
+`crear-roles.sql`), `deriva-de-migraciones` y la guarda de C-9a.
+
+Para que `verificar` sea verde hacen falta las dos:
+
+1. **publicar el contenido** de los cuatro (hoy son 27, 20, 13 y 12 commits sin empujar), y
+2. **la credencial** que los deje leer, por ser privados.
+
+Ninguna de las dos es de esta correccion y ninguna se puede hacer desde aqui: la primera esta
+expresamente fuera de lo autorizado y la segunda es del dueño del repositorio.
+
+Lo que si se hizo es que ese estado **no pueda pasar en verde**: `flujosDe` lanza cuando el clon no
+trae `.github/workflows/`, con el motivo, en vez de devolver la lista vacia y decir «cero
+hallazgos» — que en verde no se distingue de una comprobacion que paso. Es el modo de fallo de
+#188 con `verificar-cuadros.mjs`, y tiene su prueba (**486** en total).
+
+### Lo que la segunda publicacion comprobo
+
+El repliegue del token se empujo (`6f637a5`) y se midio: run `33951009867`, **el mismo fallo en el
+mismo paso**, el tercer checkout. Que es exactamente lo que se afirmo de esa linea —que hoy no
+cambia nada— y la unica parte de ella que se puede verificar sin el secreto.
