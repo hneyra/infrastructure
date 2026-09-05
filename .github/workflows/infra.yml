@@ -1242,6 +1242,20 @@ jobs:
         if: steps.credenciales.outputs.hay == 'si'
         with:
           command: up
+          # `refresh` reconcilia el estado con el cluster ANTES de aplicar, y no es un adorno:
+          # el 2026-09-05 hubo que borrar a mano el espacio `sgtm-stg` —para que se fueran de
+          # golpe los objetos cuya identidad es el NODO o el CLUSTER y no el ambiente: el
+          # `HelmChartConfig` de `kube-system` y el `node-exporter` con `hostNetwork`, que
+          # bloquearon el `up` dos veces—. Pulumi se quedo con entradas apuntando a lo que ya no
+          # existia y el siguiente `up` murio intentando BORRARLAS:
+          #
+          #     ServiceAccountPatch sgtm-stg-default-registro deleting
+          #     error: namespaces "sgtm-stg" not found
+          #
+          # Con `refresh`, esas entradas se retiran del estado por si solas en vez de dejar el
+          # despliegue atascado. Cuesta una pasada de lectura por recurso; lo que evita es que
+          # cualquier intervencion a mano en el cluster deje el stack sin poder avanzar.
+          refresh: true
           stack-name: stg
           work-dir: infrastructure/infra
         env:
@@ -1429,6 +1443,20 @@ jobs:
       - uses: pulumi/actions@v6
         with:
           command: up
+          # `refresh` reconcilia el estado con el cluster ANTES de aplicar, y no es un adorno:
+          # el 2026-09-05 hubo que borrar a mano el espacio `sgtm-stg` —para que se fueran de
+          # golpe los objetos cuya identidad es el NODO o el CLUSTER y no el ambiente: el
+          # `HelmChartConfig` de `kube-system` y el `node-exporter` con `hostNetwork`, que
+          # bloquearon el `up` dos veces—. Pulumi se quedo con entradas apuntando a lo que ya no
+          # existia y el siguiente `up` murio intentando BORRARLAS:
+          #
+          #     ServiceAccountPatch sgtm-stg-default-registro deleting
+          #     error: namespaces "sgtm-stg" not found
+          #
+          # Con `refresh`, esas entradas se retiran del estado por si solas en vez de dejar el
+          # despliegue atascado. Cuesta una pasada de lectura por recurso; lo que evita es que
+          # cualquier intervencion a mano en el cluster deje el stack sin poder avanzar.
+          refresh: true
           stack-name: prod
           work-dir: infrastructure/infra
         env:
