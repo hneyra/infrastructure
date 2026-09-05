@@ -15,7 +15,7 @@
 # el generador repite un valor, con su prueba unitaria). Este guion es la otra mitad:
 # comprueba el resultado real en un cluster, no solo la logica que lo produjo.
 #
-#   uso: secretos/verificar-claves-distintas.sh --namespace sgtm-stg [--namespace sgtm-prod ...]
+#   uso: secretos/verificar-claves-distintas.sh --namespace kamayuk-stg [--namespace kamayuk-prod ...]
 set -euo pipefail
 
 AMBIENTES=()

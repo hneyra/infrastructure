@@ -40,9 +40,9 @@ AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STACK="${AQUI}/../Pulumi.${AMBIENTE}.yaml"
 
 # El mismo analizador minimo que `verificaciones/stacks.ts`: `config:` y debajo una
-# linea `sgtm:clave: valor`. Se le quitan comillas y comentarios.
+# linea `kamayuk:clave: valor`. Se le quitan comillas y comentarios.
 valor_declarado() {
-    sed -n "s/^[[:space:]]*sgtm:$1:[[:space:]]*\([^#]*\).*$/\1/p" "$STACK" \
+    sed -n "s/^[[:space:]]*kamayuk:$1:[[:space:]]*\([^#]*\).*$/\1/p" "$STACK" \
         | head -1 | tr -d '"'"'"' ' | tr -d '\r'
 }
 

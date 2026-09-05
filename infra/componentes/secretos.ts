@@ -115,8 +115,8 @@ export interface EntradaDeSecreto {
 /**
  * El inventario completo de un ambiente.
  *
- * Once entradas, nueve `Secret` distintos —`sgtm-<amb>-keycloak` y
- * `sgtm-<amb>-postgres-respaldo` guardan dos claves cada uno— con once valores,
+ * Once entradas, nueve `Secret` distintos —`kamayuk-<amb>-keycloak` y
+ * `kamayuk-<amb>-postgres-respaldo` guardan dos claves cada uno— con once valores,
  * **ninguno repetido**: es la comprobacion que pide el issue, no solo «roles
  * distintos» sino «claves distintas». La prueba en `verificaciones/secretos.
  * test.ts` lo exige contando entradas unicas por `secreto`+`clave`, y

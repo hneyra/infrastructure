@@ -59,7 +59,7 @@ describe("los stacks versionados cumplen sus invariantes", () => {
         "backupSecretAccessKey",
       ]) {
         expect(
-          lineas.some((l) => l.includes(`sgtm:${clave}:`)),
+          lineas.some((l) => l.includes(`kamayuk:${clave}:`)),
           `«${clave}» no puede estar en Pulumi.${ambiente}.yaml sin cifrar`,
         ).toBe(false);
       }
@@ -84,6 +84,6 @@ describe("la demostracion del issue: quitar un valor obligatorio pone rojo el st
 
     expect(error).toBeInstanceOf(MissingConfigError);
     expect((error as MissingConfigError).key).toBe("domain");
-    expect((error as Error).message).toContain("sgtm:domain");
+    expect((error as Error).message).toContain("kamayuk:domain");
   });
 });

@@ -100,14 +100,14 @@ describe("generadorPorOmision", () => {
 describe("manifiestoDeSecreto", () => {
   it("arma un Secret de Kubernetes aplicable con kubectl apply", () => {
     const m = manifiestoDeSecreto({
-      nombre: "sgtm-stg-postgres-app",
-      namespace: "sgtm-stg",
+      nombre: "kamayuk-stg-postgres-app",
+      namespace: "kamayuk-stg",
       data: { "clave-app": "dmFsb3I=" },
     }) as { apiVersion: string; kind: string; metadata: { name: string; namespace: string } };
 
     expect(m.apiVersion).toBe("v1");
     expect(m.kind).toBe("Secret");
-    expect(m.metadata).toEqual({ name: "sgtm-stg-postgres-app", namespace: "sgtm-stg" });
+    expect(m.metadata).toEqual({ name: "kamayuk-stg-postgres-app", namespace: "kamayuk-stg" });
   });
 });
 

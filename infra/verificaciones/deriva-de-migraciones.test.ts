@@ -246,7 +246,7 @@ describe("cuando hay deriva, el rojo nombra las dos cifras", () => {
     expect(mensaje).toContain("V59__otra.sql");
     // El nombre exacto del Job que `yarn manifiestos --ambiente stg | grep migracion`
     // imprime: es la evidencia de que el Job NO se creo, no de que se creara y fallara.
-    expect(mensaje).toContain("sgtm-stg-migracion-5fc02f3a4493");
+    expect(mensaje).toContain("kamayuk-stg-migracion-5fc02f3a4493");
   });
 
   it("y calla cuando no falta ninguna", () => {

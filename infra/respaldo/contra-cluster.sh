@@ -11,8 +11,8 @@
 # El detalle completo de los ocho pasos vive en el docstring de
 # simulacro-de-restauracion.sh; este archivo es la implementacion.
 
-NAMESPACE=sgtm-stg
-DEPLOYMENT=sgtm-stg-postgres
+NAMESPACE=kamayuk-stg
+DEPLOYMENT=kamayuk-stg-postgres
 POD_TEMPORAL=pitr-restaurar
 MUNICIPALIDAD_DE_ENSAYO=1
 

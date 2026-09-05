@@ -34,14 +34,14 @@
 # funciones SoD-1 de REQ-03, escrita en los privilegios.
 #
 # rol_carga_parametros tiene LOGIN desde 20-asignar-claves.sh y su clave vive en el secreto
-# sgtm-<ambiente>-postgres-carga, generado por secretos/bootstrap-secretos.sh y listado en el
+# kamayuk-<ambiente>-postgres-carga, generado por secretos/bootstrap-secretos.sh y listado en el
 # inventario de INF-06 (issue #387). El guion comprueba que el secreto exista en ESTE namespace y se
 # para nombrandolo si no: montar el Job con la credencial de la aplicacion lo dejaria fallar dentro
 # con un error de privilegio, y la salida comoda ante eso es darle a kamayuk_app el INSERT que no debe
 # tener.
 #
 #   uso: publicar-parametros.sh --ambiente stg|prod --archivo parametros-2026.csv \
-#        [--namespace sgtm-stg] [--usuario nombre-del-proceso]
+#        [--namespace kamayuk-stg] [--usuario nombre-del-proceso]
 #
 # Requiere: kubectl con el tunel al API del ambiente ya abierto.
 set -euo pipefail
@@ -65,8 +65,8 @@ done
     exit 2
 }
 [ -f "$ARCHIVO" ] || { echo "No existe el archivo: $ARCHIVO" >&2; exit 2; }
-NAMESPACE=${NAMESPACE:-sgtm-$AMBIENTE}
-SECRETO="sgtm-${AMBIENTE}-postgres-carga"
+NAMESPACE=${NAMESPACE:-kamayuk-$AMBIENTE}
+SECRETO="kamayuk-${AMBIENTE}-postgres-carga"
 
 # El derivado se comprueba contra el corpus ANTES de montarlo. Cuesta un segundo y es la diferencia
 # entre publicar la norma y publicar lo que alguien escribio en un CSV.
@@ -104,7 +104,7 @@ EOF
 # rechazadas: revise que las dos firmas sean distintas». Ninguna linea decia la verdad.
 CLAVE_CARGA=$(kubectl -n "$NAMESPACE" get secret "$SECRETO" -o jsonpath='{.data.clave-carga}' \
     | base64 --decode)
-if ! kubectl -n "$NAMESPACE" exec "deployment/sgtm-${AMBIENTE}-postgres" -c postgres -- \
+if ! kubectl -n "$NAMESPACE" exec "deployment/kamayuk-${AMBIENTE}-postgres" -c postgres -- \
         env PGPASSWORD="$CLAVE_CARGA" psql --host=127.0.0.1 --username=rol_carga_parametros \
         --dbname=sgtm --quiet --command 'SELECT 1' >/dev/null 2>&1; then
     cat >&2 <<EOF
@@ -124,12 +124,12 @@ fi
 echo "Credencial de rol_carga_parametros comprobada contra el motor."
 
 SUFIJO=$(date +%s)
-RECURSO="sgtm-${AMBIENTE}-publicacion-parametros-${SUFIJO}"
+RECURSO="kamayuk-${AMBIENTE}-publicacion-parametros-${SUFIJO}"
 
-IMAGEN=$(kubectl -n "$NAMESPACE" get deployment "sgtm-${AMBIENTE}-aplicacion" \
+IMAGEN=$(kubectl -n "$NAMESPACE" get deployment "kamayuk-${AMBIENTE}-aplicacion" \
     -o jsonpath='{.spec.template.spec.containers[0].image}')
 [ -n "$IMAGEN" ] || {
-    echo "No se pudo leer la imagen de sgtm-${AMBIENTE}-aplicacion en $NAMESPACE" >&2
+    echo "No se pudo leer la imagen de kamayuk-${AMBIENTE}-aplicacion en $NAMESPACE" >&2
     exit 1
 }
 echo "Imagen desplegada: $IMAGEN"
@@ -165,7 +165,7 @@ spec:
         app: lote
     spec:
       restartPolicy: Never
-      priorityClassName: sgtm-${AMBIENTE}-prioridad-lote
+      priorityClassName: kamayuk-${AMBIENTE}-prioridad-lote
       containers:
         - name: publicacion-parametros
           image: $IMAGEN
@@ -173,7 +173,7 @@ spec:
             - name: SPRING_PROFILES_ACTIVE
               value: batch
             - name: KAMAYUK_DB_URL
-              value: jdbc:postgresql://sgtm-${AMBIENTE}-postgres:5432/sgtm
+              value: jdbc:postgresql://kamayuk-${AMBIENTE}-postgres:5432/sgtm
             # rol_carga_parametros, y solo aqui. parametro_tributario lleva FORCE ROW LEVEL
             # SECURITY y la unica politica de escritura de V6 nombra a este rol: ni kamayuk_app
             # ni kamayuk_owner pueden insertar en ella. Y este rol no alcanza ninguna otra tabla

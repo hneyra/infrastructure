@@ -41,7 +41,7 @@
 # apagado. `infra/vps/cortafuegos.sh` ya lo advierte en su propia salida.
 #
 #   uso: verificaciones/ambiente/verificar-el-ambiente.sh --ambiente stg|prod \
-#          [--namespace sgtm-stg] [--token <jwt>] [--contribuyente <codigo>]
+#          [--namespace kamayuk-stg] [--token <jwt>] [--contribuyente <codigo>]
 #
 # Requiere: kubectl apuntando al clúster de ese ambiente (el tunel ya abierto).
 set -euo pipefail
@@ -60,7 +60,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ -n "$AMBIENTE" ] || { echo "Falta --ambiente (stg o prod)." >&2; exit 2; }
-NAMESPACE=${NAMESPACE:-sgtm-$AMBIENTE}
+NAMESPACE=${NAMESPACE:-kamayuk-$AMBIENTE}
 
 AQUI=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 INFRA=$(cd "$AQUI/../.." && pwd)
@@ -73,7 +73,7 @@ bien() { echo "  OK   $*"; }
 mal()  { echo "  MAL  $*" >&2; FALLOS=$((FALLOS + 1)); }
 aviso(){ echo "  --   $*"; }
 
-POD_MOTOR="deployment/sgtm-${AMBIENTE}-postgres"
+POD_MOTOR="deployment/kamayuk-${AMBIENTE}-postgres"
 
 # Como superusuario: es quien puede leer el catalogo entero y contar sin RLS de por
 # medio. Todo lo que se afirme del AISLAMIENTO, en cambio, se mide con `kamayuk_app`.
@@ -95,25 +95,25 @@ comoAplicacion() {
 # eso por MAL seria un rojo permanente por algo que nadie puede arreglar en un PR, y dar por
 # bueno un ambiente que no se ha mirado seria peor. Lo que se hace es lo de C-15/C-16: decir
 # que NO se comprueba, que no es lo mismo que decir que esta bien.
-MONOLITO=$(grep -E '^\s+sgtm:desplegarElMonolito:' "$INFRA/Pulumi.$AMBIENTE.yaml" \
+MONOLITO=$(grep -E '^\s+kamayuk:desplegarElMonolito:' "$INFRA/Pulumi.$AMBIENTE.yaml" \
     | sed -E 's/.*:\s*//' | tr -d '"'"'"' ')
 [ -n "$MONOLITO" ] || { echo "No se pudo leer desplegarElMonolito de Pulumi.$AMBIENTE.yaml" >&2; exit 1; }
 
 echo "== 1. La version declarada, la desplegada y el esquema =="
 
-DECLARADA=$(grep -E '^\s+sgtm:applicationBootstrapVersion:' "$INFRA/Pulumi.$AMBIENTE.yaml" \
+DECLARADA=$(grep -E '^\s+kamayuk:applicationBootstrapVersion:' "$INFRA/Pulumi.$AMBIENTE.yaml" \
     | sed -E 's/.*:\s*//' | tr -d '"'"'"' ')
 [ -n "$DECLARADA" ] || { echo "No se pudo leer applicationBootstrapVersion de Pulumi.$AMBIENTE.yaml" >&2; exit 1; }
 echo "  declarada en Pulumi.$AMBIENTE.yaml: $DECLARADA"
 
 if [ "$MONOLITO" = "true" ]; then
-    CORRIENDO=$(kubectl -n "$NAMESPACE" get deployment "sgtm-${AMBIENTE}-aplicacion" \
+    CORRIENDO=$(kubectl -n "$NAMESPACE" get deployment "kamayuk-${AMBIENTE}-aplicacion" \
         -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
-    [ -n "$CORRIENDO" ] || { mal "no hay Deployment sgtm-${AMBIENTE}-aplicacion en $NAMESPACE"; }
+    [ -n "$CORRIENDO" ] || { mal "no hay Deployment kamayuk-${AMBIENTE}-aplicacion en $NAMESPACE"; }
     echo "  corriendo en el clúster:           ${CORRIENDO:-—}"
 else
     aviso "este ambiente declara desplegarElMonolito: false (C-19), asi que no hay"
-    aviso "Deployment sgtm-${AMBIENTE}-aplicacion que mirar: esta comprobacion NO se hace"
+    aviso "Deployment kamayuk-${AMBIENTE}-aplicacion que mirar: esta comprobacion NO se hace"
     aviso "(no pasa: no se hace). La plataforma —motor, identidad, correo, respaldo— si"
     aviso "se comprueba abajo, porque los cuatro sistemas se conectan a ella."
 fi
@@ -147,7 +147,7 @@ elif [ "$APLICADAS" -lt "$ESPERADAS" ]; then
     echo "  migraciones aplicadas: $APLICADAS · las que trae la version declarada: $ESPERADAS"
     mal "la base va POR DETRAS de la version declarada ($APLICADAS < $ESPERADAS)."
     if [ "$MONOLITO" = "true" ]; then
-        mal "El Job sgtm-${AMBIENTE}-migracion-${DECLARADA:0:12} no ha corrido, o fallo."
+        mal "El Job kamayuk-${AMBIENTE}-migracion-${DECLARADA:0:12} no ha corrido, o fallo."
         mal "Sintoma tipico: una carga batch termina en verde y no escribe ninguna fila."
     else
         mal "Y este ambiente ya no declara ningun Job de migracion (C-19), asi que el"
@@ -206,10 +206,10 @@ done
 echo
 echo "== 3. El aislamiento, como kamayuk_app y contra esta instancia =="
 
-CLAVE_APP=$(kubectl -n "$NAMESPACE" get secret "sgtm-${AMBIENTE}-postgres-app" \
+CLAVE_APP=$(kubectl -n "$NAMESPACE" get secret "kamayuk-${AMBIENTE}-postgres-app" \
     -o jsonpath='{.data.clave-app}' 2>/dev/null | base64 -d || true)
 if [ -z "$CLAVE_APP" ]; then
-    mal "no se pudo leer sgtm-${AMBIENTE}-postgres-app/clave-app: sin la credencial de la"
+    mal "no se pudo leer kamayuk-${AMBIENTE}-postgres-app/clave-app: sin la credencial de la"
     mal "aplicacion, lo unico que se puede medir es lo que ve un superusuario, que es"
     mal "precisamente lo que no demuestra nada"
 else
@@ -315,13 +315,13 @@ echo
 echo "== 4. La escalera de identidad =="
 if [ "$MONOLITO" != "true" ]; then
     aviso "este ambiente no despliega el monolito (C-19): no hay servicio"
-    aviso "sgtm-${AMBIENTE}-aplicacion al que asomarse, asi que la escalera de identidad y"
+    aviso "kamayuk-${AMBIENTE}-aplicacion al que asomarse, asi que la escalera de identidad y"
     aviso "la deuda con su fecha NO se comprueban aqui (no pasan: no se hacen)."
     aviso "La cadena de identidad de los cuatro sistemas se comprueba en su propio"
     aviso "repositorio; lo que este guion mide de la plataforma es el motor y su aislamiento."
 else
 PUERTO=18080
-kubectl -n "$NAMESPACE" port-forward "svc/sgtm-${AMBIENTE}-aplicacion" "$PUERTO:8080" \
+kubectl -n "$NAMESPACE" port-forward "svc/kamayuk-${AMBIENTE}-aplicacion" "$PUERTO:8080" \
     >/tmp/sgtm-pf-$$.log 2>&1 &
 PF=$!
 cerrar() { kill "$PF" 2>/dev/null || true; rm -f "/tmp/sgtm-pf-$$.log"; }

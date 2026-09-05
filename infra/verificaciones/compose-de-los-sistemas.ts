@@ -26,7 +26,7 @@ import type { DescriptorDeSistema, EntornoDelDescriptor } from "../descriptor/ti
  * **diferencia**, y cada hallazgo dice de que lado falta la pieza.
  *
  * Lo que NO se compara son los VALORES que por definicion difieren: el anfitrion del motor
- * —`base` en compose, `sgtm-<amb>-postgres.sgtm-<amb>` en el cluster (C-17, punto 1)—, la
+ * —`base` en compose, `kamayuk-<amb>-postgres.kamayuk-<amb>` en el cluster (C-17, punto 1)—, la
  * etiqueta de la imagen y la forma de entregar una clave (`secretKeyRef` frente a `${...}` del
  * `.env`). Lo que si tiene que coincidir es lo que **decide a que base se conecta cada proceso y
  * con que rol**: el nombre de la base, el usuario, y el conjunto de nombres de variables.

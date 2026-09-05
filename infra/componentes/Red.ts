@@ -95,7 +95,7 @@ function politica(
   return {
     apiVersion: "networking.k8s.io/v1",
     kind: "NetworkPolicy",
-    metadata: { name: nombre, namespace, labels: { proyecto: "sgtm", componente: "red" } },
+    metadata: { name: nombre, namespace, labels: { proyecto: "kamayuk", componente: "red" } },
     spec,
   };
 }

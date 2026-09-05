@@ -40,7 +40,7 @@ function correr(kubectlFalso: string): {
   salida: string;
   argumentos: string;
 } {
-  const carpeta = mkdtempSync(join(tmpdir(), "sgtm-708-"));
+  const carpeta = mkdtempSync(join(tmpdir(), "kamayuk-708-"));
   const kubectl = join(carpeta, "kubectl");
   const anotados = join(carpeta, "argumentos");
   writeFileSync(kubectl, kubectlFalso.replace("__ANOTAR__", anotados));

@@ -24,7 +24,7 @@ set -euo pipefail
 
 AQUI=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 INFRA=$(cd "$AQUI/.." && pwd)
-NS=sgtm-stg
+NS=kamayuk-stg
 TRABAJO=$(mktemp -d)
 trap 'rm -rf "$TRABAJO"' EXIT
 
@@ -50,14 +50,14 @@ yarn --silent manifiestos --ambiente stg \
         entrada.items = entrada.items.filter((i) => !deTraefik.includes(i.kind));
 
         const pesados = [
-          { kind: "Deployment", prefijo: "sgtm-stg-interfaz" },
-          { kind: "Service", prefijo: "sgtm-stg-interfaz" },
-          { kind: "Deployment", prefijo: "sgtm-stg-identidad" },
-          { kind: "Job", prefijo: "sgtm-stg-realm-" },
-          { kind: "Job", prefijo: "sgtm-stg-migracion-" },
-          { kind: "Job", prefijo: "sgtm-stg-implantacion-" },
-          { kind: "Deployment", prefijo: "sgtm-stg-aplicacion" },
-          { kind: "CronJob", prefijo: "sgtm-stg-lote" },
+          { kind: "Deployment", prefijo: "kamayuk-stg-interfaz" },
+          { kind: "Service", prefijo: "kamayuk-stg-interfaz" },
+          { kind: "Deployment", prefijo: "kamayuk-stg-identidad" },
+          { kind: "Job", prefijo: "kamayuk-stg-realm-" },
+          { kind: "Job", prefijo: "kamayuk-stg-migracion-" },
+          { kind: "Job", prefijo: "kamayuk-stg-implantacion-" },
+          { kind: "Deployment", prefijo: "kamayuk-stg-aplicacion" },
+          { kind: "CronJob", prefijo: "kamayuk-stg-lote" },
         ];
         entrada.items = entrada.items.filter((i) => {
           const nombre = i.metadata?.name ?? "";
@@ -77,7 +77,7 @@ echo "· Generando los secretos que faltan (issue #154)"
 # paso el motor se queda en `CreateContainerConfigError` -el Secret que su
 # `archive_command` referencia no existe- y nunca llega a listo. Los valores son de
 # mentira: nada de esto habla con un S3 real.
-kubectl -n "$NS" create secret generic sgtm-stg-postgres-respaldo-credenciales \
+kubectl -n "$NS" create secret generic kamayuk-stg-postgres-respaldo-credenciales \
     --from-literal=access-key-id=verificacion \
     --from-literal=secret-access-key=verificacion \
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
@@ -94,12 +94,12 @@ echo "· Esperando a que el motor y la observabilidad esten listos"
 # considerar el arranque fallido; el tiempo de espera de aqui no puede ser menor
 # sin quedarse corto por una razon que no es la que se quiere comprobar.
 for despliegue in postgres observabilidad-prometheus observabilidad-alertmanager; do
-    if ! kubectl -n "$NS" rollout status "deployment/sgtm-stg-$despliegue" --timeout=300s; then
-        echo "::group::Diagnostico de sgtm-stg-$despliegue"
+    if ! kubectl -n "$NS" rollout status "deployment/kamayuk-stg-$despliegue" --timeout=300s; then
+        echo "::group::Diagnostico de kamayuk-stg-$despliegue"
         kubectl -n "$NS" get pods -o wide
-        kubectl -n "$NS" describe "deployment/sgtm-stg-$despliegue"
-        kubectl -n "$NS" describe pods -l "app=sgtm-stg-$despliegue"
-        kubectl -n "$NS" logs "deployment/sgtm-stg-$despliegue" --all-containers --prefix --tail=200 || true
+        kubectl -n "$NS" describe "deployment/kamayuk-stg-$despliegue"
+        kubectl -n "$NS" describe pods -l "app=kamayuk-stg-$despliegue"
+        kubectl -n "$NS" logs "deployment/kamayuk-stg-$despliegue" --all-containers --prefix --tail=200 || true
         kubectl -n "$NS" get events --sort-by=.lastTimestamp
         echo "::endgroup::"
         exit 1
@@ -161,7 +161,7 @@ spec:
   podSelector: { matchLabels: { app: receptor-de-prueba } }
   policyTypes: [Ingress]
   ingress:
-    - from: [{ podSelector: { matchLabels: { app: sgtm-stg-observabilidad-alertmanager } } }]
+    - from: [{ podSelector: { matchLabels: { app: kamayuk-stg-observabilidad-alertmanager } } }]
       ports: [{ port: 8000, protocol: TCP }]
 ---
 apiVersion: networking.k8s.io/v1
@@ -169,7 +169,7 @@ kind: NetworkPolicy
 metadata:
   name: permitir-verificacion-alertas-egreso-alertmanager
 spec:
-  podSelector: { matchLabels: { app: sgtm-stg-observabilidad-alertmanager } }
+  podSelector: { matchLabels: { app: kamayuk-stg-observabilidad-alertmanager } }
   policyTypes: [Egress]
   egress:
     - to: [{ podSelector: { matchLabels: { app: receptor-de-prueba } } }]
@@ -180,7 +180,7 @@ kind: NetworkPolicy
 metadata:
   name: permitir-verificacion-alertas-ingreso-prometheus
 spec:
-  podSelector: { matchLabels: { app: sgtm-stg-observabilidad-prometheus } }
+  podSelector: { matchLabels: { app: kamayuk-stg-observabilidad-prometheus } }
   policyTypes: [Ingress]
   ingress:
     - from: [{ podSelector: { matchLabels: { app: verificador-de-alertas } } }]
@@ -221,7 +221,7 @@ spec:
   podSelector: { matchLabels: { app: verificador-de-alertas } }
   policyTypes: [Egress]
   egress:
-    - to: [{ podSelector: { matchLabels: { app: sgtm-stg-observabilidad-prometheus } } }]
+    - to: [{ podSelector: { matchLabels: { app: kamayuk-stg-observabilidad-prometheus } } }]
       ports: [{ port: 9090, protocol: TCP }]
 YAML
 kubectl -n "$NS" wait --for=condition=Ready pod/verificador-de-alertas --timeout=60s
@@ -237,7 +237,7 @@ kubectl -n "$NS" wait --for=condition=Ready pod/verificador-de-alertas --timeout
 consultar_prometheus() {
     kubectl -n "$NS" exec verificador-de-alertas -- python3 -c "
 import json, urllib.request
-r = urllib.request.urlopen('http://sgtm-stg-observabilidad-prometheus:9090/api/v1/query?query=$1', timeout=10)
+r = urllib.request.urlopen('http://kamayuk-stg-observabilidad-prometheus:9090/api/v1/query?query=$1', timeout=10)
 d = json.load(r)
 print(json.dumps(d['data']['result']))
 "
@@ -264,8 +264,8 @@ sys.exit(0 if any(s['metric'].get('alertstate') == sys.argv[2] for s in series) 
 
 echo
 echo "· Apagando la base de datos"
-kubectl -n "$NS" scale deployment/sgtm-stg-postgres --replicas=0
-kubectl -n "$NS" wait --for=delete pod -l app=sgtm-stg-postgres --timeout=60s 2>/dev/null || true
+kubectl -n "$NS" scale deployment/kamayuk-stg-postgres --replicas=0
+kubectl -n "$NS" wait --for=delete pod -l app=kamayuk-stg-postgres --timeout=60s 2>/dev/null || true
 
 # 6 minutos, no los 15 a los que se llego ensanchando a ciegas: el `alerta_esta`
 # de mas arriba tenia el bug real -el `grep -q` contra el JSON de Python nunca
@@ -299,7 +299,7 @@ if [ "$LOGRADO" != "si" ]; then
     echo "-- El objetivo «postgres», segun /api/v1/targets --"
     kubectl -n "$NS" exec verificador-de-alertas -- python3 -c "
 import json, urllib.request
-r = urllib.request.urlopen('http://sgtm-stg-observabilidad-prometheus:9090/api/v1/targets', timeout=10)
+r = urllib.request.urlopen('http://kamayuk-stg-observabilidad-prometheus:9090/api/v1/targets', timeout=10)
 d = json.load(r)
 for t in d['data']['activeTargets']:
     if t['labels'].get('job') == 'postgres':
@@ -322,7 +322,7 @@ echo "  El receptor de prueba: 0 peticiones. La regla esta roja y nadie se enter
 
 echo
 echo "· 2/2 — Cableando el receptor y confirmando la entrega"
-kubectl -n "$NS" get configmap sgtm-stg-observabilidad-alertmanager -o json \
+kubectl -n "$NS" get configmap kamayuk-stg-observabilidad-alertmanager -o json \
     | node -e '
         const cm = JSON.parse(require("fs").readFileSync(0, "utf8"));
         cm.data["alertmanager.yml"] = [
@@ -336,15 +336,15 @@ kubectl -n "$NS" get configmap sgtm-stg-observabilidad-alertmanager -o json \
           "  - name: null-receiver",
           "  - name: webhook",
           "    webhook_configs:",
-          "      - url: http://receptor-de-prueba.sgtm-stg.svc.cluster.local:8000/",
+          "      - url: http://receptor-de-prueba.kamayuk-stg.svc.cluster.local:8000/",
           "        send_resolved: true",
           "",
         ].join("\n");
         process.stdout.write(JSON.stringify(cm));
       ' \
     | kubectl apply -f - >/dev/null
-kubectl -n "$NS" rollout restart deployment/sgtm-stg-observabilidad-alertmanager >/dev/null
-kubectl -n "$NS" rollout status deployment/sgtm-stg-observabilidad-alertmanager --timeout=90s
+kubectl -n "$NS" rollout restart deployment/kamayuk-stg-observabilidad-alertmanager >/dev/null
+kubectl -n "$NS" rollout status deployment/kamayuk-stg-observabilidad-alertmanager --timeout=90s
 
 ENTREGADO=no
 for _ in $(seq 1 12); do
@@ -359,9 +359,9 @@ if [ "$ENTREGADO" != "si" ]; then
     echo "FALLO: con el receptor configurado, la notificacion nunca llego." >&2
     echo "::group::Diagnostico: entrega del webhook" >&2
     echo "--- linea 'url' del ConfigMap de alertmanager ---" >&2
-    kubectl -n "$NS" get configmap sgtm-stg-observabilidad-alertmanager -o jsonpath='{.data.alertmanager\.yml}' | grep -A1 webhook_configs >&2 || true
-    kubectl -n "$NS" describe pods -l app=sgtm-stg-observabilidad-alertmanager >&2
-    kubectl -n "$NS" logs deployment/sgtm-stg-observabilidad-alertmanager --all-containers --prefix --tail=200 >&2 || true
+    kubectl -n "$NS" get configmap kamayuk-stg-observabilidad-alertmanager -o jsonpath='{.data.alertmanager\.yml}' | grep -A1 webhook_configs >&2 || true
+    kubectl -n "$NS" describe pods -l app=kamayuk-stg-observabilidad-alertmanager >&2
+    kubectl -n "$NS" logs deployment/kamayuk-stg-observabilidad-alertmanager --all-containers --prefix --tail=200 >&2 || true
     kubectl -n "$NS" logs deployment/receptor-de-prueba --all-containers --prefix --tail=50 >&2 || true
     kubectl -n "$NS" get events --sort-by=.lastTimestamp >&2
     echo "::endgroup::" >&2

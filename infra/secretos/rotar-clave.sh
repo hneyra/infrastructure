@@ -35,7 +35,7 @@
 #
 #   uso: secretos/rotar-clave.sh --ambiente stg|prod \
 #        --rol kamayuk-app|kamayuk-owner|keycloak-base|kamayuk-respaldo|kamayuk-monitor|postgres-carga \
-#        [--namespace sgtm-stg]
+#        [--namespace kamayuk-stg]
 set -euo pipefail
 
 AMBIENTE=""
@@ -55,7 +55,7 @@ done
          "kamayuk-monitor, postgres-carga." >&2
     exit 2
 }
-NAMESPACE=${NAMESPACE:-sgtm-$AMBIENTE}
+NAMESPACE=${NAMESPACE:-kamayuk-$AMBIENTE}
 
 AQUI=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 INFRA=$(cd "$AQUI/.." && pwd)

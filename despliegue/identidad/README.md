@@ -32,7 +32,7 @@ fija tres cosas:
   Keycloak enviar el enlace de un solo uso con que un usuario nuevo fija su clave
   (ADR-0012). En el clúster, `Identidad.ts` reescribe este bloque con el relay del
   stack —host y remitente en claro; usuario y clave, si hace falta, del `Secret`
-  `sgtm-<amb>-smtp`—.
+  `kamayuk-<amb>-smtp`—.
 
 **El archivo no lleva comentarios**, y no por estilo: Keycloak analiza el realm
 con `RealmRepresentation` y **rechaza cualquier campo que no conozca**, así que un

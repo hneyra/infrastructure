@@ -148,7 +148,7 @@ describe("la escritura toca una linea, y comprueba lo escrito releyendolo", () =
       const sinLaVersion = (texto: string) =>
         texto
           .split("\n")
-          .filter((linea) => !linea.includes("sgtm:applicationBootstrapVersion:"))
+          .filter((linea) => !linea.includes("kamayuk:applicationBootstrapVersion:"))
           .join("\n");
       expect(sinLaVersion(despues)).toBe(sinLaVersion(antes));
       expect(despues.split("\n").length).toBe(antes.split("\n").length);

@@ -30,7 +30,7 @@
 #
 #   uso: abrir-conjunto-parametros.sh --ambiente stg|prod --municipalidad-id N \
 #        (--ejercicio AAAA | --conjunto-id N) [--archivo parametros_2026.csv] [--sellar] \
-#        [--namespace sgtm-stg] [--observacion "..."]
+#        [--namespace kamayuk-stg] [--observacion "..."]
 #
 # Requiere: la municipalidad ya implantada, y kubectl con el tunel al API del ambiente ya abierto.
 set -euo pipefail
@@ -77,15 +77,15 @@ if [ -n "$ARCHIVO" ] && [ ! -f "$ARCHIVO" ]; then
     echo "No existe el archivo: $ARCHIVO" >&2
     exit 2
 fi
-NAMESPACE=${NAMESPACE:-sgtm-$AMBIENTE}
+NAMESPACE=${NAMESPACE:-kamayuk-$AMBIENTE}
 
 SUFIJO=$(date +%s)
-RECURSO="sgtm-${AMBIENTE}-conjunto-parametros-${SUFIJO}"
+RECURSO="kamayuk-${AMBIENTE}-conjunto-parametros-${SUFIJO}"
 
-IMAGEN=$(kubectl -n "$NAMESPACE" get deployment "sgtm-${AMBIENTE}-aplicacion" \
+IMAGEN=$(kubectl -n "$NAMESPACE" get deployment "kamayuk-${AMBIENTE}-aplicacion" \
     -o jsonpath='{.spec.template.spec.containers[0].image}')
 [ -n "$IMAGEN" ] || {
-    echo "No se pudo leer la imagen de sgtm-${AMBIENTE}-aplicacion en $NAMESPACE" >&2
+    echo "No se pudo leer la imagen de kamayuk-${AMBIENTE}-aplicacion en $NAMESPACE" >&2
     exit 1
 }
 echo "Imagen desplegada: $IMAGEN"
@@ -149,7 +149,7 @@ spec:
         app: lote
     spec:
       restartPolicy: Never
-      priorityClassName: sgtm-${AMBIENTE}-prioridad-lote
+      priorityClassName: kamayuk-${AMBIENTE}-prioridad-lote
       containers:
         - name: conjunto-parametros
           image: $IMAGEN
@@ -157,7 +157,7 @@ spec:
             - name: SPRING_PROFILES_ACTIVE
               value: batch
             - name: KAMAYUK_DB_URL
-              value: jdbc:postgresql://sgtm-${AMBIENTE}-postgres:5432/sgtm
+              value: jdbc:postgresql://kamayuk-${AMBIENTE}-postgres:5432/sgtm
             # kamayuk_app basta: conjunto_parametros y conjunto_parametro_detalle son tablas que
             # la aplicacion escribe (V7). Publicar un valor normativo si exigiria
             # rol_carga_parametros, y este proceso no publica ninguno.
@@ -166,7 +166,7 @@ spec:
             - name: KAMAYUK_DB_CLAVE
               valueFrom:
                 secretKeyRef:
-                  name: sgtm-${AMBIENTE}-postgres-app
+                  name: kamayuk-${AMBIENTE}-postgres-app
                   key: clave-app
             - name: KAMAYUK_CONJUNTOPARAMETROS_MUNICIPALIDADID
               value: "$MUNICIPALIDAD_ID"

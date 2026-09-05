@@ -64,7 +64,7 @@ function baseline(environment: Environment = "prod"): Invariants {
       // Opción B): sin relay, el alta crea al usuario sin clave y no incumple nada.
       smtp: isStg
         ? {
-            host: "sgtm-stg-correo",
+            host: "kamayuk-stg-correo",
             port: 1025,
             from: "no-responder@stg.example.pe",
             startTls: false,
@@ -147,7 +147,7 @@ describe("RNF-074 — se entra cifrado, y no responde nada más", () => {
 
 describe("INF-01 §1.3 y RNF-076 — el respaldo, fuera del nodo y a tiempo", () => {
   it.each([
-    ["http://minio.sgtm-prod.svc.cluster.local:9000", "un servicio del propio clúster"],
+    ["http://minio.kamayuk-prod.svc.cluster.local:9000", "un servicio del propio clúster"],
     ["http://localhost:9000", "el bucle local del nodo"],
     ["http://127.0.0.1:9000", "la dirección de bucle"],
   ])("%s no sirve de respaldo (%s)", (endpoint) => {
@@ -226,7 +226,7 @@ describe("INF-03 §4 — nada de atajos de desarrollo en producción", () => {
 
   it("un buzon de pruebas como relay SMTP declarado en prod", () => {
     const c = baseline("prod");
-    c.identity.smtp = { host: "sgtm-prod-correo", port: 1025, from: "x@y.pe", startTls: false, auth: true };
+    c.identity.smtp = { host: "kamayuk-prod-correo", port: 1025, from: "x@y.pe", startTls: false, auth: true };
     expectViolation(c, "buzón que nadie lee");
   });
 
@@ -397,7 +397,7 @@ const MINIMOS_ADMISIBLES = {
   esDemostracion: true,
   // Obligatorio en prod (issue #156): sin el, `checkInvariants` revienta con la
   // misma frase que el propio fallo — "una regla que no notifica a nadie...".
-  alertWebhookUrl: "https://hooks.example.pe/sgtm-alertas",
+  alertWebhookUrl: "https://hooks.example.pe/kamayuk-alertas",
 };
 
 describe("C-14 §3 — el `id` de la municipalidad que los procesos por lotes fijan", () => {
@@ -456,7 +456,7 @@ describe("un valor obligatorio que falta revienta al principio, y dice cuál", (
     // genérico obliga a adivinar cuál de los ocho falta, y el sitio donde se adivina
     // es el despliegue.
     expect((error as MissingConfigError).key).toBe(clave);
-    expect((error as Error).message).toContain(`sgtm:${clave}`);
+    expect((error as Error).message).toContain(`kamayuk:${clave}`);
     expect((error as Error).message).toContain(`pulumi config set ${clave}`);
   });
 
@@ -517,13 +517,13 @@ describe("INF-01 §1.4 — el kubeconfig apunta al túnel, no al VPS", () => {
 
 describe("convenciones de nombres y etiquetas", () => {
   it("el nombre lleva el ambiente y el componente", () => {
-    expect(resourceName("prod", "postgres")).toBe("sgtm-prod-postgres");
-    expect(namespaceName("stg")).toBe("sgtm-stg");
+    expect(resourceName("prod", "postgres")).toBe("kamayuk-prod-postgres");
+    expect(namespaceName("stg")).toBe("kamayuk-stg");
   });
 
   it("las cuatro etiquetas obligatorias van en todo recurso", () => {
     expect(commonLabels("stg", "keycloak")).toEqual({
-      proyecto: "sgtm",
+      proyecto: "kamayuk",
       ambiente: "stg",
       componente: "keycloak",
       "gestionado-por": "pulumi",

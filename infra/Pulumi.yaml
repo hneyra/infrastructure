@@ -1,5 +1,5 @@
-name: sgtm
-description: SGTM — infraestructura como código (ADR-0011)
+name: kamayuk
+description: Kamayuk — infraestructura como código (ADR-0011)
 runtime:
   name: nodejs
   options:

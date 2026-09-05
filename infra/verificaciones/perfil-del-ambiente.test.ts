@@ -105,8 +105,8 @@ describe("C-19 · el monolito lo declara quien lo despliega, y sólo ése", () =
    * **La mitad que importa: la plataforma no se va con él.**
    *
    * Los cuatro sistemas de ADR-0031 viven en su propio namespace y se conectan
-   * literalmente a `sgtm-<amb>-postgres.sgtm-<amb>` (C-17, punto 1) y validan sus tokens
-   * contra el JWKS interno de `sgtm-<amb>-identidad` (C-14, punto 3). Los dos nombres se
+   * literalmente a `kamayuk-<amb>-postgres.kamayuk-<amb>` (C-17, punto 1) y validan sus tokens
+   * contra el JWKS interno de `kamayuk-<amb>-identidad` (C-14, punto 3). Los dos nombres se
    * leen **del entorno que reciben los descriptores**, que es el mismo del que salen sus
    * variables: comprobarlos contra una constante escrita aquí sería comparar dos copias
    * de la misma suposición.
@@ -121,10 +121,10 @@ describe("C-19 · el monolito lo declara quien lo despliega, y sólo ése", () =
     const entornoDe = entornoDelAmbiente(invariantesDe(ambiente));
     const plataforma = entornoDe(SISTEMAS[0]!.descriptor.sistema).plataforma;
 
-    // `sgtm-stg-postgres.sgtm-stg:5432` → el `Service` y su namespace.
+    // `kamayuk-stg-postgres.kamayuk-stg:5432` → el `Service` y su namespace.
     const [motor = "", puerto = ""] = plataforma.motor.split(":");
     const [nombreDelMotor = "", espacioDelMotor = ""] = motor.split(".");
-    // `http://sgtm-stg-identidad.sgtm-stg:8080/realms/...` → el `Service` y su namespace.
+    // `http://kamayuk-stg-identidad.kamayuk-stg:8080/realms/...` → el `Service` y su namespace.
     const identidad = /\/\/([a-z0-9-]+)\.([a-z0-9-]+):/.exec(plataforma.jwks);
 
     const servicios = new Set(

@@ -18,8 +18,8 @@ import org.junit.jupiter.api.Test;
  * estructura de clases sino texto.
  *
  * <p>Se revisa {@code src/main} y no {@code src/test}: una prueba que demuestre el peligro de
- * {@code SET SESSION} tiene que poder escribirlo. La de {@code sgtm-plataforma} lo hace, y es lo
- * que prueba que el guardia de conexiones sirve para algo.
+ * {@code SET SESSION} tiene que poder escribirlo. La de {@code kamayuk-rentas-plataforma} lo hace,
+ * y es lo que prueba que el guardia de conexiones sirve para algo.
  *
  * <p>El unico escaner que recorre {@code src/test} es {@link AsercionesQueNoPuedenFallarTest}, y
  * tiene que serlo porque el defecto que busca —#724— vive en las aserciones. No es una excepcion a

@@ -353,10 +353,10 @@ describe("#150 · kamayuk_owner no entra en el Deployment", () => {
     // la regla persigue es que no acabe en un proceso expuesto en HTTP, y ninguno de
     // los dos abre un puerto.
     expect([...donde].sort()).toEqual([
-      "CronJob/sgtm-prod-respaldo",
-      "Deployment/sgtm-prod-postgres",
-      `Job/sgtm-prod-implantacion-${invariantesDe(AMBIENTE).application.bootstrapVersion.slice(0, 12)}`,
-      `Job/sgtm-prod-migracion-${invariantesDe(AMBIENTE).application.bootstrapVersion.slice(0, 12)}`,
+      "CronJob/kamayuk-prod-respaldo",
+      "Deployment/kamayuk-prod-postgres",
+      `Job/kamayuk-prod-implantacion-${invariantesDe(AMBIENTE).application.bootstrapVersion.slice(0, 12)}`,
+      `Job/kamayuk-prod-migracion-${invariantesDe(AMBIENTE).application.bootstrapVersion.slice(0, 12)}`,
     ]);
   });
 
@@ -534,7 +534,7 @@ describe("#151 · identidad", () => {
       `https://${dominio}${RUTA_DE_IDENTIDAD}/realms/sgtm`,
     );
     // El JWKS no sale al ingreso para volver a entrar.
-    expect(variables.get("KAMAYUK_OIDC_JWKS")).toContain("http://sgtm-prod-identidad:8080");
+    expect(variables.get("KAMAYUK_OIDC_JWKS")).toContain("http://kamayuk-prod-identidad:8080");
   });
 
   it("el realm que se aplica conserva el mapeador de municipalidad_id", () => {
@@ -664,7 +664,7 @@ describe("#151 · identidad", () => {
       const huella = documentos.realm + documentos.perfilDeUsuario + documentos.clientes;
 
       expect(huella).toContain("numero_documento");
-      expect(antes).toMatch(/^sgtm-.*-realm-[0-9a-f]{10}$/);
+      expect(antes).toMatch(/^kamayuk-.*-realm-[0-9a-f]{10}$/);
     });
   });
 
@@ -933,7 +933,7 @@ describe("ADR-0012 · alta declarativa de usuarios", () => {
         "realm.json"
       ] ?? "{}",
     ) as { smtpServer?: Record<string, string> };
-    expect(realmStg.smtpServer?.host).toBe("sgtm-stg-correo");
+    expect(realmStg.smtpServer?.host).toBe("kamayuk-stg-correo");
 
     const realmProd = JSON.parse(realmCm.data["realm.json"] ?? "{}") as {
       smtpServer?: Record<string, string>;
@@ -1338,7 +1338,7 @@ describe("#151 · la demostracion", () => {
     const variable = (identidad.spec.template.spec.containers[0]?.env ?? []).find(
       (e) => e.name === "KC_HOSTNAME",
     );
-    if (variable) variable.value = "http://sgtm-prod-identidad:8080/keycloak";
+    if (variable) variable.value = "http://kamayuk-prod-identidad:8080/keycloak";
 
     // La firma seguiria siendo valida y todo el sistema devolveria 401 sin explicacion.
     expect(emisorCoherente(ms)).toBe(false);
@@ -1468,7 +1468,7 @@ describe("#152 · la aplicacion y la interfaz", () => {
 
   it("la interfaz reenvia /api/v1 al servicio de la aplicacion del ambiente", () => {
     const configuracion = nginxDelCluster(AMBIENTE);
-    expect(configuracion).toContain("proxy_pass http://sgtm-prod-aplicacion:8080;");
+    expect(configuracion).toContain("proxy_pass http://kamayuk-prod-aplicacion:8080;");
     // Y no queda ni un rastro del nombre del compose, que en el clúster no resuelve.
     expect(configuracion).not.toContain("http://aplicacion:8080");
   });
@@ -1829,9 +1829,9 @@ describe("#156 · observabilidad", () => {
     const prometheusYml = configuracion.data["prometheus.yml"] ?? "";
     for (const objetivo of [
       "/actuator/prometheus",
-      "sgtm-prod-postgres:9187",
-      "sgtm-prod-observabilidad-node-exporter:9100",
-      "sgtm-prod-observabilidad-kube-state-metrics:8080",
+      "kamayuk-prod-postgres:9187",
+      "kamayuk-prod-observabilidad-node-exporter:9100",
+      "kamayuk-prod-observabilidad-kube-state-metrics:8080",
       "traefik.kube-system.svc.cluster.local:9100",
     ]) {
       expect(prometheusYml).toContain(objetivo);
@@ -1977,7 +1977,7 @@ describe("#157 · endurecimiento", () => {
     // `NetworkPolicy` aplicado y es responsabilidad de
     // `red/verificar-politicas.sh`, no de esta suite sin clúster.
     const postgres = politicaDe(ms, "permitir-ingreso-postgres");
-    const nombreDeInterfaz = buscar(ms, "Service", "sgtm-prod-interfaz").metadata.name;
+    const nombreDeInterfaz = buscar(ms, "Service", "kamayuk-prod-interfaz").metadata.name;
     expect(origenesDe(postgres).pods).not.toContain(nombreDeInterfaz);
   });
 
@@ -1986,7 +1986,7 @@ describe("#157 · endurecimiento", () => {
     // -Grafana incluido- bajo un CNI que aplique NetworkPolicy de verdad: las dos
     // puntas del flujo se declaran cada una en su propio pod.
     const prometheus = politicaDe(ms, "permitir-ingreso-prometheus");
-    const nombreDeGrafana = buscar(ms, "Service", "sgtm-prod-observabilidad-grafana").metadata.name;
+    const nombreDeGrafana = buscar(ms, "Service", "kamayuk-prod-observabilidad-grafana").metadata.name;
     expect(origenesDe(prometheus).pods).toEqual([nombreDeGrafana]);
     const puertos = (prometheus.spec.ingress ?? []).flatMap((r) => r.ports ?? []).map((p) => p.port);
     expect(puertos).toEqual([9090]);
@@ -1996,7 +1996,7 @@ describe("#157 · endurecimiento", () => {
     // Sin esta, la regla evalua a FIRING de verdad y nadie se entera: la conexion
     // misma con la que Prometheus la empuja se cae antes de llegar.
     const salida = politicaDe(ms, "permitir-salida-prometheus");
-    const nombreDeAlertmanager = buscar(ms, "Service", "sgtm-prod-observabilidad-alertmanager").metadata.name;
+    const nombreDeAlertmanager = buscar(ms, "Service", "kamayuk-prod-observabilidad-alertmanager").metadata.name;
     const reglaConAlertmanager = (salida.spec.egress ?? []).find((r) =>
       (r.to ?? []).some((d) => d.podSelector?.matchLabels.app === nombreDeAlertmanager),
     );
@@ -2017,10 +2017,10 @@ describe("#157 · endurecimiento", () => {
     const nombres = conInternet.map((p) => p.metadata.name).sort();
     expect(nombres).toEqual(
       [
-        "permitir-salida-sgtm-prod-observabilidad-alertmanager-a-internet",
-        "permitir-salida-sgtm-prod-postgres-a-internet",
-        "permitir-salida-sgtm-prod-respaldo-a-internet",
-        "permitir-salida-sgtm-prod-observabilidad-kube-state-metrics-al-apiserver",
+        "permitir-salida-kamayuk-prod-observabilidad-alertmanager-a-internet",
+        "permitir-salida-kamayuk-prod-postgres-a-internet",
+        "permitir-salida-kamayuk-prod-respaldo-a-internet",
+        "permitir-salida-kamayuk-prod-observabilidad-kube-state-metrics-al-apiserver",
       ].sort(),
     );
     // `prod` sin relay SMTP (ADR-0012, Opción B): identidad no tiene salida amplia.
@@ -2051,7 +2051,7 @@ describe("#157 · endurecimiento", () => {
     // un ipBlock fragil es acotar el puerto (ver el docstring de Red.ts). Es 6443
     // -el puerto real, despues del DNAT del `Service` `kubernetes`- y no 443, que
     // es solo lo que ese `Service` expone antes de traducirse.
-    const salida = politicaDe(ms, "permitir-salida-sgtm-prod-observabilidad-kube-state-metrics-al-apiserver");
+    const salida = politicaDe(ms, "permitir-salida-kamayuk-prod-observabilidad-kube-state-metrics-al-apiserver");
     expect(salida.spec.policyTypes).toEqual(["Egress"]);
     expect(salida.spec.ingress).toBeUndefined();
     const puertos = (salida.spec.egress ?? []).flatMap((r) => r.ports ?? []).map((p) => p.port);

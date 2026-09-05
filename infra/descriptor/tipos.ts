@@ -178,7 +178,7 @@ export interface EntornoDelDescriptor {
      * Es la cuarta cosa, y llego tarde: hasta C-17 los cuatro descriptores escribian a mano
      * `jdbc:postgresql://postgres:5432/<sistema>`, y en Kubernetes **no existe ningun `Service`
      * que se llame `postgres`**. El nombre viene del `compose.yaml` local, donde si lo hay; en el
-     * clúster el servicio es `sgtm-<ambiente>-postgres` y vive en el namespace de la plataforma,
+     * clúster el servicio es `kamayuk-<ambiente>-postgres` y vive en el namespace de la plataforma,
      * asi que un nombre corto tampoco resolveria aunque coincidiera.
      *
      * El sintoma medido fue `UnknownHostException` en los ocho Jobs y en los cuatro

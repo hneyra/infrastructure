@@ -538,8 +538,8 @@ jobs:
         working-directory: infrastructure/infra
         run: |
           ./secretos/verificar-claves-distintas.sh \
-              --ambiente stg  --namespace sgtm-stg \
-              --ambiente prod --namespace sgtm-prod
+              --ambiente stg  --namespace kamayuk-stg \
+              --ambiente prod --namespace kamayuk-prod
 
       # Correrlo otra vez tiene que ser un no-op: nada nuevo, y los valores que ya
       # existian se quedan exactamente iguales. Se compara por huella (sha256 corto),
@@ -561,7 +561,7 @@ jobs:
               process.stdout.write(datos.map((e) => e.secreto + " " + e.clave).join("\n"));
             ' | while read -r secreto clave; do
               [ -n "$secreto" ] || continue
-              valor=$(kubectl -n "sgtm-$1" get secret "$secreto" -o jsonpath="{.data.$clave}")
+              valor=$(kubectl -n "kamayuk-$1" get secret "$secreto" -o jsonpath="{.data.$clave}")
               echo "$secreto/$clave $(printf '%s' "$valor" | base64 --decode | sha256sum | cut -c1-12)"
             done
           }
@@ -592,12 +592,12 @@ jobs:
         working-directory: infrastructure/infra
         run: |
           set -euo pipefail
-          valor_de_owner=$(kubectl -n sgtm-stg get secret sgtm-stg-postgres-owner \
+          valor_de_owner=$(kubectl -n kamayuk-stg get secret kamayuk-stg-postgres-owner \
               -o jsonpath='{.data.clave-owner}')
-          kubectl -n sgtm-stg patch secret sgtm-stg-postgres-carga --type=merge \
+          kubectl -n kamayuk-stg patch secret kamayuk-stg-postgres-carga --type=merge \
               -p "{\"data\":{\"clave-carga\":\"$valor_de_owner\"}}"
 
-          if ./secretos/verificar-claves-distintas.sh --ambiente stg --namespace sgtm-stg; then
+          if ./secretos/verificar-claves-distintas.sh --ambiente stg --namespace kamayuk-stg; then
             echo "::error::verificar-claves-distintas.sh NO detecto que kamayuk_owner y" \
                  "rol_carga_parametros comparten clave. La comprobacion no protege nada."
             exit 1
@@ -1127,10 +1127,10 @@ jobs:
       - name: Las extensiones que crear-roles.sql declara, en un motor que ya existe (ADR-0021)
         if: steps.credenciales.outputs.hay == 'si'
         run: |
-          if kubectl -n sgtm-stg get deployment sgtm-stg-postgres >/dev/null 2>&1; then
+          if kubectl -n kamayuk-stg get deployment kamayuk-stg-postgres >/dev/null 2>&1; then
             infrastructure/despliegue/crear-extensiones.sh --ambiente stg
           else
-            echo "Todavia no hay motor en sgtm-stg: el volumen nace vacio y las crea"
+            echo "Todavia no hay motor en kamayuk-stg: el volumen nace vacio y las crea"
             echo "crear-roles.sql desde /docker-entrypoint-initdb.d, que es el camino"
             echo "que CI ejercita en cada PR."
           fi
@@ -1181,7 +1181,7 @@ jobs:
 
       - name: Qué quedó a medias, si algo falló
         if: failure() && steps.credenciales.outputs.hay == 'si'
-        run: infrastructure/.github/diagnostico-del-namespace.sh sgtm-stg
+        run: infrastructure/.github/diagnostico-del-namespace.sh kamayuk-stg
 
   aplicar-prod:
     name: pulumi up en prod (con aprobación)
@@ -1298,10 +1298,10 @@ jobs:
       # que la extension se declarara (2026-08-30), asi que aqui no llega sola.
       - name: Las extensiones que crear-roles.sql declara, en un motor que ya existe (ADR-0021)
         run: |
-          if kubectl -n sgtm-prod get deployment sgtm-prod-postgres >/dev/null 2>&1; then
+          if kubectl -n kamayuk-prod get deployment kamayuk-prod-postgres >/dev/null 2>&1; then
             infrastructure/despliegue/crear-extensiones.sh --ambiente prod
           else
-            echo "Todavia no hay motor en sgtm-prod: el volumen nace vacio y las crea"
+            echo "Todavia no hay motor en kamayuk-prod: el volumen nace vacio y las crea"
             echo "crear-roles.sql desde /docker-entrypoint-initdb.d."
           fi
 
@@ -1350,7 +1350,7 @@ jobs:
 
       - name: Qué quedó a medias, si algo falló
         if: failure()
-        run: infrastructure/.github/diagnostico-del-namespace.sh sgtm-prod
+        run: infrastructure/.github/diagnostico-del-namespace.sh kamayuk-prod
 
   deteccion-de-deriva:
     name: Detección de deriva en prod
@@ -1508,4 +1508,4 @@ jobs:
 
       - name: Qué quedó a medias, si algo falló
         if: failure() && steps.credenciales.outputs.hay == 'si'
-        run: infrastructure/.github/diagnostico-del-namespace.sh sgtm-prod
+        run: infrastructure/.github/diagnostico-del-namespace.sh kamayuk-prod
