@@ -200,15 +200,78 @@ YAML
 
 # Prometheus escuchaba a `kamayuk-stg-aplicacion` -que no existe en este clúster de
 # prueba, nunca contesta y su ausencia no se puede distinguir de un fallo real-. Se
-# repunta el job `aplicacion` al exportador sintetico, solo para esta comprobacion.
-echo "· Repuntando el scrape de «aplicacion» al exportador sintetico"
+# apunta el job `aplicacion` al exportador sintetico, solo para esta comprobacion.
+#
+# ## Por que esto ANADE el job cuando no esta, y no solo lo sustituye
+#
+# Hasta C-19 el job existia siempre y bastaba con un `replace()`. Desde C-19, `stg` no
+# despliega el monolito (`kamayuk:desplegarElMonolito: false`) y su `prometheus.yml`
+# **no declara ningun `job_name: aplicacion`**: son cinco jobs y ninguno es ese. Contra
+# ese manifiesto la sustitucion era un no-op silencioso, y el guion moria 90 s despues
+# diciendo «el archivo montado en el Pod nunca reflejo el ConfigMap actualizado» — un
+# sintoma que acusa al kubelet de no sincronizar cuando lo que pasa es que no se
+# escribio nada. C-19 lo dejo declarado como su hueco 4.
+#
+# El tablero **no se templa por ambiente**: es un JSON compartido por los dos y
+# partirlo seria un segundo sitio donde olvidarse (C-19, hueco 4). Asi que sus dos
+# paneles de la aplicacion —JVM y peticiones HTTP— hay que poder comprobarlos aqui, y
+# el exportador sintetico ya era el que los servia: este guion filtra el `Deployment`
+# de la aplicacion del manifiesto desde siempre (ver arriba), o sea que **nunca** raspo
+# la aplicacion real. Anadir el job cuando el ambiente no lo declara no verifica una
+# cosa distinta: verifica exactamente la que ya se verificaba, y ademas donde el
+# ambiente no lo trae.
+#
+# Lo que se conserva es el otro sentido: si el ambiente SI declara el job -`prod`, que
+# despliega el monolito-, se repunta el suyo en vez de anadir un segundo. Un ambiente
+# con dos `job_name: aplicacion` no es configuracion valida de Prometheus.
+echo "· Apuntando el scrape de «aplicacion» al exportador sintetico"
 kubectl -n "$NS" get configmap kamayuk-stg-observabilidad-prometheus -o json \
     | node -e '
         const cm = JSON.parse(require("fs").readFileSync(0, "utf8"));
-        cm.data["prometheus.yml"] = cm.data["prometheus.yml"].replace(
-          /targets: \["kamayuk-stg-aplicacion:8080"\]/,
-          "targets: [\"aplicacion-sintetica:8080\"]",
-        );
+        const antes = cm.data["prometheus.yml"];
+        const OBJETIVO = "aplicacion-sintetica:8080";
+
+        const jobs = (antes.match(/^  - job_name: aplicacion$/gm) ?? []).length;
+        if (jobs > 1) {
+          throw new Error(
+            "El manifiesto declara " + jobs + " veces `job_name: aplicacion`. Eso no es " +
+              "configuracion valida de Prometheus, y aqui no se sabe cual repuntar.",
+          );
+        }
+
+        let despues;
+        if (jobs === 1) {
+          // El ambiente lo declara (`prod`): se le cambia el objetivo, sin tocar nada mas.
+          despues = antes.replace(
+            /(^  - job_name: aplicacion$[\s\S]*?^      - targets: )\[".*?"\]$/m,
+            `$1["${OBJETIVO}"]`,
+          );
+        } else {
+          // El ambiente no lo declara (`stg` desde C-19): se anade, con el mismo
+          // `metrics_path` que `Observabilidad.ts` le pone al de verdad.
+          despues =
+            antes.trimEnd() +
+            "\n" +
+            [
+              "  - job_name: aplicacion",
+              "    metrics_path: /actuator/prometheus",
+              "    static_configs:",
+              `      - targets: ["${OBJETIVO}"]`,
+              "",
+            ].join("\n");
+        }
+
+        // Que el repunte no pueda ser un no-op. Es la mitad que faltaba: sin esto, una
+        // expresion que deja de casar no falla aqui — falla 90 s mas tarde acusando al
+        // kubelet, y el mensaje manda a buscar al sitio equivocado.
+        if (despues === antes || !despues.includes(OBJETIVO)) {
+          throw new Error(
+            "El repunte del scrape no cambio nada: `prometheus.yml` sigue sin apuntar a " +
+              OBJETIVO + ". Sin el, los dos paneles de la aplicacion no tienen quien los " +
+              "sirva y este guion no puede comprobarlos.",
+          );
+        }
+        cm.data["prometheus.yml"] = despues;
         process.stdout.write(JSON.stringify(cm));
       ' \
     | kubectl apply -f - >/dev/null

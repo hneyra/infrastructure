@@ -537,9 +537,7 @@ jobs:
       - name: Ninguna clave se repite, ni dentro de un ambiente ni entre los dos
         working-directory: infrastructure/infra
         run: |
-          ./secretos/verificar-claves-distintas.sh \
-              --ambiente stg  --namespace kamayuk-stg \
-              --ambiente prod --namespace kamayuk-prod
+          ./secretos/verificar-claves-distintas.sh --ambiente stg --ambiente prod
 
       # Correrlo otra vez tiene que ser un no-op: nada nuevo, y los valores que ya
       # existian se quedan exactamente iguales. Se compara por huella (sha256 corto),
@@ -597,7 +595,7 @@ jobs:
           kubectl -n kamayuk-stg patch secret kamayuk-stg-postgres-carga --type=merge \
               -p "{\"data\":{\"clave-carga\":\"$valor_de_owner\"}}"
 
-          if ./secretos/verificar-claves-distintas.sh --ambiente stg --namespace kamayuk-stg; then
+          if ./secretos/verificar-claves-distintas.sh --ambiente stg; then
             echo "::error::verificar-claves-distintas.sh NO detecto que kamayuk_owner y" \
                  "rol_carga_parametros comparten clave. La comprobacion no protege nada."
             exit 1

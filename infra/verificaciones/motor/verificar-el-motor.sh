@@ -284,31 +284,96 @@ motor_reiniciar || { echo "FALLO: el motor no volvio tras el reinicio" >&2; exit
 if [ "$CON_AISLAMIENTO" = "si" ]; then
     echo
     echo "· verificarAislamiento contra esta instancia"
-    # `--no-parallel --max-workers=1`, y esto se descubrio por las malas en la primera
-    # corrida de este trabajo: `verificarAislamiento` son DOS tareas —el esquema y la
-    # plataforma— y `org.gradle.parallel=true` las lanza a la vez.
+    # ── De QUE arbol sale la prueba, y por que son los cuatro ────────────────
     #
-    # Con Testcontainers eso da igual: cada una levanta su contenedor. Contra un motor
-    # externo comparten instancia, y **los roles son objetos del clúster de PostgreSQL,
-    # no de una base**: las dos ejecutan `ALTER ROLE kamayuk_owner ... PASSWORD` sobre los
-    # mismos roles. El resultado fue un `tuple concurrently updated` en una y un
-    # `password authentication failed for user "kamayuk_owner"` en la otra —la clave que
-    # acababa de poner se la habia cambiado la vecina—.
+    # Hasta el corte esto era `cd "$INFRA/../backend"`, el monolito. Ese directorio
+    # sigue existiendo y **no es un proyecto Gradle**: tiene 70 archivos y los 70 son
+    # SQL —las migraciones y el `crear-roles.sql` que `componentes/fuentes.ts` lee para
+    # armar la inicializacion de ESTE motor—. El Java se fue a los cuatro sistemas, asi
+    # que `./gradlew` no existe ahi y nunca va a existir: seria un build sin fuentes.
     #
-    # Desde #698 la carrera esta cerrada en el arnes —la clave se DERIVA del cluster en
-    # vez de sortearse, y el provisionamiento se serializa con un candado de asesoramiento
-    # tomado siempre en la base `postgres`—, asi que la orden en paralelo ya funciona. Las
-    # dos banderas se quedan igual, y a proposito: aqui el motor es desechable, correr en
-    # serie cuesta unos segundos, y con ellas este trabajo no depende de que aquel arreglo
-    # siga siendo correcto. Quien guarda el caso en paralelo es
-    # `ProvisionamientoCompartidoTest`, no esta linea.
-    (
-        cd "$INFRA/../backend"
-        ./gradlew verificarAislamiento --no-daemon --no-parallel --max-workers=1 \
-            -Dsgtm.pruebas.postgres.url="jdbc:postgresql://127.0.0.1:$PUERTO/postgres" \
-            -Dsgtm.pruebas.postgres.usuario=postgres \
-            -Dsgtm.pruebas.postgres.clave="$CLAVE_SUPER"
-    ) || { echo "FALLO: la prueba de aislamiento no paso contra la instancia del manifiesto" >&2; exit 1; }
+    # Se corren **los cuatro**, y no uno de muestra, porque lo que este trabajo
+    # demuestra es que el aislamiento sigue en pie **contra el motor que el manifiesto
+    # levanta**. Cada sistema trae su propio esquema, sus propias politicas de RLS y sus
+    # propias particiones, y su `AislamientoMultiTenantTest` recorre SUS tablas: correr
+    # solo `rentas` dejaria a los otros tres verificados unicamente contra el
+    # Testcontainers de su propio flujo `Backend`, que es otra imagen y otra
+    # configuracion. El motor ya comprobo arriba que las cuatro bases existen con sus
+    # roles; esto es lo que comprueba que ademas AISLAN.
+    #
+    # En serie a proposito. `--no-parallel --max-workers=1` se descubrio por las malas en
+    # la primera corrida de este trabajo: `verificarAislamiento` son DOS tareas —el
+    # esquema y la plataforma— y `org.gradle.parallel=true` las lanza a la vez. Con
+    # Testcontainers da igual, cada una levanta su contenedor; contra un motor externo
+    # comparten instancia, y **los roles son objetos del clúster, no de una base**: las
+    # dos ejecutan `ALTER ROLE kamayuk_owner ... PASSWORD` sobre los mismos roles. Salio
+    # un `tuple concurrently updated` en una y un `password authentication failed` en la
+    # otra —la clave que acababa de poner se la habia cambiado la vecina—. Desde #698 la
+    # carrera esta cerrada en el arnes (la clave se DERIVA del cluster en vez de
+    # sortearse), pero las banderas se quedan, y ahora con mas motivo: los cuatro
+    # sistemas apuntan al mismo motor y hacen `ALTER ROLE` sobre los mismos cinco roles.
+    # Quien guarda el caso en paralelo es `ProvisionamientoCompartidoTest`, no esta linea.
+
+    # ── Y que la prueba haya mirado ESTE motor, no uno suyo ──────────────────
+    #
+    # La mitad silenciosa del defecto anterior: si las propiedades no llegan —nombre
+    # equivocado, plugin `kamayuk.pruebas-postgres` retirado de un modulo, una version de
+    # Gradle que deja de propagarlas—, `MotorPostgres.resolver()` **levanta un contenedor
+    # propio con Testcontainers** y las pruebas pasan verdes contra un motor que no es el
+    # del manifiesto. Ese verde es indistinguible del bueno, y este trabajo entero dejaria
+    # de significar nada.
+    #
+    # Se mide por el rastro que `BaseDeDatosDePrueba.provisionarRoles` deja en el CLUSTER:
+    # `ALTER ROLE ... LOGIN PASSWORD` sobre los cinco roles de ARQ-03 §4. Contra
+    # Testcontainers eso pasa en el contenedor de la prueba y **aqui no cambia nada**.
+    #
+    # No se mide por la base `sgtm_prueba_<uuid>` que la corrida crea, y eso se comprobo
+    # ejecutando: `MotorPostgres.close()` la borra con `DROP DATABASE ... WITH (FORCE)`, asi
+    # que al terminar el bucle no queda ninguna y ese censo daria **rojo en falso**.
+    # La huella de los roles, en cambio, sobrevive.
+    huellaDeLosRoles() {
+        comoSuperusuario "SELECT md5(string_agg(coalesce(rolpassword, '-') || rolcanlogin::text,
+            '|' ORDER BY rolname)) FROM pg_authid WHERE rolname IN ('kamayuk_owner',
+            'kamayuk_app', 'kamayuk_readonly', 'rol_carga_parametros', 'rol_ingestor_catastro')" \
+            postgres
+    }
+
+    HUELLA_ANTES=$(huellaDeLosRoles)
+
+    for sistema in rentas catastro normativa caja; do
+        arbol="$INFRA/../../$sistema/backend"
+        [ -x "$arbol/gradlew" ] || {
+            echo "FALLO: no esta «$arbol/gradlew». Este trabajo necesita los cuatro clones" >&2
+            echo 'hermanos; en CI los pone .github/actions/clonar-los-hermanos (C-20).' >&2
+            exit 1
+        }
+        echo "  · $sistema"
+        (
+            cd "$arbol"
+            # `kamayuk.pruebas.postgres.*`, NO `sgtm.*`. El nombre viejo no da error: lo
+            # que hace `MotorPostgres.resolver()` cuando no encuentra la propiedad es
+            # **levantar su propio contenedor con Testcontainers**, o sea pasar en verde
+            # habiendo verificado otro motor. Lo caza la huella de abajo.
+            ./gradlew verificarAislamiento --no-daemon --no-parallel --max-workers=1 \
+                -Dkamayuk.pruebas.postgres.url="jdbc:postgresql://127.0.0.1:$PUERTO/postgres" \
+                -Dkamayuk.pruebas.postgres.usuario=postgres \
+                -Dkamayuk.pruebas.postgres.clave="$CLAVE_SUPER"
+        ) || {
+            echo "FALLO: el aislamiento de «$sistema» no paso contra la instancia del manifiesto" >&2
+            exit 1
+        }
+    done
+
+    [ "$(huellaDeLosRoles)" != "$HUELLA_ANTES" ] || {
+        echo "FALLO: las pruebas de aislamiento pasaron sin tocar ESTE motor." >&2
+        echo "Los cinco roles del cluster estan exactamente como antes de correrlas, y" >&2
+        echo "«provisionarRoles» les cambia la clave a los cinco: se ejecutaron contra un" >&2
+        echo "contenedor suyo de Testcontainers, asi que el verde no dice nada del motor" >&2
+        echo "del manifiesto. Revisa que las propiedades «kamayuk.pruebas.postgres.*»" >&2
+        echo "lleguen al proceso de prueba." >&2
+        exit 1
+    }
+    echo "  (comprobado: los cinco roles de ESTE motor los provisiono la prueba)"
 fi
 
 echo
