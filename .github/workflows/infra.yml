@@ -243,7 +243,7 @@ jobs:
       # Levanta el motor con los guiones que el manifiesto monta, comprueba los cuatro
       # roles contra el proceso en marcha y ejecuta `verificarAislamiento` contra esa
       # instancia. **Es el criterio de aceptación de #149**, y no se puede sustituir por
-      # leer el manifiesto: un manifiesto correcto no demuestra que sgtm_app no vea las
+      # leer el manifiesto: un manifiesto correcto no demuestra que kamayuk_app no vea las
       # filas de la otra municipalidad.
       - name: verificar-el-motor.sh --con-aislamiento
         run: infrastructure/infra/verificaciones/motor/verificar-el-motor.sh --ambiente stg --con-aislamiento
@@ -259,7 +259,7 @@ jobs:
       - name: La rotacion, contra un motor real, para los dos roles que rotan
         run: |
           set -euo pipefail
-          infrastructure/infra/secretos/verificar-rotacion.sh --ambiente stg --rol sgtm_app
+          infrastructure/infra/secretos/verificar-rotacion.sh --ambiente stg --rol kamayuk_app
           infrastructure/infra/secretos/verificar-rotacion.sh --ambiente stg --rol rol_carga_parametros
 
   raiz-sellada:
@@ -578,8 +578,8 @@ jobs:
           fi
           echo "Ninguna de las $(wc -l < /tmp/antes.txt) huellas cambio."
 
-      # La demostracion del issue: "volviendo a poner la misma clave para sgtm_owner y
-      # sgtm_app... esa es la que hay que escribir: claves distintas, comprobado". Se
+      # La demostracion del issue: "volviendo a poner la misma clave para kamayuk_owner y
+      # kamayuk_app... esa es la que hay que escribir: claves distintas, comprobado". Se
       # fuerza aqui, contra el cluster real, y se exige que la comprobacion de arriba
       # lo detecte.
       #
@@ -598,7 +598,7 @@ jobs:
               -p "{\"data\":{\"clave-carga\":\"$valor_de_owner\"}}"
 
           if ./secretos/verificar-claves-distintas.sh --ambiente stg --namespace sgtm-stg; then
-            echo "::error::verificar-claves-distintas.sh NO detecto que sgtm_owner y" \
+            echo "::error::verificar-claves-distintas.sh NO detecto que kamayuk_owner y" \
                  "rol_carga_parametros comparten clave. La comprobacion no protege nada."
             exit 1
           fi
@@ -1109,7 +1109,7 @@ jobs:
       # de migracion que `up` va a crear corre DENTRO de este mismo paso, y `V61` empieza
       # con `ADD COLUMN geometria geography(...)`. Sin la extension, el Job falla con
       # «type "geography" does not exist» y no lo puede arreglar el migrador: `postgis`
-      # no es *trusted*, asi que crearla exige superusuario y `sgtm_owner` a proposito no
+      # no es *trusted*, asi que crearla exige superusuario y `kamayuk_owner` a proposito no
       # lo es (ADR-0021).
       #
       # `crear-roles.sql` la crea bien, pero corre UNA sola vez, desde
@@ -1293,7 +1293,7 @@ jobs:
 
       # El mismo paso que `aplicar-stg`, y por el mismo motivo (ADR-0021): el Job de
       # migracion que `pulumi up` crea corre dentro de ese mismo paso, y `V61` no puede
-      # crear `postgis` por su cuenta —no es *trusted* y `sgtm_owner` no es superusuario—.
+      # crear `postgis` por su cuenta —no es *trusted* y `kamayuk_owner` no es superusuario—.
       # `crear-roles.sql` solo corre con el volumen vacio, y el de `prod` es de antes de
       # que la extension se declarara (2026-08-30), asi que aqui no llega sola.
       - name: Las extensiones que crear-roles.sql declara, en un motor que ya existe (ADR-0021)
