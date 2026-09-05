@@ -32,6 +32,11 @@ services:
     # PostGIS dentro (ADR-0021). `catastro` la necesita desde `V61`, y la imagen
     # oficial no la trae —con ella el arranque falla con «extension "postgis" is
     # not available»—.
+    #
+    # Sigue siendo esta DESPUES de C-13, y conviene decir por que: el motor es UNO
+    # para los cuatro sistemas, asi que basta con que un sistema necesite PostGIS
+    # para que la imagen del cluster tenga que traerlo. Lo que C-13 cambia no es la
+    # imagen sino QUE BASE recibe la extension: hoy solo la de `catastro`.
     image: postgis/postgis:16-3.4-alpine
     environment:
       # `postgres` y no `sgtm`: aqui no hay una base del producto, hay CUATRO, y
@@ -48,6 +53,26 @@ services:
       # el `10` a proposito: `crear-roles.sql` instala extensiones y concede sobre
       # `public`, y necesita que las bases ya esten.
       - ./inicializacion-del-motor/05-crear-bases.sh:/docker-entrypoint-initdb.d/05-crear-bases.sh:ro
+      # LOS CUATRO `crear-roles.sql`, y por que van montados (C-10).
+      #
+      # `05-crear-bases.sh` ya no lleva la lista de extensiones escrita a mano: la
+      # DERIVA de estos archivos, que son donde cada sistema la decide. Con eso, la
+      # base de `caja` nace sin ninguna —que es su decision de P5D y hasta C-10 no
+      # se cumplia aqui— y solo `catastro` recibe PostGIS.
+      #
+      # Van FUERA de `docker-entrypoint-initdb.d` a proposito: todo `.sql` que caiga
+      # ahi lo EJECUTA el entrypoint contra la base por omision, y estos hay que
+      # leerlos, no correrlos. La lista de bases sale de estos nombres, asi que
+      # anadir un sistema es anadir su montaje y nada mas.
+      #
+      # Exigen los clones hermanos. Si falta uno, Docker monta un directorio vacio y
+      # el guion se para nombrandolo: una base sin su extension no falla al crearse,
+      # falla a mitad de la migracion una hora despues (#742).
+      - ./inicializacion-del-motor/lib-extensiones.sh:/etc/kamayuk/lib-extensiones.sh:ro
+      - ../../rentas/backend/kamayuk-rentas-esquema/src/main/resources/db/roles/crear-roles.sql:/etc/kamayuk/roles/rentas.sql:ro
+      - ../../catastro/backend/kamayuk-catastro-esquema/src/main/resources/db/roles/crear-roles.sql:/etc/kamayuk/roles/catastro.sql:ro
+      - ../../normativa/backend/kamayuk-normativa-esquema/src/main/resources/db/roles/crear-roles.sql:/etc/kamayuk/roles/normativa.sql:ro
+      - ../../caja/backend/kamayuk-caja-esquema/src/main/resources/db/roles/crear-roles.sql:/etc/kamayuk/roles/caja.sql:ro
       - ../backend/sgtm-esquema/src/main/resources/db/roles/crear-roles.sql:/docker-entrypoint-initdb.d/10-crear-roles.sql:ro
       - ./inicializacion-del-motor/20-asignar-claves.sh:/docker-entrypoint-initdb.d/20-asignar-claves.sh:ro
       - datos-plataforma:/var/lib/postgresql/data

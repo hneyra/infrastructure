@@ -464,76 +464,47 @@ export function declaradasSinUsar(lista: Esquema[] = esquemas()): Sobrante[] {
 }
 
 /**
- * El censo de lo declarado y no usado, con el motivo de cada entrada.
+ * Las declaraciones de mas que se consienten. **Hoy: ninguna** (C-13).
  *
- * ## Por que se marca, y por que como censo y no como rojo
+ * ## Por que esto paso de censo a rojo
  *
- * **Se marca**, porque una extension declarada de mas no es ruido inocuo:
+ * C-2 midio cinco declaraciones de mas —`pg_trgm` en `catastro` y las cuatro de
+ * `normativa`— y las dejo como CENSO y no como rojo, por dos motivos que decia con todas
+ * sus letras: que un rojo «naceria disparado en dos de los seis esquemas» (#437: una
+ * comprobacion que grita el primer dia se acaba silenciando), y que retirar una
+ * declaracion «cambia como se provisiona esa base en todos los ambientes», que es decision
+ * del duenio del esquema y no efecto colateral de una guarda de `infrastructure`.
  *
- *   - `postgis` **no es trusted** —medido: `SELECT trusted FROM
- *     pg_available_extension_versions WHERE name='postgis'` da `f`—, asi que declararla
- *     obliga a un superusuario en cada ambiente donde se provisione esa base y a la
- *     imagen `postgis/postgis`, que la oficial no trae. Una base que no la necesita
- *     hereda las dos condiciones.
- *   - y **se ve en otra guarda**: `postgis` crea `spatial_ref_sys`, asi que
- *     `AislamientoMultiTenantTest` de `normativa` lleva una exencion para una tabla que
- *     su esquema no necesitaria. `rentas` retiro la extension **y la exencion** en P5E;
- *     `normativa` conserva las dos.
+ * C-13 retiro las cinco, asi que el primer motivo se acabo: el rojo nace **en verde**. Y el
+ * segundo se contesto midiendo, no opinando:
  *
- * **Como censo y no como rojo**, porque con la lista de hoy un rojo naceria disparado en
- * dos de los seis esquemas, y una comprobacion que grita el primer dia se acaba
- * silenciando (#437 lo midio al descartar ensanchar el patron de la regla 5 por sus ocho
- * falsos positivos). Y porque retirar una declaracion **cambia como se provisiona esa
- * base en todos los ambientes**: es una decision del duenio de ese esquema, como lo fue
- * la de `caja` en P5D y la de `rentas` en P5E, no un efecto colateral de una guarda de
- * `infrastructure`.
+ *   - el esquema resultante es **el mismo**. Aplicados los dos `crear-roles.sql` —el de
+ *     antes y el de despues— y encima todas las migraciones, contra PostgreSQL 16.15 real,
+ *     el `pg_dump --schema-only` difiere en **exactamente las lineas de las extensiones
+ *     retiradas** y en nada mas: ni una tabla, ni un indice, ni una restriccion, ni una
+ *     politica.
+ *   - retirar **no es destructivo**: no hay ningun `DROP EXTENSION` en ninguno de los
+ *     cinco archivos, asi que una base ya provisionada conserva lo que tenga. Lo que
+ *     cambia es que una base NUEVA no lo recibe.
+ *   - y el precedente lo pusieron los propios duenios, dos veces: P5D dejo `caja` sin
+ *     ninguna y P5E dejo `rentas` con dos. C-13 aplica esa misma decision a los dos
+ *     esquemas donde la poda simplemente no se habia hecho.
  *
- * ## Lo que la lista compra, que es lo mismo que un rojo
+ * Y C-10 cambio lo que cuesta NO decidirlo: hasta C-10 `05-crear-bases.sh` creaba las
+ * cuatro extensiones en las cuatro bases con la lista escrita a mano, asi que sobrar era
+ * inerte en el entorno local. Desde C-10 **lo declarado es lo que actua**, de modo que
+ * dejar `postgis` en `normativa` seria crearla de verdad en una base que no dibuja nada.
  *
- * La prueba la compara con lo medido **en las dos direcciones**, asi que una declaracion
- * de mas nueva se pone roja nombrando el repositorio y la extension, y una entrada que
- * deja de ser cierta —porque alguien la retiro, o porque una migracion nueva empezo a
- * usarla— **tambien**. No hay donde esconder una ni donde dejar rancia la otra.
+ * ## Por que la lista se queda, vacia
+ *
+ * Porque lo que permite es una excepcion **temporal y nombrada**, y con la lista vacia una
+ * declaracion de mas nueva no tiene donde esconderse: la unica forma de callarla es
+ * escribir aqui su motivo, y eso se ve en el diff. Es la misma decision que #429 tomo con
+ * su lista de pendientes al quedarse vacia.
+ *
+ * La prueba la compara en las DOS direcciones, como antes: una declaracion de mas que no
+ * este aqui pone la guarda roja nombrando repositorio y extension, y una entrada de aqui
+ * que deje de ser cierta —porque alguien la retiro, o porque una migracion empezo a
+ * usarla— tambien.
  */
-export const DECLARADAS_DE_MAS: readonly (Sobrante & { porque: string })[] = [
-  {
-    sistema: "catastro",
-    extension: "pg_trgm",
-    porque:
-      "la busqueda por aproximacion es del PADRON de contribuyentes (RF-014), que es de " +
-      "«rentas». El baseline de catastro no llama a similarity() ni indexa con " +
-      "gin_trgm_ops. Viene del archivo que P3 copio del monolito, que P5D si podo en " +
-      "«caja» y P5E en «rentas», y que aqui no se ha decidido.",
-  },
-  {
-    sistema: "normativa",
-    extension: "btree_gist",
-    porque:
-      "«normativa» guarda parametros versionados y sellados: su baseline no tiene un solo " +
-      "EXCLUDE USING gist. La de vigencias que no se pisan es de «catastro» (#669, V72).",
-  },
-  {
-    sistema: "normativa",
-    extension: "pg_trgm",
-    porque:
-      "ninguna migracion suya llama a similarity() ni indexa con gin_trgm_ops. La busqueda " +
-      "por aproximacion es del padron de «rentas» (RF-014).",
-  },
-  {
-    sistema: "normativa",
-    extension: "postgis",
-    porque:
-      "la geometria del predio es de «catastro» (ADR-0021). Es la mas cara de las cuatro: " +
-      "no es trusted, asi que exige superusuario y la imagen postgis/postgis para " +
-      "provisionar una base que no dibuja nada — y su tabla spatial_ref_sys obliga a una " +
-      "exencion en el AislamientoMultiTenantTest de normativa que «rentas» ya retiro.",
-  },
-  {
-    sistema: "normativa",
-    extension: "unaccent",
-    porque:
-      "lo que la obligaria es la funcion nombre_normalizado(text), cuyo cuerpo llama a " +
-      "unaccent(...) — y P5B la retiro del baseline por ser de «catastro», dicho en su " +
-      "propia seccion 2. No queda una sola llamada a unaccent() en el esquema.",
-  },
-] as const;
+export const DECLARADAS_DE_MAS: readonly (Sobrante & { porque: string })[] = [] as const;

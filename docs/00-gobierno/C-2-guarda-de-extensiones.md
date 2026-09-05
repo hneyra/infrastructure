@@ -1,6 +1,8 @@
 # C-2 — La guarda de extensiones, extendida a los cinco esquemas
 
-> **Estado: cerrado, con tres huecos declarados en §6.** La guarda de #742 miraba **un**
+> **Estado: cerrado, con tres huecos declarados en §6 — los huecos 2 y 3 los cerro
+> [C-10](C-10-las-extensiones.md), y con el la decision de §1.4 quedo superada: las cinco
+> declaraciones de mas se retiraron y el censo paso a ser un rojo.** La guarda de #742 miraba **un**
 > repositorio con la ruta escrita a mano; ahora mide **seis copias de esquema** —los cinco
 > sistemas de `SISTEMAS` más la copia local del monolito— y su lista **no se escribe aquí**: se
 > deriva de la tabla que `deriva-de-migraciones.ts` ya mantiene.
@@ -133,6 +135,12 @@ que deja de ser cierta —porque alguien la retiró, o porque una migración nue
 **No se retira ninguna en este trabajo, y es deliberado.** Lo que C-2 entrega es que dejen de poder
 pasar inadvertidas.
 
+> **Superado por [C-10/C-13](C-10-las-extensiones.md).** Las cinco se retiraron, con el diff de
+> esquema medido —`pg_dump --schema-only` difiere en exactamente las lineas de las extensiones
+> retiradas y en nada mas—, y con ello el primero de los dos motivos de arriba se acabo: el rojo
+> nace en verde. `DECLARADAS_DE_MAS` queda como lista de excepciones **vacia** y
+> `declaradasSinUsar()` como rojo.
+
 ---
 
 ## 2. Las mutaciones, una por repositorio
@@ -263,7 +271,7 @@ aplicación se corrieron además con `cleanTest --no-build-cache`, porque una ta
    `verificar` lleva `if: github.event_name != 'schedule'`; darle un latido diario es una decisión
    de CI aparte, porque arrastraría también a `deriva-de-migraciones.test.ts`.
 
-2. **Las extensiones se nombran hoy en TRES sitios, y esta guarda sólo ata dos.**
+2. **[CERRADO por C-10.] Las extensiones se nombran hoy en TRES sitios, y esta guarda sólo ata dos.**
    `despliegue/inicializacion-del-motor/05-crear-bases.sh` crea `pg_trgm`, `unaccent`,
    `btree_gist` y `postgis` **en las cuatro bases**, con la lista escrita a mano y sin leer ningún
    `crear-roles.sql`. Su propio comentario lo justifica —«para que el baseline de cualquiera pueda
@@ -271,11 +279,15 @@ aplicación se corrieron además con `cleanTest --no-build-cache`, porque una ta
    `caja` no se cumple**, su base recibe PostGIS igual, así que «la caja corre en el motor más
    simple que exista» no se ejercita en ninguna parte. Atar ese guion a los cuatro archivos es otro
    trabajo, y es el que haría falta para que esa decisión de P5D fuera comprobable.
+   *(C-10 lo hizo: el guion deriva de los `crear-roles.sql` que el compose le monta, y `caja` tiene
+   ya su prueba —`BaseSinExtensionesTest`— de que su esquema aplica con cero extensiones.)*
 
-3. **`despliegue/crear-extensiones.sh` sigue con la ruta del monolito escrita a mano.** Lee
+3. **[CERRADO por C-10.] `despliegue/crear-extensiones.sh` sigue con la ruta del monolito escrita a mano.** Lee
    `backend/sgtm-esquema/.../crear-roles.sql` y sólo sabe hablar con la base `sgtm` de un
    namespace. Extenderlo a cuatro bases exige decidir namespace y base por sistema, que es
    despliegue y no verificación; queda fuera a propósito y anotado aquí para que no sea un olvido.
+   *(C-10 lo midió y no había tal decisión: la base es el nombre del sistema en los cinco y el
+   namespace ya venía por `--namespace`. Se ató con `--sistema`.)*
 
 4. **La guarda mide texto, no un motor.** Una extensión declarada y **no disponible en la imagen**
    —`postgis` sobre `postgres:16-alpine`— sigue rompiendo el despliegue y esto no lo ve: sale

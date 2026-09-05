@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { load } from "js-yaml";
 import { describe, expect, it } from "vitest";
 import { raizDelRepositorio } from "../componentes/fuentes";
+import { SISTEMAS as SISTEMAS_DECLARADOS } from "./deriva-de-migraciones";
 
 /**
  * El compose de la PLATAFORMA (ADR-0031 §4), leido del archivo.
@@ -72,8 +73,15 @@ const PLATAFORMA = load(
 ) as Compose;
 const ENTERO = load(readFileSync(join(RAIZ, "despliegue/compose.yaml"), "utf8")) as Compose;
 
-/** Las cuatro de ADR-0029. Si alguien anade un sistema, esta lista lo dice. */
-const SISTEMAS = ["rentas", "catastro", "normativa", "caja"];
+/**
+ * Las cuatro bases de ADR-0029, **derivadas** de la tabla que ya las declara.
+ *
+ * Hasta C-10 esta lista estaba escrita aqui a mano, que era un cuarto sitio donde
+ * olvidarse de un sistema —el defecto de #742 otra vez—. Sale de {@link SISTEMAS} menos
+ * el monolito, que es la misma resta que hace `esquemas()` y por el mismo motivo: la base
+ * de `sgtm` se llama `sgtm` y la crea el otro compose.
+ */
+const BASES = SISTEMAS_DECLARADOS.filter((s) => s.nombre !== "sgtm").map((s) => s.nombre);
 
 describe("la plataforma levanta lo que todo el mundo necesita", () => {
   it("PostgreSQL, Keycloak, el buzon y el ingreso, y nada de ningun sistema", () => {
@@ -92,23 +100,60 @@ describe("la plataforma levanta lo que todo el mundo necesita", () => {
   });
 
   it("y crea LAS CUATRO bases, una por sistema", () => {
-    const guion = readFileSync(
-      join(RAIZ, "despliegue/inicializacion-del-motor/05-crear-bases.sh"),
-      "utf8",
-    );
-    const declaradas = /^BASES="([^"]+)"$/m.exec(guion)?.[1]?.split(" ") ?? [];
-    expect(declaradas.sort()).toEqual([...SISTEMAS].sort());
-    // Y se monta, que es lo que hace que corra: un guion en el repositorio y no en
-    // `docker-entrypoint-initdb.d` es un guion que no se ejecuta.
-    expect(PLATAFORMA.services["base"]?.volumes?.join("\n")).toContain(
+    // Desde C-10 la lista de bases NO esta en el guion: sale de los archivos que se le
+    // montan, uno por sistema. Asi que lo que hay que comprobar aqui es que estan los
+    // cuatro montajes — un sistema en SISTEMAS sin su montaje es una base que no nace.
+    const montajes = PLATAFORMA.services["base"]?.volumes ?? [];
+
+    for (const base of BASES) {
+      expect(
+        montajes.join("\n"),
+        `«${base}» no tiene montado su crear-roles.sql: su base no se crearia`,
+      ).toContain(`:/etc/kamayuk/roles/${base}.sql:ro`);
+    }
+    // Y se monta el guion, que es lo que hace que corra: un guion en el repositorio y no
+    // en `docker-entrypoint-initdb.d` es un guion que no se ejecuta.
+    expect(montajes.join("\n")).toContain(
       "05-crear-bases.sh:/docker-entrypoint-initdb.d/05-crear-bases.sh",
     );
+    // Y su libreria, que es de donde saca que extensiones declara cada uno.
+    expect(montajes.join("\n")).toContain("lib-extensiones.sh:/etc/kamayuk/lib-extensiones.sh:ro");
+  });
+
+  it("cada montaje de roles apunta al clon hermano de SU sistema", () => {
+    // Un montaje cruzado —el `crear-roles.sql` de `catastro` como `caja.sql`— daria una
+    // base de la caja con PostGIS dentro y ni un error: el defecto que C-10 cierra,
+    // reintroducido por una linea del compose.
+    const montajes = PLATAFORMA.services["base"]?.volumes ?? [];
+
+    for (const base of BASES) {
+      const montaje = montajes.find((v) => v.endsWith(`:/etc/kamayuk/roles/${base}.sql:ro`));
+      expect(montaje, `falta el montaje de «${base}»`).toBeDefined();
+      expect(montaje, `el montaje de «${base}» no sale de su clon`).toContain(
+        `../../${base}/backend/`,
+      );
+      expect(montaje).toContain("/src/main/resources/db/roles/crear-roles.sql:");
+    }
+  });
+
+  it("los archivos de roles NO caen en docker-entrypoint-initdb.d", () => {
+    // Todo `.sql` que caiga ahi lo EJECUTA el entrypoint contra la base por omision.
+    // Estos hay que leerlos, no correrlos: ejecutar el `crear-roles.sql` de los cuatro
+    // sistemas contra `postgres` crearia ahi las extensiones de todos y ninguna donde
+    // toca — exactamente al reves de lo que C-10 hace.
+    const montajes = PLATAFORMA.services["base"]?.volumes ?? [];
+    const enInitdb = montajes.filter((v) => v.includes(":/docker-entrypoint-initdb.d/"));
+
+    expect(enInitdb.filter((v) => v.includes("/etc/kamayuk/"))).toEqual([]);
+    expect(enInitdb).toHaveLength(3); // 05-crear-bases, 10-crear-roles, 20-asignar-claves
   });
 
   it("el guion de las bases corre ANTES que el de los roles", () => {
     // `crear-roles.sql` instala extensiones y concede sobre `public`: sin las bases
     // creadas no tiene donde hacerlo. Lo unico que ordena estos guiones es el numero.
-    const montajes = PLATAFORMA.services["base"]?.volumes ?? [];
+    const montajes = (PLATAFORMA.services["base"]?.volumes ?? []).filter((v) =>
+      v.includes(":/docker-entrypoint-initdb.d/"),
+    );
     const bases = montajes.findIndex((v) => v.includes("crear-bases"));
     const roles = montajes.findIndex((v) => v.includes("crear-roles"));
     expect(bases).toBeGreaterThanOrEqual(0);

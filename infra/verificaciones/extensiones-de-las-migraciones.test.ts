@@ -1,6 +1,9 @@
-import { existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import { raizDelRepositorio } from "../componentes/fuentes";
 import { SISTEMAS } from "./deriva-de-migraciones";
 import {
   DECLARADAS_DE_MAS,
@@ -9,6 +12,7 @@ import {
   declaradasSinUsar,
   descripcionDelSobrante,
   descripcionDelUso,
+  type Esquema,
   esquemas,
   exclusionesConIgualdad,
   extensionesDeclaradas,
@@ -159,8 +163,13 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
       ],
       sgtm: ["btree_gist", "pg_trgm", "postgis", "unaccent"],
       rentas: ["pg_trgm", "unaccent"],
-      catastro: ["btree_gist", "pg_trgm", "postgis", "unaccent"],
-      normativa: ["btree_gist", "pg_trgm", "postgis", "unaccent"],
+      // TRES desde C-13: `pg_trgm` se fue porque la busqueda por aproximacion de nombre
+      // es del padron de contribuyentes, que es de `rentas`.
+      catastro: ["btree_gist", "postgis", "unaccent"],
+      // CERO desde C-13: su baseline no usa ninguna de las cuatro que declaraba, y
+      // `postgis` arrastraba ademas la exencion de `spatial_ref_sys` de su prueba de
+      // aislamiento. Es la misma poda que P5E le hizo a `rentas`.
+      normativa: [],
       // CERO, y es el dato: P5D las retiro a proposito, «porque la caja tiene que poder
       // correr en el motor mas simple que exista». Que sea cero y no un archivo
       // ilegible lo garantiza la prueba de que los dos archivos existen.
@@ -169,27 +178,51 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
   });
 });
 
-describe("C-2 — lo declarado y no usado se DICE, con su motivo", () => {
-  it("el censo es exactamente el declarado, en las dos direcciones", () => {
-    // Las dos direcciones es lo que hace que esta lista valga lo mismo que un rojo: una
-    // declaracion de mas nueva no tiene donde esconderse, y una entrada que deja de ser
-    // cierta —retirada, o usada por una migracion nueva— tampoco puede quedarse rancia.
-    expect(declaradasSinUsar().map(descripcionDelSobrante)).toEqual(
-      DECLARADAS_DE_MAS.map(descripcionDelSobrante),
+describe("C-13 — lo declarado y no usado es ROJO, y hoy no hay ninguna", () => {
+  it("ninguno de los seis esquemas declara una extension que no use", () => {
+    // C-2 dejo esto como CENSO porque un rojo «naceria disparado en dos de los seis», y
+    // una comprobacion que grita el primer dia se acaba silenciando (#437). C-13 retiro
+    // las cinco —`pg_trgm` de `catastro` y las cuatro de `normativa`—, asi que el rojo
+    // nace en verde y ya puede ser un rojo.
+    const sobrantes = declaradasSinUsar().filter(
+      (s) => !DECLARADAS_DE_MAS.some((c) => c.sistema === s.sistema && c.extension === s.extension),
     );
+    expect(sobrantes.map(descripcionDelSobrante)).toEqual([]);
   });
 
-  it("y son cinco: una de catastro y las cuatro de normativa", () => {
-    expect(declaradasSinUsar().map((s) => `${s.sistema}|${s.extension}`)).toEqual([
-      "catastro|pg_trgm",
-      "normativa|btree_gist",
-      "normativa|pg_trgm",
-      "normativa|postgis",
-      "normativa|unaccent",
+  it("y la lista de excepciones esta VACIA, que es lo que hace que no haya donde esconderse", () => {
+    // Se queda declarada a proposito: lo que permite es una excepcion temporal y
+    // NOMBRADA, y con la lista vacia la unica forma de callar una declaracion de mas es
+    // escribir aqui su motivo, y eso se ve en el diff (#429 con su lista de pendientes).
+    expect(DECLARADAS_DE_MAS).toEqual([]);
+  });
+
+  it("EL CONTRASTE: la guarda muerde — una declarada de mas sale nombrada", () => {
+    // Sin esto, «no hay ninguna» seria compatible con «esto no puede fallar». Se mide
+    // sobre un esquema fabricado, no sobre uno real, para no escribir en ningun clon.
+    const fabricado = esquemaFabricado(
+      "V1__baseline.sql",
+      "CREATE TABLE t (id bigint);",
+      "CREATE EXTENSION IF NOT EXISTS postgis;",
+    );
+    expect(declaradasSinUsar([fabricado]).map(descripcionDelSobrante)).toEqual([
+      "«fabricado» declara «postgis» y ninguna migracion suya la usa",
     ]);
   });
 
-  it("cada entrada dice por que sobra, y no es una lista de nombres", () => {
+  it("y NO muerde cuando la migracion si la usa: es la otra mitad del contraste", () => {
+    const fabricado = esquemaFabricado(
+      "V1__baseline.sql",
+      "ALTER TABLE predio ADD COLUMN geo geography(MultiPolygon, 4326);",
+      "CREATE EXTENSION IF NOT EXISTS postgis;",
+    );
+    expect(declaradasSinUsar([fabricado])).toEqual([]);
+    expect(usosSinDeclarar([fabricado])).toEqual([]);
+  });
+
+  it("cada excepcion que hubiera tendria que decir por que, y de un esquema medido", () => {
+    // Vacia hoy; la guarda se queda para que una entrada nueva no pueda ser un nombre a
+    // secas ni referirse a un esquema que nadie mide.
     for (const entrada of DECLARADAS_DE_MAS) {
       expect(entrada.porque.length, `«${entrada.sistema}/${entrada.extension}» no dice por que`)
         .toBeGreaterThan(60);
@@ -200,13 +233,20 @@ describe("C-2 — lo declarado y no usado se DICE, con su motivo", () => {
     }
   });
 
-  it("EL CONTRASTE: el monolito, rentas y caja no declaran ninguna de mas", () => {
-    // Sin esto, la lista podria crecer sin limite y seguir «cuadrando». Los tres que
-    // estan a cero son los tres que alguien podo: `rentas` en P5E, `caja` en P5D, y el
-    // monolito porque las cuatro las usa.
-    const conSobrantes = new Set(declaradasSinUsar().map((s) => s.sistema));
+  it("`normativa` y `caja` no declaran NINGUNA, que es su decision y ahora se cumple", () => {
+    // `caja` desde P5D, `normativa` desde C-13. Lo que cambia con C-10 es que ahora
+    // decide de verdad: `05-crear-bases.sh` deriva de este archivo, asi que sus dos bases
+    // nacen sin ninguna extension en vez de recibir las cuatro.
+    for (const nombre of ["normativa", "caja"]) {
+      const esquema = esquemas().find((e) => e.nombre === nombre);
+      expect(esquema, `no se esta midiendo «${nombre}»`).toBeDefined();
+      expect(extensionesDeclaradas(esquema!), `«${nombre}» declara alguna extension`).toEqual([]);
+    }
+  });
 
-    expect([...conSobrantes].sort()).toEqual(["catastro", "normativa"]);
+  it("y `catastro` conserva las tres que SI usa", () => {
+    const catastro = esquemas().find((e) => e.nombre === "catastro")!;
+    expect(extensionesDeclaradas(catastro)).toEqual(["btree_gist", "postgis", "unaccent"]);
   });
 });
 
@@ -314,3 +354,236 @@ function fuenteDeDosExclusiones(): string {
     "ALTER TABLE b ADD CONSTRAINT c2 EXCLUDE USING gist (y WITH =, s WITH &&);"
   );
 }
+
+/**
+ * Un esquema de mentira en un directorio temporal: una migracion y un `crear-roles.sql`.
+ *
+ * Existe para que las mutaciones de esta guarda no tengan que escribir en ningun clon —el
+ * archivo historico `sgtm` no se escribe ni para mutar y restaurar (C-2 §2.1)—, y para
+ * poder fabricar la trampa que ningun archivo real tiene hoy: un `CREATE EXTENSION`
+ * dentro de un comentario.
+ */
+function esquemaFabricado(migracion: string, ddl: string, roles: string): Esquema {
+  const raiz = mkdtempSync(join(tmpdir(), "c10-esquema-"));
+  TEMPORALES.push(raiz);
+  mkdirSync(join(raiz, "db/migration"), { recursive: true });
+  mkdirSync(join(raiz, "db/roles"), { recursive: true });
+  writeFileSync(join(raiz, "db/migration", migracion), ddl);
+  writeFileSync(join(raiz, "db/roles/crear-roles.sql"), roles);
+  return {
+    nombre: "fabricado",
+    raiz,
+    migraciones: "db/migration/",
+    roles: "db/roles/crear-roles.sql",
+  };
+}
+
+const TEMPORALES: string[] = [];
+afterAll(() => {
+  for (const ruta of TEMPORALES) rmSync(ruta, { recursive: true, force: true });
+});
+
+/** La misma funcion de shell que usan los dos guiones, EJECUTADA. */
+function extensionesSegunElShell(archivo: string): string[] {
+  const lib = join(
+    raizDelRepositorio(),
+    "despliegue/inicializacion-del-motor/lib-extensiones.sh",
+  );
+  const salida = execFileSync(
+    "bash",
+    ["-c", `. "$1"; extensiones_declaradas "$2"`, "--", lib, archivo],
+    { encoding: "utf8" },
+  );
+  return salida.split("\n").filter((linea) => linea.trim().length > 0);
+}
+
+/**
+ * C-10 — las extensiones se nombran en UN sitio por sistema, y los otros dos derivan.
+ *
+ * Hasta C-10 se nombraban en TRES (C-2 §6, huecos 2 y 3): el `crear-roles.sql` de cada
+ * sistema, `05-crear-bases.sh` con las cuatro escritas a mano, y `crear-extensiones.sh`
+ * con la ruta del monolito escrita a mano. El segundo tenia una consecuencia medida —**la
+ * decision de `caja` no se cumplia**, su base recibia PostGIS igual—, y el tercero dejaba
+ * fuera a los cuatro sistemas del corte.
+ *
+ * Estas pruebas EJECUTAN los guiones en vez de leerlos. Leerlos diria que el texto
+ * contiene lo que se espera; ejecutarlos dice que hacen lo que dicen — que es la
+ * diferencia que #731 dejo escrita al probar `puerto.sh`.
+ */
+describe("C-10 — el shell y esta guarda leen lo mismo, y se comprueba ejecutandolo", () => {
+  it("las dos lecturas coinciden en los seis esquemas", () => {
+    // Dos implementaciones del mismo patron —una en TypeScript, una en shell— es
+    // exactamente el defecto que este modulo existe para cerrar, un escalon mas abajo.
+    // No se supone que coincidan: se ejecuta la de shell y se comparan.
+    for (const esquema of esquemas()) {
+      expect(
+        extensionesSegunElShell(join(esquema.raiz, esquema.roles)),
+        `«${esquema.nombre}»: el shell y la guarda no leen lo mismo`,
+      ).toEqual(extensionesDeclaradas(esquema));
+    }
+  });
+
+  it("y el shell tampoco cuenta la que solo se nombra en un comentario", () => {
+    // Ninguno de los seis archivos reales tiene hoy esta trampa, asi que quitarle el
+    // `sed` a la funcion no cambiaria nada medido contra ellos. Por eso se fabrica.
+    const fabricado = esquemaFabricado(
+      "V1__baseline.sql",
+      "SELECT 1;",
+      "-- No hacemos CREATE EXTENSION postgis aqui, es de catastro.\n" +
+        "CREATE EXTENSION IF NOT EXISTS unaccent;\n",
+    );
+
+    expect(extensionesSegunElShell(join(fabricado.raiz, fabricado.roles))).toEqual(["unaccent"]);
+    expect(extensionesDeclaradas(fabricado)).toEqual(["unaccent"]);
+  });
+
+  it("cero extensiones sale en verde y como lista vacia, no como fallo", () => {
+    // `caja` no declara ninguna a proposito. `grep` sale con codigo 1 cuando no encuentra
+    // nada, y con `set -euo pipefail` eso mataria a `05-crear-bases.sh` justo en el unico
+    // sistema cuya decision es no declarar ninguna.
+    const caja = esquemas().find((e) => e.nombre === "caja")!;
+
+    expect(extensionesSegunElShell(join(caja.raiz, caja.roles))).toEqual([]);
+  });
+});
+
+describe("C-10 — `crear-extensiones.sh` deriva, y ya no habla de un solo sistema", () => {
+  const guion = join(raizDelRepositorio(), "despliegue/crear-extensiones.sh");
+
+  function listar(sistema: string): string[] {
+    return execFileSync("bash", [guion, "--listar", "--sistema", sistema], { encoding: "utf8" })
+      .split("\n")
+      .filter((l) => l.trim().length > 0);
+  }
+
+  it("lo que dice que crearia es lo que ese sistema declara, en los cinco", () => {
+    for (const esquema of esquemas()) {
+      if (esquema.nombre.startsWith("infrastructure")) continue; // es la copia local de sgtm
+      const declaradas = extensionesDeclaradas(esquema);
+      const esperado =
+        declaradas.length === 0
+          ? [`${esquema.nombre} ${esquema.nombre} (ninguna)`]
+          : declaradas.map((e) => `${esquema.nombre} ${esquema.nombre} ${e}`);
+
+      expect(listar(esquema.nombre), `«${esquema.nombre}»`).toEqual(esperado);
+    }
+  });
+
+  it("la base es el nombre del sistema, no `sgtm` para todos", () => {
+    // Antes de C-10 el guion tenia `--dbname=sgtm` escrito en las dos invocaciones de
+    // psql: apuntarlo a `catastro` habria creado sus extensiones en la base del monolito.
+    for (const sistema of ["rentas", "catastro", "normativa", "caja"]) {
+      for (const linea of listar(sistema)) {
+        expect(linea.split(" ")[1], `«${sistema}» apunta a otra base`).toBe(sistema);
+      }
+    }
+  });
+
+  it("un sistema cuyo clon no esta NO pasa en verde: dice cual falta y como traerlo", () => {
+    // Replegarse a «no se puede saber, no hago nada» es el estado exacto que #675
+    // encontro y que estuvo ocho meses asi.
+    expect(() => listar("inventado")).toThrow(/No esta el clon de «inventado»/);
+  });
+});
+
+describe("C-10 — `05-crear-bases.sh` deriva las bases y sus extensiones", () => {
+  const guion = join(
+    raizDelRepositorio(),
+    "despliegue/inicializacion-del-motor/05-crear-bases.sh",
+  );
+
+  /** El `/etc/kamayuk` que el compose monta, reproducido en un temporal. */
+  function banco(sistemas: string[]): string {
+    const raiz = mkdtempSync(join(tmpdir(), "c10-banco-"));
+    TEMPORALES.push(raiz);
+    mkdirSync(join(raiz, "roles"), { recursive: true });
+    symlinkSync(
+      join(raizDelRepositorio(), "despliegue/inicializacion-del-motor/lib-extensiones.sh"),
+      join(raiz, "lib-extensiones.sh"),
+    );
+    for (const nombre of sistemas) {
+      const esquema = esquemas().find((e) => e.nombre === nombre)!;
+      symlinkSync(join(esquema.raiz, esquema.roles), join(raiz, "roles", `${nombre}.sql`));
+    }
+    return raiz;
+  }
+
+  /** Lo ejecuta con un `psql` de mentira, que anota en vez de conectarse. */
+  function ejecutar(dirBanco: string): { salida: string; sql: string } {
+    const falso = mkdtempSync(join(tmpdir(), "c10-psql-"));
+    TEMPORALES.push(falso);
+    const registro = join(falso, "registro.txt");
+    writeFileSync(
+      join(falso, "psql"),
+      "#!/bin/bash\n" +
+        `printf '%s\\n' "ARGS $*" >> ${registro}\n` +
+        `cat >> ${registro}\n`,
+      { mode: 0o755 },
+    );
+    const salida = execFileSync("bash", [guion], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${falso}:${process.env["PATH"] ?? ""}`,
+        POSTGRES_USER: "postgres",
+        SGTM_DIR_KAMAYUK: dirBanco,
+      },
+    });
+    return { salida, sql: execFileSync("cat", [registro], { encoding: "utf8" }) };
+  }
+
+  it("crea una base por archivo montado, y solo las extensiones que ese archivo declara", () => {
+    const { salida, sql } = ejecutar(banco(["rentas", "catastro", "normativa", "caja"]));
+
+    for (const base of ["rentas", "catastro", "normativa", "caja"]) {
+      expect(salida, `no crea «${base}»`).toContain(`creando la base «${base}»`);
+      expect(sql, `no manda el CREATE DATABASE de «${base}»`).toContain(`CREATE DATABASE ${base}`);
+    }
+    // La forma de la mutacion: lo que el guion crea es exactamente lo declarado.
+    for (const nombre of ["rentas", "catastro", "normativa", "caja"]) {
+      const esquema = esquemas().find((e) => e.nombre === nombre)!;
+      for (const extension of extensionesDeclaradas(esquema)) {
+        expect(salida, `«${nombre}» deberia declarar «${extension}»`).toContain(
+          `«${nombre}» declara «${extension}»`,
+        );
+      }
+    }
+  });
+
+  it("la base de `caja` nace SIN NINGUNA extension, que es la decision de P5D", () => {
+    // Hasta C-10 este guion le creaba las cuatro con la lista escrita a mano, asi que
+    // «la caja corre en el motor mas simple que exista» no lo ejercitaba nadie.
+    const { salida } = ejecutar(banco(["caja"]));
+
+    expect(salida).toContain("«caja» no declara ninguna extension");
+    expect(salida).not.toMatch(/«caja» declara/);
+  });
+
+  it("y la de `normativa` tampoco, desde C-13", () => {
+    const { salida } = ejecutar(banco(["normativa"]));
+
+    expect(salida).toContain("«normativa» no declara ninguna extension");
+  });
+
+  it("EL CONTRASTE: `catastro` SI recibe PostGIS, porque la usa", () => {
+    // Sin esto, la guarda de arriba estaria contenta con un guion que no crea nada.
+    const { salida } = ejecutar(banco(["catastro"]));
+
+    expect(salida).toContain("«catastro» declara «postgis»");
+    expect(salida).not.toMatch(/«catastro» declara «pg_trgm»/); // retirada en C-13
+  });
+
+  it("un montaje que falta NO deja la base sin su extension: se para y lo nombra", () => {
+    // Docker crea un DIRECTORIO vacio cuando el origen de un bind mount no existe. Una
+    // base sin su PostGIS no falla al crearse: falla una hora despues, a mitad de la
+    // migracion, con «type "geography" does not exist» (#742).
+    const dir = banco(["catastro"]);
+    mkdirSync(join(dir, "roles", "rentas.sql"));
+
+    expect(() => ejecutar(dir)).toThrow(/git clone https:\/\/github\.com\/hneyra\/rentas/);
+  });
+
+  it("y sin ningun archivo montado tampoco crea nada en silencio", () => {
+    expect(() => ejecutar(banco([]))).toThrow();
+  });
+});
