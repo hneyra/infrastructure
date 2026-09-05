@@ -250,3 +250,23 @@ Cada rotura se aplicó sola y se restauró por copia comparada con `cmp`.
 4. **Las bajas del corpus anteriores a `.gitattributes` no se pueden auditar hacia atrás.** La
    guarda comprueba el árbol de hoy. Que un archivo del corpus haya viajado alguna vez con otros
    bytes sólo se ve comparando contra `sgtm`, como se hizo aquí a mano para `tvr-2026.csv`.
+
+---
+
+## Lo ejecutado
+
+| Qué | Resultado |
+|---|---|
+| `normativa` · las ocho comprobaciones de `documentacion.yml` | verdes, **en un clon limpio del remoto de GitHub** |
+| `normativa` · backend: `cleanTest test verificarArquitectura verificarAislamiento`, con `--no-build-cache` | **617 pruebas** (613 `test` + 4 `pruebaDeArranque`), 0 fallos, 0 errores, 0 omitidas; `BUILD SUCCESSFUL` |
+| `infrastructure` · `yarn verificar` | **533 pruebas** (antes 530: las 3 de la guarda nueva), 25 archivos |
+| los cuatro descriptores | rentas 12 · catastro 11 · normativa 11 · caja 12 |
+| `yarn manifiestos`, antes y después del refactor | **idénticos byte a byte**: 323 273 bytes en `stg`, 317 062 en `prod`. Lo que cambia es lo que se mide, no lo que se despliega |
+
+**Y una medición de paso, fuera de alcance y anotada porque nadie la había hecho.** Se barrieron
+los cinco repositorios comparando `git hash-object` con filtros y sin ellos, archivo por archivo.
+Fuera del corpus **sólo diverge `gradlew.bat`** —uno por repositorio, dos en `rentas`—: tiene CRLF
+en el disco y LF en el blob, así que un clon en Windows recibe un `.bat` con finales de línea de
+Unix. No lo firma nadie y no es un cuadro normativo, así que la guarda de C-15 no lo cubre a
+propósito: su promesa es sobre los bytes que el corpus firma. Queda dicho por si algún día alguien
+intenta ejecutar ese archivo en Windows.
