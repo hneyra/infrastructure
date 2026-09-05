@@ -1,6 +1,12 @@
 node_modules/
 .idea/
 .DS_Store
+# El `.env` del compose. `despliegue/.env.ejemplo` afirma de si mismo que «`.env` esta en
+# .gitignore», y en ESTE repositorio no lo estaba: medido con `git check-ignore -v despliegue/.env`,
+# que salia con 1. Es una frase falsa en un archivo cuyo trabajo es que una clave no acabe en un
+# diff, y la encontro C-18 al escribir los cuatro compose de los sistemas.
+.env
+
 # El estado y los secretos de Pulumi nunca se versionan (ADR-0011 §3, INF-06).
 .pulumi/
 *.local.*

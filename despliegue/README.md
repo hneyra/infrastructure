@@ -15,60 +15,75 @@ docker compose -f despliegue/plataforma.compose.yaml up -d
 cd despliegue && docker compose up --build --wait aplicacion interfaz correo
 ```
 
-**Por qué partirlo.** Levantar cuatro backends, cuatro frontends, Keycloak y PostgreSQL en un
-portátil es pesado, y la respuesta correcta no es un compose más grande. El desarrollador de
+**Por qué partirlo.** Levantar los cuatro backends —y, cuando existan, sus cuatro frontends—
+junto con Keycloak y PostgreSQL en un portátil es pesado, y la respuesta correcta no es un compose más grande. El desarrollador de
 catastro no necesita rentas arriba salvo para las pantallas que cruzan — **y que lo necesite
 para trabajar en catastro es una señal de que la frontera está mal puesta**, no una molestia.
 
 ## Cómo levanta un sistema lo suyo
 
-Cada repositorio de sistema trae su propio compose, con **sólo su backend y su frontend**, y se
-engancha a la red de la plataforma. No copia PostgreSQL ni Keycloak: los usa.
+Cada repositorio de sistema trae su propio compose, en `<sistema>/despliegue/compose.yaml`, con
+**sólo su backend** —su migrador, su implantación y su proceso web—, y se engancha a la red de la
+plataforma. No copia PostgreSQL ni Keycloak: los usa.
 
-```yaml
-# catastro/despliegue/compose.yaml
-name: kamayuk-catastro
+> **Todavía no hay ningún frontend, y esta sección lo decía al revés.** Hasta C-18 aquí ponía
+> «sólo su backend y su frontend», y ninguno de los cuatro repositorios tiene `frontend/`:
+> [ADR-0030 §1](../docs/30-arquitectura/adr/ADR-0030-cuatro-interfaces-una-sesion.md) decide que
+> habrá uno por sistema y hoy no existe ninguno. Cuando exista, entra en el compose de su sistema
+> —igual que `interfaz` está en el `compose.yaml` del monolito— y esta frase vuelve a cambiar.
+> Un README que promete un archivo que no está es exactamente lo que costó C-18: los cuatro
+> composes tampoco existían, y el ejemplo de aquí se leía como si sí.
 
-services:
-  aplicacion:
-    build: ../backend
-    environment:
-      # Su base, no la de otro. Las cuatro las creó `05-crear-bases.sh`.
-      SGTM_DB_URL: jdbc:postgresql://base:5432/catastro
-      SGTM_DB_USUARIO: sgtm_app
-      SGTM_DB_CLAVE: ${SGTM_CLAVE_APP:?}
-      # El mismo emisor que los otros tres: un login para los cuatro (ADR-0030 §3).
-      SGTM_OIDC_EMISOR: ${SGTM_OIDC_EMISOR:-http://localhost:8180}/realms/sgtm
-    labels:
-      # Su prefijo, y sólo el suyo. Reclamar el de otro no falla: se lo queda.
-      - traefik.enable=true
-      - traefik.http.routers.catastro.rule=PathPrefix(`/catastro`)
-      - traefik.http.services.catastro.loadbalancer.server.port=8080
-
-# La red de la plataforma, que ya existe. `external: true` es lo que impide que este
-# compose cree una segunda con el mismo nombre y deje a los servicios sin verse.
-networks:
-  default:
-    name: kamayuk-plataforma
-    external: true
-```
+Los cuatro son reales y se pueden leer:
+[`rentas`](https://github.com/hneyra/rentas/blob/main/despliegue/compose.yaml) ·
+[`catastro`](https://github.com/hneyra/catastro/blob/main/despliegue/compose.yaml) ·
+[`normativa`](https://github.com/hneyra/normativa/blob/main/despliegue/compose.yaml) ·
+[`caja`](https://github.com/hneyra/caja/blob/main/despliegue/compose.yaml).
 
 ```bash
-docker compose -f despliegue/plataforma.compose.yaml up -d   # una vez
-cd ../catastro && docker compose up --build                  # lo suyo, contra ella
+# La plataforma, una vez. `--wait` no es adorno: los cuatro composes NO pueden
+# declarar `depends_on` sobre un servicio de otro proyecto, así que el orden entre
+# la base y el migrador de cada sistema lo pone esto.
+docker compose -f infrastructure/despliegue/plataforma.compose.yaml up -d --wait
+
+# Lo de cada sistema, contra ella. El `.env` es el mismo de la plataforma.
+cd catastro && docker compose -f despliegue/compose.yaml up --build -d --wait
 ```
 
-Tres cosas de ese archivo no son detalle:
+Cada uno declara **tres servicios**, uno por proceso del descriptor:
+
+| Servicio | Qué es | Imagen |
+|---|---|---|
+| `<sistema>-migraciones` | Aplica el esquema como `sgtm_owner`. Corre y termina | objetivo `migrador` |
+| `<sistema>-implantacion` | La fila de `municipalidad` en **su** base. Corre y termina | objetivo `aplicacion`, perfil `batch` |
+| `<sistema>` | El backend, en el perfil `web` | objetivo `aplicacion` |
+
+Cinco cosas de esos archivos no son detalle:
 
 - **`networks.default.external: true`.** Sin él, Compose crea una red nueva con el mismo
   nombre y los servicios no se ven — el síntoma es «Connection refused» a `base`, que se lee
   como que el motor no está.
+- **El backend se llama como su sistema, no `aplicacion`.** Los cuatro comparten una red y
+  Compose le da a cada servicio un alias con su nombre: cuatro servicios `aplicacion` dejarían
+  ese alias resolviendo a uno cualquiera de los cuatro, y el síntoma no sería un error sino una
+  petición que a veces llega a quien no era. Además es el nombre que la propia aplicación da por
+  hecho: el valor por omisión de `kamayuk.caja.origenes` es `http://rentas:8080/rentas/api/v1`.
 - **La etiqueta de Traefik lleva su prefijo y sólo el suyo.** Es la misma regla que
   `descriptor/auditoria.ts` aplica en el clúster (prohibición (a)): un sistema que reclama el
   prefijo de otro no da error, se lo queda, y las peticiones dejan de llegar a su dueño.
 - **Cada sistema apunta a SU base.** Las cuatro existen desde el primer arranque de la
   plataforma; pedir la de otro es la prohibición (c), y aquí no hay auditoría que lo impida —lo
   impide el rol, que sólo tiene privilegios sobre la suya—.
+- **Ninguno publica un puerto.** Se entra por el ingreso, bajo el prefijo de cada uno
+  (ADR-0030 §2), que es exactamente la misma ruta que en el clúster. La sonda `/actuator/health`
+  no está bajo ningún prefijo, así que se mide desde dentro del contenedor — igual que C-17 la
+  midió desde dentro de los pods.
+
+Y dos cosas que estos composes **no** traen, dichas en vez de descubiertas: el `CronJob` del
+ingestor de `rentas` y el del publicador de `catastro`. El perfil `batch` **termina** el proceso,
+así que un servicio más sería un contenedor que sale con código 0 y al que Compose reiniciaría en
+bucle —el defecto 5 de [C-17](../docs/00-gobierno/C-17-que-el-despliegue-pase.md)—, y Compose no
+tiene ventana horaria.
 
 ## La trampa que esto hereda, y que sigue sin resolverse
 
@@ -77,12 +92,23 @@ variable nueva entre en el clúster y no en el compose. Con dos composes y cuatr
 multiplica. La mitigación escrita sigue siendo la buena y no ha cambiado: que las comprobaciones
 de `despliegue.yml` se trasladen al clúster en vez de duplicarse.
 
-Lo que sí hay desde hoy es una guarda que lee los dos archivos y compara:
+Lo que sí hay son **dos** guardas que leen los archivos y comparan.
+
 `infra/verificaciones/plataforma-compose.test.ts` exige que el motor sea la misma imagen en los
-dos, que las cuatro bases estén declaradas, que el guion que las crea corra **antes** que el de
-los roles, que los dos realms se siembren, y que los dos composes **no compartan volumen** —los
-guiones de `initdb` sólo corren con el volumen vacío, así que compartirlo dejaría al segundo sin
-ejecutarlos, y el síntoma sería una base que falta y ningún error—.
+dos composes de aquí, que las cuatro bases estén declaradas, que el guion que las crea corra
+**antes** que el de los roles, que los dos realms se siembren, y que los dos composes **no
+compartan volumen** —los guiones de `initdb` sólo corren con el volumen vacío, así que compartirlo
+dejaría al segundo sin ejecutarlos, y el síntoma sería una base que falta y ningún error—.
+
+`infra/verificaciones/compose-de-los-sistemas.test.ts` (C-18) hace lo que faltaba para los cuatro:
+lee `<sistema>/despliegue/compose.yaml` y `<sistema>/infrastructure/src/descriptor.ts` y **deriva
+las dos mitades** en vez de copiar una lista. Compara, proceso a proceso, los nombres de las
+variables de entorno **en las dos direcciones** —una que entra en el clúster y no en el compose, y
+una que existe sólo en local—, la base a la que apunta cada URL JDBC, el rol con que se conecta,
+el objetivo del `Dockerfile` que construye, el prefijo de Traefik, y que la sonda pida una ruta que
+`SeguridadWeb` atienda sin token (C-17 §2). El anfitrión del motor no está escrito ahí: se deriva
+del servicio de PostgreSQL de `plataforma.compose.yaml`, de modo que renombrarlo son cuatro rojos y
+no cuatro «Connection refused».
 
 ---
 

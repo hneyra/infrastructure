@@ -1,0 +1,53 @@
+# Un compose de sistema EN REGLA, para un sistema inventado (`mercados`).
+#
+# Existe para que la comparacion se pueda medir en las dos direcciones sin depender de que los
+# cuatro composes de verdad esten bien: si la unica muestra fuera el arbol real, la prueba de que
+# la guarda «no muerde de mas» seria «hoy no hay hallazgos», que es lo mismo que decir que la
+# guarda podria estar apagada.
+name: kamayuk-mercados
+
+services:
+  mercados-migraciones:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: migrador
+    environment:
+      SGTM_DB_URL: jdbc:postgresql://base:5432/mercados
+      SGTM_DB_OWNER_USUARIO: sgtm_owner
+      SGTM_DB_OWNER_CLAVE: ${SGTM_CLAVE_OWNER:?falta}
+    restart: "no"
+
+  mercados-implantacion:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: aplicacion
+    environment:
+      SPRING_PROFILES_ACTIVE: batch
+      SGTM_DB_URL: jdbc:postgresql://base:5432/mercados
+      SGTM_DB_USUARIO: sgtm_app
+      SGTM_DB_CLAVE: ${SGTM_CLAVE_APP:?falta}
+    restart: "no"
+
+  mercados:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: aplicacion
+    environment:
+      SPRING_PROFILES_ACTIVE: web
+      SGTM_DB_URL: jdbc:postgresql://base:5432/mercados
+      SGTM_DB_USUARIO: sgtm_app
+      SGTM_DB_CLAVE: ${SGTM_CLAVE_APP:?falta}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.mercados.rule=PathPrefix(`/rentas`)
+      - traefik.http.services.mercados.loadbalancer.server.port=8080
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8080/actuator/health || exit 1"]
+
+networks:
+  default:
+    name: kamayuk-plataforma
+    external: true

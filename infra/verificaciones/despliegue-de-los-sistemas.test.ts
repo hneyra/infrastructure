@@ -9,6 +9,7 @@ import { podsDe, type Contenedor, type Manifiesto } from "../componentes/tipos";
 import { ENVIRONMENTS, type Environment } from "../config";
 import { entornoDelAmbiente, manifiestosDeLosSistemas } from "../herramientas/emitir-manifiestos";
 import { SISTEMAS } from "../descriptor/sistemas";
+import { prefijoDeLaImplantacion, variableDe } from "./prefijo-de-la-implantacion";
 import { invariantesDe } from "./stacks";
 
 /**
@@ -199,17 +200,26 @@ describe("C-14 §4 · cada sistema implanta su municipalidad", () => {
     // La imagen de la APLICACION con el perfil `batch` (ADR-0003: un artefacto, dos perfiles).
     expect(principal.image).toBe(entorno.imagenDe(sistema));
     expect(valorDe(principal, "SPRING_PROFILES_ACTIVE")).toBe("batch");
-    expect(valorDe(principal, "KAMAYUK_IMPLANTACION_UBIGEO")).toBe(implantacion.ubigeo);
-    expect(valorDe(principal, "KAMAYUK_IMPLANTACION_TIPO")).toBe(implantacion.tipo);
+    // EL PREFIJO SALE DEL JAVA DE CADA SISTEMA, no de este literal (C-18).
+    //
+    // Hasta C-18 aqui ponia `KAMAYUK_IMPLANTACION_` para los cuatro, y `rentas` **no lee asi**:
+    // es el monolito y conserva `@ConfigurationProperties("sgtm.implantacion")`. Asi que esta
+    // comprobacion exigia el nombre roto, igual que la de C-17 §1 exigia el anfitrion roto. El
+    // sintoma del defecto que fosilizaba no es un error: `ImplantarMunicipalidad` esta
+    // condicionado a `@ConditionalOnProperty("<prefijo>.ubigeo")`, asi que el runner no se
+    // registra, el proceso sale con codigo 0 y el Job queda `Complete` sin haber implantado nada.
+    const prefijo = variableDe(prefijoDeLaImplantacion(sistema));
+    expect(valorDe(principal, `${prefijo}UBIGEO`)).toBe(implantacion.ubigeo);
+    expect(valorDe(principal, `${prefijo}TIPO`)).toBe(implantacion.tipo);
     // `DatosDeImplantacion` valida en su constructor compacto: sin una de estas el bean falla y
     // el contexto no arranca. No es un Job degradado, es un Job que no corre.
     for (const variable of [
-      "KAMAYUK_IMPLANTACION_NOMBRE",
-      "KAMAYUK_IMPLANTACION_ADMINISTRADOR",
-      "KAMAYUK_IMPLANTACION_NOMBREDELADMINISTRADOR",
-      "KAMAYUK_IMPLANTACION_ESDEMOSTRACION",
-      "KAMAYUK_IMPLANTACION_URL",
-      "KAMAYUK_IMPLANTACION_OWNERCLAVE",
+      `${prefijo}NOMBRE`,
+      `${prefijo}ADMINISTRADOR`,
+      `${prefijo}NOMBREDELADMINISTRADOR`,
+      `${prefijo}ESDEMOSTRACION`,
+      `${prefijo}URL`,
+      `${prefijo}OWNERCLAVE`,
     ]) {
       expect(declara(principal, variable), `falta ${variable}`).toBe(true);
     }
@@ -236,7 +246,10 @@ describe("C-14 §4 · cada sistema implanta su municipalidad", () => {
         delSistema(ambiente, sistema),
         `kamayuk-${sistema}-implantacion`,
       );
-      expect(valorDe(principal, "KAMAYUK_IMPLANTACION_ESDEMOSTRACION"), sistema).toBe(esperado);
+      expect(
+        valorDe(principal, `${variableDe(prefijoDeLaImplantacion(sistema))}ESDEMOSTRACION`),
+        sistema,
+      ).toBe(esperado);
     }
   });
 });
