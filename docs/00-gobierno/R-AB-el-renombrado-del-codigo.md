@@ -23,16 +23,29 @@ de `municipalidad` está escrita».
 
 ## 1 · Lo renombrado, categoría por categoría, con su cifra
 
-Las cifras son **menciones**, contadas sobre el árbol vivo (sin `.git`, `node_modules`, `build`
-ni `.gradle`), en el commit de este entregable.
+Dos cifras por categoría, y conviene no mezclarlas. La primera es **lo que este commit
+renombró**, contado sobre su propio diff (`git show --unified=0`); la segunda es **lo que el árbol
+dice hoy**, contando el nombre nuevo (sin `.git`, `node_modules`, `build` ni `.gradle`) — es mayor
+porque incluye lo que ya se llamaba `kamayuk` desde C-14 y las menciones de este propio documento.
+
+Renombrado por este commit:
 
 | # | Categoría | Qué pasa a ser | infrastructure | rentas | catastro | normativa | caja |
 |---|---|---|---|---|---|---|---|
-| A1 | El paquete npm del contrato y los de infra | `@sgtm/…` → `@kamayuk/…` | 17 | 11 | 6 | 6 | 6 |
-| A2 | `pe.gob.sgtm` **vivo** | el paquete real de cada sistema | 5 | 3 | — | 2 | — |
+| A1 | El paquete npm del contrato y los de infra | `@sgtm/…` → `@kamayuk/…` | 21 | 11 | 6 | 6 | 6 |
+| A2 | `pe.gob.sgtm` **vivo** | el paquete real de cada sistema | 4 | 4 | — | 2 | — |
 | A3 | El artefacto | `<sistema>.jar` en `/opt/kamayuk/` | — | 3 | 3 | 3 | 3 |
 | B4 | Variables de entorno | `SGTM_*` → `KAMAYUK_*` | 420 | 170 | 148 | 96 | 113 |
-| B5 | Prefijo de propiedades Spring | `sgtm.*` → `kamayuk.*` | 29 | 62 | 37 | 19 | 12 |
+| B5 | Prefijo de propiedades Spring | `sgtm.*` → `kamayuk.*` | 25 | 60 | 35 | 17 | 10 |
+
+Y lo que el árbol dice hoy, con el nombre nuevo:
+
+| Categoría | infrastructure | rentas | catastro | normativa | caja |
+|---|---|---|---|---|---|
+| `@kamayuk/` | 22 | 11 | 6 | 6 | 6 |
+| `KAMAYUK_*` | 472 | 184 | 169 | 113 | 150 |
+| `kamayuk.<propiedad>` | 34 | 61 | 48 | 30 | 23 |
+| `/opt/kamayuk` | 8 | 2 | 2 | 3 | 2 |
 
 **El encargo daba 2 139 menciones de `SGTM_[A-Z_]+` en los cuatro y 886 en `infrastructure`, y
 esa cifra no es la de esta etapa.** Medida sin distinguir mayúsculas incluye los **roles de
