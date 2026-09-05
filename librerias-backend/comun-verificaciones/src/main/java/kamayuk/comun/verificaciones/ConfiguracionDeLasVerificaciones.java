@@ -125,6 +125,33 @@ public interface ConfiguracionDeLasVerificaciones {
     }
 
     /**
+     * Los modulos Gradle que {@link #sistemaDelArchivo(String)} reparte por nombre, si es que
+     * reparte por modulo.
+     *
+     * <p><b>Existe porque el reparto por modulo falla en silencio, y se midio.</b> Los repositorios
+     * que reparten lo hacen con un mapa {@code nombre del modulo -> sistema} consultado con {@code
+     * getOrDefault(modulo, SISTEMA_REPLICADO)}: una clave que deja de coincidir —porque el modulo
+     * se renombro— no da error, da <b>replicado</b>, y replicado significa «no esta a ningun lado
+     * de la frontera, asi que no puede cruzarla». O sea que el SQL de ese modulo deja de revisarse
+     * entero y {@code FronteraDeSistemaTest} sigue en VERDE. Medido en R-N: con {@code
+     * kamayuk-rentas-nucleo} ya renombrado y la clave del mapa todavia diciendo {@code
+     * kamayuk-rentas-rentas}, la prueba daba BUILD SUCCESSFUL con el modulo mas grande de {@code
+     * rentas} —el contexto acotado entero— fuera de la revision.
+     *
+     * <p>Se comprueba una sola direccion, y a proposito: <b>todo modulo que el recorrido encuentre
+     * en el disco tiene que estar declarado</b>. La contraria —que no sobre ninguna clave— no se
+     * exige aqui porque los mapas de {@code catastro} y {@code caja} heredaron del monolito claves
+     * de modulos que su repositorio no tiene, y esa poda es otro trabajo con otro criterio.
+     *
+     * <p>Por omision esta vacio, que es lo correcto para quien NO reparte por modulo: {@link
+     * #sistemaDelArchivo(String)} sin sobrescribir devuelve el sistema entero y no hay ninguna
+     * clave que se pueda quedar vieja.
+     */
+    default Set<String> modulosDelReparto() {
+        return Set.of();
+    }
+
+    /**
      * Los cruces que hoy existen y todavia no se pueden cerrar, cada uno con su dueño.
      *
      * <p>Una excepcion sin issue no se acepta: la lista es el trabajo pendiente, y en la etapa P5E

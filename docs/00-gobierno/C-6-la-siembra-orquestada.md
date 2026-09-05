@@ -146,7 +146,7 @@ heredó de P5A.
 propia copia para componer el padrón contra el que se cruzan las transferencias. Ahora lo lee **del
 clon hermano de `catastro`**, exactamente como `ArchivosDeEjemploTest` de `catastro` lee
 `contribuyentes.csv` de `rentas` (hueco 5 de P5C). El costo es el mismo y está escrito en el javadoc:
-`kamayuk-rentas-rentas` no compila sus pruebas sin `catastro` clonado al lado, y si no está la prueba
+`kamayuk-rentas-nucleo` no compila sus pruebas sin `catastro` clonado al lado, y si no está la prueba
 falla nombrando el `git clone`; no se salta.
 
 **No movido, con su motivo:** `abrir-conjunto-parametros.sh`, `publicar-parametros.sh` y

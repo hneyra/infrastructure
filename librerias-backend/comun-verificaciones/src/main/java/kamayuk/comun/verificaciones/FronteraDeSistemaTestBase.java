@@ -127,6 +127,40 @@ public abstract class FronteraDeSistemaTestBase {
     }
 
     @Test
+    @DisplayName("ningun modulo del disco se queda fuera del reparto")
+    void ningunModuloDelDiscoSeQuedaFueraDelReparto() throws IOException {
+        // El reparto por modulo se consulta con getOrDefault(modulo, SISTEMA_REPLICADO), y
+        // «replicado» quiere decir «no esta a ningun lado de la frontera»: una clave que deja de
+        // coincidir NO falla, deja de revisar. Medido en R-N sobre el modulo mas grande de
+        // `rentas`: con la clave vieja puesta, la prueba de arriba seguia en VERDE con el contexto
+        // acotado entero fuera de la revision. Ver modulosDelReparto().
+        Set<String> declarados = CONFIG.modulosDelReparto();
+        if (declarados.isEmpty()) {
+            // Este repositorio no reparte por modulo: sistemaDelArchivo() devuelve el sistema
+            // entero y no hay ninguna clave que se pueda quedar vieja.
+            return;
+        }
+
+        Path raiz = CONFIG.raizDelCodigo();
+        List<String> sinDeclarar =
+                fuentesDeProduccion(raiz).stream()
+                        .map(archivo -> raiz.relativize(archivo).toString().replace('\\', '/'))
+                        .map(ruta -> ruta.substring(0, Math.max(ruta.indexOf('/'), 0)))
+                        .filter(modulo -> !modulo.isEmpty())
+                        .distinct()
+                        .filter(modulo -> !declarados.contains(modulo))
+                        .sorted()
+                        .toList();
+
+        assertThat(sinDeclarar)
+                .as(
+                        "cada modulo con fuentes de produccion tiene que estar en el reparto: el que"
+                                + " no este cae en SISTEMA_REPLICADO y su SQL deja de revisarse, sin"
+                                + " que nada se ponga rojo")
+                .isEmpty();
+    }
+
+    @Test
     @DisplayName("el escaner detecta la muestra que cruza, tabla por tabla")
     void elEscanerDetectaLaMuestraQueCruza() {
         FuenteDeMuestra muestra =

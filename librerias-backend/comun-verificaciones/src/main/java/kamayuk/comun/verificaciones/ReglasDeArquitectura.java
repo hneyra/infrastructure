@@ -598,9 +598,21 @@ public final class ReglasDeArquitectura {
          * <p>{@code contribuyentes} y {@code parametros} no estan, y no es un descuido: los dos son
          * de solo lectura para todos por definicion (ARQ-01 §3.4 y §3.1), y ninguno publica un
          * puerto de escritura que este contexto pudiera usar.
+         *
+         * <p><b>Es {@code .nucleo} y no {@code .rentas} desde R-N, y ese cambio no es cosmetico:
+         * era una regla fosilizada.</b> El contexto principal de cada sistema se llamaba igual que
+         * el sistema —{@code kamayuk.rentas.rentas}— y al renombrarlo a {@code
+         * kamayuk.rentas.nucleo} esta lista dejo de vigilarlo <b>sin ponerse roja</b>: {@code
+         * estaVigilado} no encontraba ningun destino bajo {@code .rentas}, asi que {@code
+         * fiscalizacion} podia depender de cualquier tipo del contexto —incluido un puerto de
+         * escritura— y la regla pasaba en verde. Se midio: con el paquete ya renombrado y esta
+         * lista intacta, {@code ArquitecturaTest} de `rentas` daba BUILD SUCCESSFUL mientras las
+         * dos entradas de {@code tiposAjenosQueFiscalizacionSoloLee} que nombran ese contexto ya
+         * apuntaban a un paquete inexistente. Es el modo de fallo que este proyecto lleva
+         * doscientos issues evitando: la verificacion que sigue en verde porque dejo de mirar.
          */
         private static final Set<String> CONTEXTOS_VIGILADOS =
-                bajoLasDosRaices(List.of(".catastro", ".rentas", ".cuentacorriente"));
+                bajoLasDosRaices(List.of(".catastro", ".nucleo", ".cuentacorriente"));
 
         /** El unico camino de escritura, y el unico que puede usar los puertos de abajo. */
         private static final Set<String> LA_TRANSFERENCIA =

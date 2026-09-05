@@ -251,7 +251,7 @@ desde entonces, y las dos pruebas lo exigen con su motivo escrito al lado.
    valuación borrada por SQL directo reentregando su hecho, y el buzón dice que ese evento **ya se
    aplicó**: no se vuelve a escribir. La reparación es publicar otra corrida, no reprocesar.
 4. **El lote publicado no era entrada declarada de `test`.** Cambiar el algoritmo de la huella en
-   `catastro` y republicar el archivo dejaba `:kamayuk-rentas-rentas:test` en **UP-TO-DATE**: BUILD
+   `catastro` y republicar el archivo dejaba `:kamayuk-rentas-nucleo:test` en **UP-TO-DATE**: BUILD
    SUCCESSFUL sin ejecutar una prueba. Es la lección de #192 punto 2, tercera vez en este proyecto;
    ahora está declarado en `build.gradle.kts` con su motivo.
 5. **`catastro_evento_predio_ck` mordió antes que ninguna prueba.** La siembra de aislamiento se
