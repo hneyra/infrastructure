@@ -82,11 +82,13 @@ exista.
 
 ---
 
-## 2.3 Los dos que encontró CI, y `yarn verificar` no podía ver
+## 2.3 Los que encontró CI, y `yarn verificar` no podía ver
 
-Los dos son la misma forma que los tres de §2.2 —algo que colgaba de la base `sgtm`— y los dos se
-escaparon por el mismo sitio: **`yarn verificar` no ejecuta los guiones**. Aparecieron dos trabajos
-de CI más tarde y con otra cara.
+Son la misma forma que los tres de §2.2 —algo que colgaba de la base `sgtm`— y se escaparon por el
+mismo sitio: **`yarn verificar` no ejecuta los guiones**. Hicieron falta **cuatro corridas de CI**
+para agotarlos, y ese número es el hallazgo: no fueron cuatro defectos distintos, fue **el mismo
+defecto buscado con el método equivocado** —un `grep` de literales `--dbname=sgtm`, sitio a sitio—
+hasta que se barrió el árbol entero.
 
 ### (d) El `REVOKE` que apuntaba al monolito y pasó a apuntar a la base de mantenimiento
 
@@ -117,9 +119,33 @@ Pasa a `BASE_DEL_PADRON=rentas`, por lo mismo que el registro del respaldo, y
 `rol_carga_parametros` a `BASE_DE_LA_CARGA=normativa`, que es su única base (C-7 §6): medirlo
 contra otra diría lo contrario de la verdad.
 
+### (f) Y no eran ocho sitios: eran veintiséis, en siete guiones
+
+El barrido —`sgtm` como **nombre de base**, no como palabra— destapa que `E` movió los manifiestos
+y dejó **toda la operación** hablando con la base del monolito: el respaldo contra el clúster, el
+simulacro de restauración, la rotación de claves y la publicación de parámetros.
+
+Cada uno va a la base que le toca, y no a la misma: `normativa` los de parámetros —ahí viven desde
+el corte—, `rentas` los del padrón, y **según el rol** los de rotación, porque para
+`rol_carga_parametros` decir `rentas` sería decir lo contrario de la verdad (C-7 §6).
+
+### (g) El arreglo de (e) introdujo el fallo de (f), y eso enseña dónde estaba la palanca
+
+Para que (e) dejara de morir con «database "sgtm" does not exist», `motor_como_superusuario` pasó a
+`--dbname="${2:-postgres}"`. Apagaba ese fuego y encendía otro: de los **36** sitios que llaman a
+esa función, **35 no pasan base**. Los que preguntan por el clúster funcionan desde cualquiera; los
+que **leen lo que acaban de escribir**, no — y las dos pruebas que lo hacen fallaron con la misma
+frase, «relation … does not exist»: `si_sobrevive` en `verificar-el-motor.sh` y `simulacro_deuda`
+en `simulacro-de-restauracion.sh`.
+
+La traducción fiel de lo que había es el **padrón**, no mantenimiento: la omisión era `sgtm`, que
+era el padrón del monolito. **Arreglar la omisión arregla los 35 a la vez**, que es lo que las tres
+pasadas anteriores no hicieron por ir sitio a sitio.
+
 ### Y lo que no se pudo verificar aquí, con todas las letras
 
-**`verificar-el-motor.sh` no corre en la máquina donde se escribió esto** —«ignoring
+Y esto es lo que hizo falta CI cuatro veces: **`verificar-el-motor.sh` no corre en la máquina
+donde se escribió esto** —«ignoring
 `/docker-entrypoint-initdb.d/*`», el motor no acepta conexiones—. El control lo dice: falla
 **igual sobre `F`**, donde CI lo pasa en verde, así que es ese Docker y no el cambio. Significa que
 estos dos arreglos **los valida CI y no quien los escribió**, y eso se dice en vez de darlos por
