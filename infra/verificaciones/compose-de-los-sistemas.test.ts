@@ -80,13 +80,23 @@ describe("cada sistema trae su compose, y dice lo mismo que su descriptor", () =
     expect(hallazgosDe(sistema)).toEqual([]);
   });
 
-  it.each(SISTEMAS_DEL_PRODUCTO)("«%s» trae los tres procesos y ninguno mas", (sistema) => {
+  it.each(SISTEMAS_DEL_PRODUCTO)("«%s» trae sus procesos y ninguno mas", (sistema) => {
     // Ni uno menos —un compose sin migrador levanta la aplicacion sobre una base vacia— ni uno
     // de mas: un servicio que el descriptor no despliega es configuracion que solo existe en
     // local, y entonces «funciona en mi maquina» deja de ser una broma.
+    //
+    // Los tres del jar son siempre; lo demas **se deriva del descriptor** y no se escribe aqui.
+    // Eran tres fijos hasta que `caja` estreno su interfaz de ventanilla (#16), que trae su
+    // cuarto servicio; con la lista escrita a mano el rojo decia «un servicio de mas» de un
+    // compose que estaba bien.
+    const delJar = ["web", "migrador", "implantacion"].map((p) => servicioDe(sistema, p));
+    const extras = (
+      SISTEMAS.find((s) => s.descriptor.sistema === sistema)?.descriptor.imagenes ?? []
+    ).filter((i) => i !== sistema && i !== `${sistema}-migrador`);
+
     expect(Object.keys(composeDe(sistema)).length).toBeGreaterThan(0);
     expect(Object.keys(composeDe(sistema).services).sort()).toEqual(
-      ["web", "migrador", "implantacion"].map((p) => servicioDe(sistema, p)).sort(),
+      [...delJar, ...extras].sort(),
     );
   });
 
