@@ -15,6 +15,7 @@ import {
   procesosDe,
   variableDe,
   variableDeArchivoDe,
+  EJEMPLOS_QUE_NO_SIEMBRAN,
 } from "./siembra-de-la-demostracion";
 
 /**
@@ -126,7 +127,9 @@ describe("C-6 — un guion de carga y el proceso que lo atiende estan en el mism
       "catastro/cargar-fichas-demo.sh -> KAMAYUK_CARGAFICHASDEMO_ARCHIVO",
       "catastro/cargar-manzanas.sh -> KAMAYUK_CARGAMANZANAS_ARCHIVO",
       "catastro/cargar-predios.sh -> KAMAYUK_CARGAPREDIOS_ARCHIVO",
+      "catastro/cargar-riesgo.sh -> KAMAYUK_CARGARIESGO_ARCHIVO",
       "catastro/cargar-sectores.sh -> KAMAYUK_CARGASECTORES_ARCHIVO",
+      "catastro/cargar-zonificacion.sh -> KAMAYUK_CARGAZONIFICACION_ARCHIVO",
       "caja/cargar-cajas.sh -> KAMAYUK_CARGACAJAS_ARCHIVO",
     ]);
   });
@@ -165,6 +168,15 @@ describe("C-6 — cada CSV de siembra vive en un solo repositorio, y alguien lo 
     // `rentas` y `catastro`- y nada impedia que divergieran: la copia que alguien edita no
     // tiene por que ser la que el cargador lee.
     expect(ejemplosDuplicados()).toEqual([]);
+  });
+
+  it("EL CONTRASTE: un CSV de ejemplos que no siembra y no esta declarado, sale", () => {
+    // Sin esta prueba, `EJEMPLOS_QUE_NO_SIEMBRAN` podria crecer sin que nada lo notara — y una
+    // lista de excepciones que no se puede poner roja deja de ser un censo para ser una puerta.
+    expect(EJEMPLOS_QUE_NO_SIEMBRAN).toContain("catastro/riesgo.csv");
+    expect(EJEMPLOS_QUE_NO_SIEMBRAN).toContain("catastro/zonificacion.csv");
+    expect(ejemplosHuerfanos()).not.toContain("catastro/riesgo.csv");
+    expect(ejemplosHuerfanos()).not.toContain("catastro/zonificacion.csv");
   });
 
   it("ningun CSV de siembra se queda sin paso que lo cargue", () => {

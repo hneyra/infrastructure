@@ -57,6 +57,30 @@ export const GUIONES_QUE_NO_SIEMBRAN: readonly string[] = [
   "publicar-cuadros.sh",
 ];
 
+/**
+ * CSV que viven en `ejemplos/` y **no son siembra**, con su motivo.
+ *
+ * `ejemplosHuerfanos` da por supuesto que todo CSV de `ejemplos/` es de la siembra de la
+ * demostracion, y desde `catastro#5` esa premisa es falsa: un cargador puede traer su archivo de
+ * ejemplo sin que la municipalidad de demostracion tenga ese dato. Es la misma forma que
+ * {@link GUIONES_QUE_NO_SIEMBRAN} por el otro eje.
+ *
+ * **Y no se arregla metiendolos en `pasos.tsv`**, que es el atajo: un paso declara una
+ * comprobacion —«esta tabla tiene que quedar con N filas»— y un paso que siembra una carta de
+ * peligro afirmaria que la municipalidad de demostracion tiene una. No la tiene.
+ *
+ * La lista **es trabajo pendiente**, no una puerta: el dia que la demostracion incluya riesgo,
+ * `riesgo.csv` sale de aqui y entra en `pasos.tsv`.
+ */
+export const EJEMPLOS_QUE_NO_SIEMBRAN: readonly string[] = [
+  // CENEPRED/ANA: fuente externa del modulo `grd`. El cargador la necesita para poder
+  // demostrarse; la municipalidad de demostracion no tiene carta de peligro cargada.
+  "catastro/riesgo.csv",
+  // El plan de zonificacion del modulo `urbano`: lo aprueba una ordenanza, y la municipalidad
+  // de demostracion no tiene ninguna. Mismo motivo, distinto acto de tercero.
+  "catastro/zonificacion.csv",
+];
+
 /** Un paso del manifiesto, tal como esta escrito en `pasos.tsv`. */
 export interface Paso {
   numero: number;
@@ -315,7 +339,8 @@ export function ejemplosHuerfanos(): readonly string[] {
     const ejemplos = join(cargaDeDatosDe(sistema), "ejemplos");
     if (!existsSync(ejemplos)) continue;
     for (const nombre of readdirSync(ejemplos).filter((n) => n.endsWith(".csv"))) {
-      if (!nombrados.has(`${sistema}/${nombre}`)) huerfanos.push(`${sistema}/${nombre}`);
+      const ruta = `${sistema}/${nombre}`;
+      if (!nombrados.has(ruta) && !EJEMPLOS_QUE_NO_SIEMBRAN.includes(ruta)) huerfanos.push(ruta);
     }
   }
   return huerfanos.sort();
