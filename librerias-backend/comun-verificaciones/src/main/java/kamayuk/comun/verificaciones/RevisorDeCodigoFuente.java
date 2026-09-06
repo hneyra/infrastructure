@@ -1,6 +1,7 @@
 package kamayuk.comun.verificaciones;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -397,9 +398,36 @@ public final class RevisorDeCodigoFuente {
      * regla seria absoluta y no habria forma de escribir el caso en que la respuesta si exige el
      * poligono de verdad —un {@code ST_Contains} para decir en que zona cae ESTE lote—, que es
      * legitimo mientras el marco vaya delante acotando las filas.
+     *
+     * <p><b>Exige el marco COMPARADO, no nombrado, y esa diferencia es la regla entera.</b> Con la
+     * mencion a secas —{@code \\bmarco_(oeste|sur|este|norte)\\b}, que es como nacio— bastaba con
+     * que la palabra apareciera en cualquier literal de la sentencia, asi que las dos formas mas
+     * naturales de escribir el defecto pasaban en VERDE, medidas las dos: el marco en la lista del
+     * {@code SELECT} —devolver la caja al cliente del mapa es normal— con {@code ST_Intersects} en
+     * el {@code WHERE}, y el marco en el {@code ORDER BY} con el {@code &&} de vuelta. Esa segunda
+     * es la rotura 2 de T-0 §6, que la guarda decia atrapar.
+     *
+     * <p>Y se exigen <b>dos</b> ejes y no uno: un marco de verdad son cuatro desigualdades, y con
+     * una sola la sentencia no acota nada —basta {@code marco_oeste <= :x} para eximir un {@code
+     * ST_Intersects} sobre el padron entero—. Dos es el minimo que no se puede escribir por
+     * accidente y que no obliga a fijar el orden de las cuatro, que es cosa del que escribe el SQL.
      */
-    private static final Pattern MENCIONA_EL_MARCO =
-            Pattern.compile("(?i)\\bmarco_(oeste|sur|este|norte)\\b");
+    private static final Pattern MARCO_COMPARADO =
+            Pattern.compile(
+                    "(?i)\\bmarco_(?:oeste|sur|este|norte)\\b\\s*(?:<=|>=|<|>|=|!=|<>|between)");
+
+    /** Cuantos ejes del marco hacen falta para que la sentencia acote de verdad. Ver arriba. */
+    private static final int EJES_DEL_MARCO_QUE_ACOTAN = 2;
+
+    /** Si la sentencia filtra por el marco: al menos dos ejes, comparados. */
+    private static boolean filtraPorElMarco(String sentencia) {
+        Matcher ejes = MARCO_COMPARADO.matcher(sentencia);
+        Set<String> distintos = new LinkedHashSet<>();
+        while (ejes.find()) {
+            distintos.add(ejes.group(0).toLowerCase(Locale.ROOT).replaceAll("[^a-z_].*$", ""));
+        }
+        return distintos.size() >= EJES_DEL_MARCO_QUE_ACOTAN;
+    }
 
     /** Lo que hace que un {@code &&} sea espacial y no temporal. */
     private static final Pattern MENCIONA_GEOMETRIA =
@@ -505,7 +533,7 @@ public final class RevisorDeCodigoFuente {
 
         for (String sentenciaJava : sentenciasDeJava(contenido)) {
             String sentencia = literalesDeCadena(sentenciaJava);
-            if (sentencia.isBlank() || MENCIONA_EL_MARCO.matcher(sentencia).find()) {
+            if (sentencia.isBlank() || filtraPorElMarco(sentencia)) {
                 continue;
             }
 
