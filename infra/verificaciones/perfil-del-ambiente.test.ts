@@ -257,8 +257,8 @@ describe("C-19 · el perfil de recursos de un ambiente no alcanza al otro", () =
    */
   it("prod pide exactamente lo medido en `E`", () => {
     const demanda = demandaDelStack(manifiestosDe("prod"));
-    expect(demanda.permanente).toEqual({ cpuEnMili: 1340, memoriaEnMi: 5152 });
-    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 1810, memoriaEnMi: 7520 });
+    expect(demanda.permanente).toEqual({ cpuEnMili: 1390, memoriaEnMi: 5216 });
+    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 1860, memoriaEnMi: 7584 });
   });
 
   /** Y `prod` declara el perfil dimensionado, que es la tabla base. */

@@ -8,8 +8,8 @@ La dirección cerró la migración. `stg` había dejado de desplegar el monolito
 mayor consumidor del ambiente—; lo que faltaba es `prod`, y con él todo el código que lo
 gobernaba. Este trabajo lo retira.
 
-> **El resultado, en una línea: `prod` pasa de pedir 2 610m / 9 696Mi a pedir 1 810m / 7 520Mi, y
-> de faltarle 810m de CPU a faltarle 10m.** Diecisiete objetos se van de `prod` y **ninguno
+> **El resultado, en una línea: `prod` pasa de pedir 2 660m / 9 760Mi a pedir 1 860m / 7 584Mi, y
+> de faltarle 860m de CPU a faltarle 60m.** Diecisiete objetos se van de `prod` y **ninguno
 > llega**; de los cuatro sistemas no cambia ni un byte.
 
 Y la retirada destapó tres defectos vivos que nadie estaba mirando, porque los tres colgaban de
@@ -21,11 +21,11 @@ la base `sgtm` — que existe en los dos ambientes y **no tiene ni una tabla del
 
 | # | Criterio | Estado | Dónde |
 |---|---|---|---|
-| **1** | El monolito no se compone en ningún ambiente | **Cumplido**: `prod` 101 → 84 objetos, `stg` 94 → 87 | §4 |
+| **1** | El monolito no se compone en ningún ambiente | **Cumplido**: `prod` 107 → 90 objetos, `stg` 100 → 93 | §4 |
 | **2** | Nada de los cuatro sistemas ni de la plataforma se va con él | **Cumplido**: 0 objetos nuevos, y los 6/7 que cambian por dentro son los que tenían que cambiar | §4 |
 | **3** | Cada arreglo con su mutación, restaurada por copia comparada con `cmp` | **Cumplido**, nueve mutaciones, **una en verde** | §5 |
 | **4** | La guarda de #675 sigue midiendo, y mide más que antes | **Cumplido**: de un esquema a cuatro | §3 |
-| **5** | Las cifras no bajan, y los rojos se leen contra su línea base | **Cumplido**: `origin/main` 681/1 roja, rama 692/3 | §6 |
+| **5** | Las cifras no bajan, y los rojos se leen contra su línea base | **Cumplido**: base `F` 687/**0**, rama 698/**0** | §6 |
 
 ---
 
@@ -113,8 +113,8 @@ línea no se mueva `pulumi up` no crea ninguno y sale en verde. Subir la línea 
 
 | Ambiente | Objetos | Se van | Llegan | Cambian por dentro |
 |---|---|---|---|---|
-| `stg` | 94 → **87** | 7 | **0** | 6 |
-| `prod` | 101 → **84** | 17 | **0** | 7 |
+| `stg` | 100 → **93** | 7 | **0** | 6 |
+| `prod` | 107 → **90** | 17 | **0** | 7 |
 
 **En `prod` se van los diecisiete del monolito y nada más**: los `Deployment` de la aplicación y la
 interfaz, sus dos `Service`, sus dos `IngressRoute`, el `ConfigMap` de nginx, el `CronJob` de lote,
@@ -144,14 +144,14 @@ Los que cambian por dentro son los que tenían que cambiar, y ninguno más:
 
 ### La capacidad
 
-| | `main` | esta rama |
+| | base (`F`) | esta rama |
 |---|---|---|
-| `stg` | 1 820m / 6 528Mi — **cabe** | 1 820m / 6 528Mi — **cabe** |
-| `prod` | 2 610m / 9 696Mi — faltan **810m** y **3 968Mi** | 1 810m / 7 520Mi — faltan **10m** y **1 792Mi** |
+| `stg` | 1 870m / 6 592Mi — **cabe** | 1 870m / 6 592Mi — **cabe** |
+| `prod` | 2 660m / 9 760Mi — faltan **860m** y **4 032Mi** | 1 860m / 7 584Mi — faltan **60m** y **1 856Mi** |
 
-**`prod` sigue sin caber, y se dice.** Pero pasa a estar a **10 milicores** de caber por CPU, que
+**`prod` sigue sin caber, y se dice.** Pero pasa a estar a **60 milicores** de caber por CPU, que
 es una cifra que cambia la conversación: lo que le sobra al nodo ya no es un problema de
-dimensionado sino de redondeo. Por memoria le faltan 1 792Mi, que sí lo es. Quitar el monolito
+dimensionado sino de redondeo. Por memoria le faltan 1 856Mi, que sí lo es. Quitar el monolito
 **no era suficiente** para que `prod` cupiera, igual que en C-19 no bastó para `stg`; qué se hace
 con eso es D-25 y no se decide aquí.
 
@@ -212,19 +212,23 @@ hermanos avanzan por su cuenta y `catastro` avanzó.
 
 | | Pruebas | Rojas |
 |---|---|---|
-| `origin/main` (`81be646`) | 681 | **1** |
-| esta rama, rebasada encima | 692 | **3** |
+| base: [`F`](F-la-interfaz-llega-a-caja.md) | 687 | **0** |
+| esta rama, encima | 698 | **0** |
 
-**La 1 es la misma en los dos lados y no es de este trabajo**: el clon de `catastro` llegó con su
-interfaz y publica **tres** imágenes donde la guarda espera dos. **Las 2 nuevas son la deriva de
-`catastro`** de §3, o sea la guarda nueva mordiendo.
+**Las once que suben son las de `E`**, y no queda ninguna roja.
 
-> **Esta medición se rehízo, y conviene decir por qué.** La primera se tomó contra `71943d8`, que
-> era `main` cuando esta rama salió, y daba 680/**5**. Mientras el trabajo estaba en curso entraron
-> seis commits en `main` —la etapa 1 del territorio y el censo de extensiones con `V7`..`V10` de
-> `catastro`— que **cerraron cuatro de esas cinco**. La rama se rebasó encima, con dos conflictos
-> —`CLAUDE.md` y `extensiones-de-las-migraciones.test.ts`— y una cifra que había que volver a tomar:
-> una línea base es de un `main` concreto, y decirlo sin el `sha` la vuelve inútil al mes.
+> **Esta medición se rehízo DOS veces, y conviene decir por qué.** La primera se tomó contra
+> `71943d8` —`main` cuando la rama salió— y daba 680/**5**. Mientras el trabajo estaba en curso
+> entraron seis commits en `main` que cerraron cuatro de esas cinco, y la rama se rebasó encima de
+> `81be646`: 692/**3**. Y esa segunda cifra también estaba mal, por una razón que merece quedar
+> escrita: **se midió con los clones hermanos del disco, que estaban 8, 1 y 9 commits por detrás de
+> sus remotos**. CI los trae frescos y veía **16 rojas**, no 3. Medido después con clones recién
+> traídos y en el mismo directorio, `origin/main` tenía **14** y esta rama **16**: el delta real
+> siempre fue **+2**, y las 14 eran la llegada de la interfaz de `caja`, que cierra
+> [`F`](F-la-interfaz-llega-a-caja.md). Sobre `F`, esta rama queda en **698 y 0**.
+>
+> La lección no es la cifra: **una línea base se mide contra los mismos clones que va a usar quien
+> la lea**, y decir «`main` da N» sin decir con qué clones es decir poco.
 
 Los dos conflictos se resolvieron tomando de `main` lo que es suyo —`catastro: 10` con el
 comentario de la etapa 1, las 20 reglas y 44 muestras de `comun-verificaciones`, los 13 ADR y sus
