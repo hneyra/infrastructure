@@ -25,7 +25,7 @@ la base `sgtm` — que existe en los dos ambientes y **no tiene ni una tabla del
 | **2** | Nada de los cuatro sistemas ni de la plataforma se va con él | **Cumplido**: 0 objetos nuevos, y los 6/7 que cambian por dentro son los que tenían que cambiar | §4 |
 | **3** | Cada arreglo con su mutación, restaurada por copia comparada con `cmp` | **Cumplido**, nueve mutaciones, **una en verde** | §5 |
 | **4** | La guarda de #675 sigue midiendo, y mide más que antes | **Cumplido**: de un esquema a cuatro | §3 |
-| **5** | Las cifras no bajan, y los rojos se leen contra su línea base | **Cumplido**: `main` 680/5 rojas, rama 691/7 | §6 |
+| **5** | Las cifras no bajan, y los rojos se leen contra su línea base | **Cumplido**: `origin/main` 681/1 roja, rama 692/3 | §6 |
 
 ---
 
@@ -159,8 +159,10 @@ con eso es D-25 y no se decide aquí.
 
 ## 5. Las mutaciones
 
-Cada una aplicada **sola**, ejecutada, y restaurada **por copia comparada con `cmp`**. La línea
-base de la rama es **7 rojas de 691** (§6), así que «8 en rojo» es una de más.
+Cada una aplicada **sola**, ejecutada, y restaurada **por copia comparada con `cmp`**. Las mutaciones se midieron **antes del rebase**, contra una línea base de **7 rojas de 691** (§6),
+así que «8 en rojo» es una de más. Rebasadas encima de `81be646` la línea base es **3 de 692** y
+los deltas no cambian: lo que cada mutación añade es lo mismo, porque las cuatro rojas que se
+fueron son de guardas que ninguna de las nueve toca.
 
 | # | Mutación | Resultado |
 |---|---|---|
@@ -210,13 +212,25 @@ hermanos avanzan por su cuenta y `catastro` avanzó.
 
 | | Pruebas | Rojas |
 |---|---|---|
-| `main`, con los clones hermanos del 2026-09-06 | 680 | **5** |
-| esta rama | 691 | **7** |
+| `origin/main` (`81be646`) | 681 | **1** |
+| esta rama, rebasada encima | 692 | **3** |
 
-**Las 5 son las mismas en los dos lados y ninguna es de este trabajo**: son del clon de `catastro`,
-que llegó con su interfaz —dos CSV que ningún paso de siembra carga (`riesgo.csv`,
-`zonificacion.csv`), una tercera imagen publicada, y cinco migraciones—. **Las 2 nuevas son la
-deriva de `catastro`** de §3, o sea la guarda nueva mordiendo.
+**La 1 es la misma en los dos lados y no es de este trabajo**: el clon de `catastro` llegó con su
+interfaz y publica **tres** imágenes donde la guarda espera dos. **Las 2 nuevas son la deriva de
+`catastro`** de §3, o sea la guarda nueva mordiendo.
+
+> **Esta medición se rehízo, y conviene decir por qué.** La primera se tomó contra `71943d8`, que
+> era `main` cuando esta rama salió, y daba 680/**5**. Mientras el trabajo estaba en curso entraron
+> seis commits en `main` —la etapa 1 del territorio y el censo de extensiones con `V7`..`V10` de
+> `catastro`— que **cerraron cuatro de esas cinco**. La rama se rebasó encima, con dos conflictos
+> —`CLAUDE.md` y `extensiones-de-las-migraciones.test.ts`— y una cifra que había que volver a tomar:
+> una línea base es de un `main` concreto, y decirlo sin el `sha` la vuelve inútil al mes.
+
+Los dos conflictos se resolvieron tomando de `main` lo que es suyo —`catastro: 10` con el
+comentario de la etapa 1, las 20 reglas y 44 muestras de `comun-verificaciones`, los 13 ADR y sus
+dos filas del registro— y de `E` lo que es de `E`. **Y el censo de extensiones pasa de cinco
+esquemas a cuatro**: derivaba de `SISTEMAS`, y ahí ya no están la copia local del esquema del
+monolito —que se fue con `backend/`— ni `sgtm`, que no lo despliega ningún ambiente.
 
 ---
 
