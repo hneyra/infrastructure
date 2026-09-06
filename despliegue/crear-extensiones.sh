@@ -79,11 +79,13 @@ NAMESPACE=""
 SOLO_COMPROBAR=""
 SOLO_LISTAR=""
 SISTEMA=""
+TODOS=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --ambiente) AMBIENTE=${2:?falta el valor de --ambiente}; shift 2 ;;
         --namespace) NAMESPACE=${2:?falta el valor de --namespace}; shift 2 ;;
         --sistema) SISTEMA=${2:?falta el valor de --sistema}; shift 2 ;;
+        --todos) TODOS=si; shift ;;
         --comprobar) SOLO_COMPROBAR=si; shift ;;
         --listar) SOLO_LISTAR=si; shift ;;
         *) echo "Opcion desconocida: $1" >&2; exit 2 ;;
@@ -96,13 +98,42 @@ RAIZ=$(cd "$AQUI/.." && pwd)
 # shellcheck source=inicializacion-del-motor/lib-extensiones.sh
 . "$AQUI/inicializacion-del-motor/lib-extensiones.sh"
 
+# Los cuatro sistemas del corte (ADR-0031), para `--todos`.
+#
+# Se escribe aqui y no en quien llama —`infra.yml` lo invoca en `aplicar-stg` y en
+# `aplicar-prod`— porque una lista en el YAML seria un segundo sitio que mantener de acuerdo,
+# y el YAML no puede leer `descriptor/sistemas.ts`. Que esta linea siga cuadrando con esa
+# fuente lo comprueba `el-monolito-fuera.test.ts` EJECUTANDO esta asignacion, igual que hace
+# con la de `verificar-el-ambiente.sh`: una prueba que solo mirara que el guion los nombra
+# pasaria con la lista rota (la leccion de M10 de C-19).
+SISTEMAS_DEL_PRODUCTO="rentas catastro normativa caja"
+
+# `--todos` recorre los cuatro, que es lo que necesita un motor YA CREADO: ahi
+# `docker-entrypoint-initdb.d` no vuelve a correr, asi que las extensiones que cada
+# `crear-roles.sql` declara hay que crearlas una base a una.
+if [ -n "$TODOS" ]; then
+    [ -z "$SISTEMA" ] || {
+        echo "--todos y --sistema son excluyentes: o uno, o los cuatro." >&2
+        exit 2
+    }
+    for uno in $SISTEMAS_DEL_PRODUCTO; do
+        echo "== $uno =="
+        "$0" --sistema "$uno" \
+            ${AMBIENTE:+--ambiente "$AMBIENTE"} \
+            ${NAMESPACE:+--namespace "$NAMESPACE"} \
+            ${SOLO_COMPROBAR:+--comprobar} \
+            ${SOLO_LISTAR:+--listar}
+    done
+    exit 0
+fi
+
 # Desde `E` no hay valor por omision: el monolito era el unico sistema que vivia en ESTE
 # repositorio, y con el fuera todo `--sistema` es uno de los cuatro clones hermanos. Sin
 # esta guarda, olvidarlo se leeria como «el de siempre» y crearia extensiones en la base
 # equivocada.
 [ -n "$SISTEMA" ] || {
-    echo "Falta --sistema. Los que hay son los cuatro de ADR-0031: rentas, catastro," >&2
-    echo "normativa, caja. Cada uno declara sus extensiones en SU crear-roles.sql." >&2
+    echo "Falta --sistema (o --todos). Los que hay son los cuatro de ADR-0031: rentas," >&2
+    echo "catastro, normativa, caja. Cada uno declara sus extensiones en SU crear-roles.sql." >&2
     exit 2
 }
 

@@ -369,3 +369,54 @@ describe("E · nadie revoca el CONNECT sobre la base de mantenimiento", () => {
     ).toMatch(/REVOKE\s+CONNECT\s+ON\s+DATABASE/i);
   });
 });
+
+describe("#17 · `crear-extensiones.sh` y quien lo llama estan de acuerdo", () => {
+  const guion = readFileSync(join(raizDelRepositorio(), "despliegue/crear-extensiones.sh"), "utf8");
+  const flujo = readFileSync(join(raizDelRepositorio(), ".github/workflows/infra.yml"), "utf8");
+
+  /**
+   * `E` hizo obligatorio `--sistema` y no siguio el cambio hasta sus dos llamadores.
+   *
+   * El sintoma llego en el peor sitio: no en `yarn verificar` ni en el PR, sino en
+   * `aplicar-stg` **despues** de que el `up` hubiera corrido, con «Falta --sistema» y exit 2.
+   * Aqui no hace falta ni Docker ni cluster — basta leer los dos archivos y ver que uno exige
+   * un argumento que el otro no pasa.
+   */
+  it("ninguna llamada del flujo se queda sin `--sistema` ni `--todos`", () => {
+    const llamadas = flujo
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.includes("crear-extensiones.sh") && !l.startsWith("#") && !l.startsWith("-"));
+
+    expect(llamadas.length, "el flujo ya no llama a `crear-extensiones.sh`").toBeGreaterThan(0);
+    for (const llamada of llamadas) {
+      expect(
+        /--sistema\b|--todos\b/.test(llamada),
+        `«${llamada}» no dice contra que sistema crea las extensiones, y el guion lo exige ` +
+          "desde `E`: sale con codigo 2 en `aplicar-stg`, despues del `up`",
+      ).toBe(true);
+    }
+  });
+
+  /**
+   * Y la lista que `--todos` recorre, EJECUTADA.
+   *
+   * Misma leccion que M10 de C-19 y que la de `verificar-el-ambiente.sh`: una prueba que solo
+   * mirara que el guion nombra a los cuatro pasaria con la lista rota.
+   */
+  it("`--todos` recorre exactamente los cuatro de SISTEMAS", () => {
+    const asignacion = /^SISTEMAS_DEL_PRODUCTO="([^"]+)"$/m.exec(guion);
+    expect(asignacion, "el guion ya no declara `SISTEMAS_DEL_PRODUCTO=`").not.toBeNull();
+
+    const leidos = execFileSync(
+      "sh",
+      ["-c", `SISTEMAS_DEL_PRODUCTO="${asignacion?.[1] ?? ""}"; echo $SISTEMAS_DEL_PRODUCTO`],
+      { encoding: "utf8" },
+    )
+      .trim()
+      .split(/\s+/)
+      .sort();
+
+    expect(leidos).toEqual([...SISTEMAS_DEL_PRODUCTO].sort());
+  });
+});
