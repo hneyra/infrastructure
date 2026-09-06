@@ -21,7 +21,7 @@ import {
  * Corre en `yarn verificar`, sin cluster y sin motor.
  */
 describe("C-3 — ninguna migracion repite el sufijo ` NOT VALID`", () => {
-  it("EL CONTRASTE: hoy no lo repite ninguna, en ninguna de las seis copias", () => {
+  it("EL CONTRASTE: hoy no lo repite ninguna, en ninguna de las cuatro copias", () => {
     // Va primero a proposito, como en C-2: es la mitad que dice que el arbol esta
     // limpio. Cuando esto se ponga rojo, lo que hay que arreglar es la EMISION
     // (`Emitir.java`), no el archivo: corregir solo la salida deja que el siguiente
@@ -29,11 +29,11 @@ describe("C-3 — ninguna migracion repite el sufijo ` NOT VALID`", () => {
     expect(sufijosRepetidos().map(descripcionDelSufijo)).toEqual([]);
   });
 
-  it("mide las seis copias del esquema, y ninguna se queda sin mirar", () => {
+  it("mide las cuatro copias del esquema, y ninguna se queda sin mirar", () => {
     // Sin esto, un `esquemas()` que devolviera la lista vacia dejaria la comprobacion
     // de arriba en verde sin haber abierto un archivo — el modo de fallo que #675
     // escribio primero.
-    expect(esquemas().length).toBe(6);
+    expect(esquemas().length).toBe(4);
     expect(esquemas().map((e) => e.nombre)).toContain("rentas");
     expect(esquemas().map((e) => e.nombre)).toContain("caja");
   });
@@ -75,7 +75,7 @@ describe("C-3 — ninguna migracion repite el sufijo ` NOT VALID`", () => {
 
   it("el rojo nombra el repositorio, la migracion y la linea", () => {
     // Un rojo que dijera solo «hay un sufijo repetido» obligaria a buscarlo a mano en
-    // seis copias de esquema y 4 000 lineas.
+    // cuatro copias de esquema y 4 000 lineas.
     expect(
       descripcionDelSufijo({
         sistema: "rentas",

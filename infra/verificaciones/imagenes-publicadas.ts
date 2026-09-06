@@ -53,15 +53,23 @@ export interface ImagenPedida {
   referencia: string;
   /** El nombre publicado, sin registro ni etiqueta: `kamayuk-rentas`. */
   nombre: string;
-  /** La etiqueta: un `sha`, o `prod-<sha>` en la interfaz del monolito. */
+  /** La etiqueta: un `sha` del repositorio que construyo esa imagen. */
   etiqueta: string;
 }
 
 /** Donde se publica: el registro del producto. Lo demas —`postgis`, `grafana`— no es nuestro. */
 export const REGISTRO_PROPIO = "ghcr.io/hneyra/";
 
-/** Los clones hermanos que pueden publicar algo, incluido el archivo historico. */
-export const CLONES = ["rentas", "catastro", "normativa", "caja", "sgtm"] as const;
+/**
+ * Los clones hermanos que pueden publicar algo.
+ *
+ * Eran cinco: el quinto era `sgtm`, que publicaba las tres imagenes del monolito. Se fue con
+ * el en `E`, y con el la unica razon por la que este repositorio clonaba el archivo historico
+ * en CI — `clonar-los-hermanos` ya no lo trae—. Dejarlo aqui pondria rojo el inventario
+ * nombrando un clon que nadie pide: `publicadores()` **no se repliega** cuando falta uno, y
+ * ese rojo seria por un motivo que no es el que se mide.
+ */
+export const CLONES = ["rentas", "catastro", "normativa", "caja"] as const;
 
 /**
  * Las imagenes DEL PRODUCTO que un ambiente pide, sin repetir.

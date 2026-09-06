@@ -63,22 +63,24 @@ conviene tenerla escrita antes de que alguien mueva uno:
 
 | Archivo | Quién lo lee | ¿Entra en los manifiestos? |
 |---|---|---|
-| `backend/sgtm-esquema/src/main/resources/db/roles/crear-roles.sql` | `fuentes.ts` | **Sí** |
 | `despliegue/inicializacion-del-motor/20-asignar-claves.sh` | `fuentes.ts` | **Sí** |
 | `despliegue/identidad/realm-sgtm.json` | `fuentes.ts` | **Sí** |
 | `despliegue/identidad/realm-sgtm-ciudadano.json` | `fuentes.ts` | **Sí** |
 | `despliegue/identidad/reconciliar-identidades.sh` | `fuentes.ts` | **Sí** |
 | `despliegue/identidad/municipalidades/` | `fuentes.ts` | **Sí** |
 | `despliegue/identidad/ciudadanos/` | `fuentes.ts` | **Sí** |
-| `frontend/nginx.conf` | `fuentes.ts` | **Sí** |
-| `backend/sgtm-esquema/src/main/resources/db/migration/` | `extensiones-de-las-migraciones.ts`, `deriva-de-migraciones.ts` | No: verificación |
-| `backend/sgtm-dominio-compartido/…/dominio/TipoDocumento.java` | `componentes.test.ts` | No: verificación |
-| `.github/workflows/{infra,declarar-version}.yml` | `deriva-de-migraciones.test.ts`, `declarar-version.test.ts` | No: verificación |
+| `.github/workflows/infra.yml` | `deriva-de-migraciones.test.ts` | No: verificación |
+| `.github/actions/clonar-los-hermanos/action.yml` | `deriva-de-migraciones.test.ts`, `clones-de-los-hermanos.ts` | No: verificación |
+
+> **Tres entradas se fueron en [`E`](docs/00-gobierno/E-el-monolito-sale-del-sistema.md)**, con el
+> monolito: el `crear-roles.sql` y las migraciones de `backend/sgtm-esquema`, el
+> `TipoDocumento.java` de `backend/sgtm-dominio-compartido` y `frontend/nginx.conf`. Las tres
+> rutas ya no existen en este repositorio.
 
 **Y el censo tuvo que hacerse dos veces.** El primero miró `componentes/`, `config.ts` y
 `herramientas/` —lo que compone manifiestos— y dio ocho rutas; con él, `yarn verificar` falló
-por tres archivos que sólo leen **las pruebas**: `TipoDocumento.java` y los dos workflows. Las
-pruebas son parte de lo que hay que mudar, no un apéndice.
+por archivos que sólo leen **las pruebas**. Las pruebas son parte de lo que hay que mudar, no
+un apéndice.
 
 ## 3. Que la copia no cambió nada: los manifiestos
 
@@ -132,23 +134,26 @@ cuantas migraciones trae. Esta comprobacion NO se salta: un numero inventado ser
 ninguno.
 ```
 
-**La guarda está haciendo exactamente lo que debe, y su mensaje lo explica.** Compara
-`applicationBootstrapVersion` —que vive en los stacks, o sea **aquí**— contra las migraciones
-de `origin/main` —que viven en el repositorio del **sistema**—. Al separarlos, la guarda queda
-**a caballo de dos repositorios** y no se puede satisfacer desde uno solo: ese `sha` es de
+**La guarda estaba haciendo exactamente lo que debe, y su mensaje lo explicaba.** Comparaba
+`applicationBootstrapVersion` —que vivía en los stacks, o sea **aquí**— contra las migraciones
+de `origin/main` —que viven en el repositorio del **sistema**—. Al separarlos, la guarda quedó
+**a caballo de dos repositorios** y no se podía satisfacer desde uno solo: ese `sha` era de
 `sgtm` y no está en la historia de `infrastructure`.
 
-**No se toca**, y el motivo es que arreglarla obliga a decidir algo que no está decidido: con
-cuatro sistemas hay **cuatro** `applicationBootstrapVersion` y **cuatro** historias de
-migraciones, todas fuera de este repositorio. Las salidas —que la guarda reciba la ruta del
-clon de cada sistema, que cada repo publique su cuenta de migraciones como dato, o que el
-`sha` deje de ser de un repo y pase a ser una versión publicada— son tres diseños distintos
-con costos distintos.
+**Se reencuadró en P6 y se cerró en [`E`](docs/00-gobierno/E-el-monolito-sale-del-sistema.md).**
+P6 le enseñó a resolver el `sha` en el clon del sistema desplegado; `E` retiró el monolito, y con
+él la última línea `applicationBootstrapVersion`. Hoy la guarda mide **los cuatro sistemas**, uno
+por `kamayuk:versionDe<Sistema>` y cada uno contra el `git log` de su propio clon — que es una de
+las tres salidas que este documento dejaba escritas, la de «que la guarda reciba la ruta del clon
+de cada sistema».
 
-Es, además, el riesgo que ADR-0031 §Consecuencias nombra —«el descriptor que nadie compone»—
-apareciendo por donde se esperaba. **La guarda de #675 hay que reencuadrarla antes de que
-`infrastructure` despliegue de verdad**; hasta entonces, la deriva la sigue vigilando `sgtm`,
-donde el `sha` y las migraciones están en el mismo clon.
+De paso cierra el hueco que C-20 dejó anotado: los cuatro `Job` de migración del corte **no los
+medía nadie**, porque el censo leía `construirManifiestos` —la plataforma— y no
+`manifiestosDelAmbiente` —los cinco espacios de nombres—.
+
+**Lo que sigue abierto, y es la otra mitad de #675**: un filtro `paths` sólo puede nombrar rutas
+de su repositorio, así que una migración de `rentas` **no dispara** el flujo de `infrastructure`.
+Se cierra con un disparo entre repositorios (`repository_dispatch`), y no está hecho.
 
 ## 5. El compose partido, levantado de verdad
 

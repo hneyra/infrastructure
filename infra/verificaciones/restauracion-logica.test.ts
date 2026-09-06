@@ -101,7 +101,7 @@ describe("C-11 — la version del motor y la de los binarios", () => {
     // sistemas, y el simulacro no puede admitir una version que ellos rechazan.
     const delShell = enBash("echo $RL_MAJOR_SOPORTADA").salida;
 
-    for (const sistema of SISTEMAS.filter((s) => s.nombre !== "sgtm")) {
+    for (const sistema of SISTEMAS) {
       const motor = join(
         clonDe(sistema),
         `backend/kamayuk-${sistema.nombre}-esquema/src/testFixtures/java/kamayuk/` +
@@ -182,18 +182,32 @@ describe("C-11 — las migraciones van en orden de VERSION, no de texto", () => 
 });
 
 describe("C-11 — el libro de Flyway se DERIVA de las migraciones", () => {
-  it("el monolito lo necesita y `caja` no", () => {
-    // `V21` del monolito hace `GRANT SELECT ON flyway_schema_history`, asi que su esquema
-    // no se puede aplicar con psql a secas. Se deriva en vez de escribir «si es sgtm».
+  /**
+   * Ninguno de los cuatro lo necesita hoy, y el contraste va fabricado.
+   *
+   * Se medía contra el monolito, cuyo `V21` hace `GRANT SELECT ON flyway_schema_history` —de
+   * modo que su esquema no se puede aplicar con psql a secas—. Se fue con `E`, y de los cuatro
+   * ninguno la toca: sus baselines la nombran solo en un comentario para explicar por que NO
+   * la usan. Asi que el «si» se fabrica, que es lo unico que impide que esta funcion pase a
+   * decir que no a todo sin que nadie lo note.
+   */
+  it("ninguno de los cuatro lo necesita, y el caso que si lo pide se detecta", () => {
     const dirDe = (sistema: string) =>
       enBash(`rl_migraciones_de ${JSON.stringify(sistema)} ${JSON.stringify(RAIZ)}`).salida;
 
-    expect(
-      enBash(`rl_necesita_libro_de_flyway ${JSON.stringify(dirDe("sgtm"))}`).codigo,
-    ).toBe(0);
-    expect(
-      enBash(`rl_necesita_libro_de_flyway ${JSON.stringify(dirDe("caja"))}`).codigo,
-    ).not.toBe(0);
+    for (const sistema of SISTEMAS) {
+      expect(
+        enBash(`rl_necesita_libro_de_flyway ${JSON.stringify(dirDe(sistema.nombre))}`).codigo,
+        `«${sistema.nombre}» toca flyway_schema_history en una migracion`,
+      ).not.toBe(0);
+    }
+
+    const directorio = directorioTemporal("c11-libro-si-");
+    writeFileSync(
+      join(directorio, "V1__baseline.sql"),
+      "GRANT SELECT ON flyway_schema_history TO kamayuk_app;\n",
+    );
+    expect(enBash(`rl_necesita_libro_de_flyway ${JSON.stringify(directorio)}`).codigo).toBe(0);
   });
 
   it("y no cuenta el que solo aparece en un comentario", () => {
@@ -216,7 +230,7 @@ describe("C-11 — donde vive el esquema de cada sistema no se escribe dos veces
     // El shell busca `backend/*/src/main/resources/db` en el clon hermano, con el mismo
     // criterio que `crear-extensiones.sh`. Que coincida con la tabla que ya mantiene
     // `deriva-de-migraciones.ts` no se supone: se ejecuta y se compara.
-    for (const sistema of SISTEMAS.filter((s) => s.nombre !== "sgtm")) {
+    for (const sistema of SISTEMAS) {
       const delShell = enBash(
         `rl_migraciones_de ${JSON.stringify(sistema.nombre)} ${JSON.stringify(RAIZ)}`,
       ).salida;
@@ -227,15 +241,14 @@ describe("C-11 — donde vive el esquema de cada sistema no se escribe dos veces
     }
   });
 
-  it("para el monolito toma la copia de ESTE repositorio, que es la que se aplica", () => {
-    const sgtm = SISTEMAS.find((s) => s.nombre === "sgtm")!;
+  /**
+   * **Ya no hay ninguna excepcion** (`E`). Aqui habia una prueba de que `sgtm` se resolvia a
+   * la copia local de este repositorio —«que es la que se aplica»—: esa copia se retiro con
+   * el monolito, y los cuatro que quedan se resuelven todos igual, en su clon hermano. Lo
+   * que lo fija es la prueba de arriba, que los recorre a los cuatro sin excepciones.
+   */
 
-    expect(resolve(enBash(`rl_migraciones_de sgtm ${JSON.stringify(RAIZ)}`).salida)).toBe(
-      resolve(RAIZ, sgtm.migraciones),
-    );
-  });
-
-  it("y el `crear-roles.sql` que resuelve existe en los cinco", () => {
+  it("y el `crear-roles.sql` que resuelve existe en los cuatro", () => {
     for (const sistema of SISTEMAS) {
       const roles = enBash(
         `rl_roles_de ${JSON.stringify(sistema.nombre)} ${JSON.stringify(RAIZ)}`,
@@ -281,13 +294,12 @@ describe("C-11 — el veredicto NO es el codigo de salida", () => {
 });
 
 describe("C-11 — las perdidas declaradas, y las tablas que derivan de ellas", () => {
-  it("solo el monolito declara perdidas, y son trece", () => {
-    // C-4 midio dos —el indice de trigramas y su COMMENT—. Con las 68 migraciones
-    // aplicadas son trece objetos: `V66` (#565) le dio a `via` la misma columna generada
-    // que tiene `catastro`, y la tabla entera no se crea.
-    expect(lineas(enBash("rl_perdidas_conocidas sgtm").salida)).toHaveLength(13);
-
-    for (const sistema of SISTEMAS.filter((s) => s.nombre !== "sgtm")) {
+  it("ninguno de los cuatro declara perdidas", () => {
+    // Las declaraba el monolito, y eran trece: C-4 midio dos —el indice de trigramas y su
+    // COMMENT— y C-11 encontro once mas, porque `V66` (#565) le dio a `via` una columna
+    // generada y la tabla entera deja de crearse. Se fue con `E`; los cuatro del corte lo
+    // arreglaron cada uno con una migracion nueva, que es la salida que el monolito no tenia.
+    for (const sistema of SISTEMAS) {
       expect(
         lineas(enBash(`rl_perdidas_conocidas ${JSON.stringify(sistema.nombre)}`).salida),
         `«${sistema.nombre}» declara perdidas: o las arreglo, o hay que decir por que no`,
@@ -296,26 +308,23 @@ describe("C-11 — las perdidas declaradas, y las tablas que derivan de ellas", 
   });
 
   it("las tablas afectadas se DERIVAN de la lista, no se escriben aparte", () => {
-    expect(lineas(enBash("rl_tablas_afectadas sgtm").salida)).toEqual([
-      "arancel",
-      "contribuyente",
-      "predio",
-      "via",
-    ]);
+    // Con la lista vacia, lo derivado tambien lo es. Lo que hace util esta prueba es el par
+    // de abajo: se le da una lista fabricada y se comprueba que lo derivado cambia con ella.
     expect(lineas(enBash("rl_tablas_afectadas caja").salida)).toEqual([]);
   });
 
-  it("y quitar una entrada de la lista cambia lo derivado, que es lo que prueba que deriva", () => {
-    const sinLaDeArancel = enBash(
-      'rl_perdidas_conocidas() { echo "TABLA via"; }\nrl_tablas_afectadas sgtm',
+  it("y darle una lista cambia lo derivado, que es lo que prueba que deriva", () => {
+    const conDos = enBash(
+      'rl_perdidas_conocidas() { echo "TABLA via"; echo "INDICE i EN arancel"; }\n' +
+        "rl_tablas_afectadas rentas",
     );
 
-    expect(lineas(sinLaDeArancel.salida)).toEqual(["via"]);
+    expect(lineas(conDos.salida)).toEqual(["arancel", "via"]);
   });
 });
 
 describe("C-11 — el simulacro no tiene una segunda lista de sistemas", () => {
-  it("los cinco que recorre por omision son los de SISTEMAS", () => {
+  it("los cuatro que recorre por omision son los de SISTEMAS", () => {
     // Se EJECUTA `rl_sistemas` en vez de leer el texto del guion: lo que importa es lo que
     // el simulacro recorre, no lo que parece que recorre.
     expect(lineas(enBash("rl_sistemas").salida).sort()).toEqual(

@@ -87,9 +87,24 @@ done
 [ "$(comoSuperusuario "SELECT rolcanlogin FROM pg_roles WHERE rolname='kamayuk_readonly'")" = "f" ] \
     || { echo "FALLO: kamayuk_readonly puede conectarse, y todavia no lo usa nadie" >&2; exit 1; }
 
+# ── La base donde vive el padron, desde `E` ──────────────────────────────────
+#
+# Era `sgtm`, la del monolito, escrita ocho veces en este guion. Con el monolito
+# fuera esa base no tiene ni una tabla del producto, y medir contra ella habria
+# dejado estas comprobaciones **pasando en verde sin medir nada**: «kamayuk_app no
+# puede crear tablas» es cierto en una base donde no tiene ningun privilegio.
+#
+# `rentas` y no otra, por lo mismo que el registro del respaldo: es la unica cuyo
+# `crear-roles.sql` concede CONNECT a los cinco roles del cluster, o sea la que
+# menos supuestos hace sobre quien se conecta.
+BASE_DEL_PADRON=rentas
+# Menos `rol_carga_parametros`, cuya UNICA base es `normativa` (C-7 §6). Medirlo
+# contra otra diria lo contrario de la verdad.
+BASE_DE_LA_CARGA=normativa
+
 # ── 4. Con las credenciales de la aplicacion, no hay DDL ─────────────────────
 echo "· La aplicacion no puede ejecutar DDL"
-if PGPASSWORD="$CLAVE_APP" psql --username=kamayuk_app --dbname=sgtm --quiet \
+if PGPASSWORD="$CLAVE_APP" psql --username=kamayuk_app --dbname="$BASE_DEL_PADRON" --quiet \
         --command 'CREATE TABLE intento_de_ddl (id int)' >/dev/null 2>&1; then
     echo "FALLO: las credenciales de la aplicacion pueden crear tablas. Un proceso expuesto en HTTP con DDL sobre el padron de todas las municipalidades es lo que ARQ-03 §4 excluye" >&2
     exit 1
@@ -101,7 +116,7 @@ fi
 # puede crear una tabla propia. Es la misma separacion de funciones que kamayuk_app,
 # comprobada de la misma forma.
 echo "· rol_carga_parametros tampoco puede ejecutar DDL"
-if PGPASSWORD="$CLAVE_CARGA" psql --username=rol_carga_parametros --dbname=sgtm --quiet \
+if PGPASSWORD="$CLAVE_CARGA" psql --username=rol_carga_parametros --dbname="$BASE_DE_LA_CARGA" --quiet \
         --command 'CREATE TABLE intento_de_ddl_carga (id int)' >/dev/null 2>&1; then
     echo "FALLO: rol_carga_parametros puede crear tablas. Solo debe poder insertar en parametro_tributario" >&2
     exit 1
@@ -109,15 +124,17 @@ fi
 
 # ── 5. Los cuatro conservan el CONNECT sobre la base del padron ──────────────
 echo "· Los cuatro roles conservan el CONNECT sobre la base del padron"
-for par in "kamayuk_owner:$CLAVE_OWNER" "kamayuk_app:$CLAVE_APP" "rol_carga_parametros:$CLAVE_CARGA"; do
+for par in "kamayuk_owner:$CLAVE_OWNER:$BASE_DEL_PADRON" "kamayuk_app:$CLAVE_APP:$BASE_DEL_PADRON" "rol_carga_parametros:$CLAVE_CARGA:$BASE_DE_LA_CARGA"; do
     rol=${par%%:*}
-    clave=${par#*:}
-    PGPASSWORD="$clave" psql --username="$rol" --dbname=sgtm --quiet --command 'SELECT 1' \
+    resto=${par#*:}
+    clave=${resto%%:*}
+    base=${resto#*:}
+    PGPASSWORD="$clave" psql --username="$rol" --dbname="$base" --quiet --command 'SELECT 1' \
         >/dev/null 2>&1 \
         || { echo "FALLO: $rol no puede conectarse a la base del padron: 30-base-de-keycloak.sh revoca el CONNECT de PUBLIC y tiene que volver a concederselo a los cuatro roles" >&2; exit 1; }
 done
 # kamayuk_readonly no tiene LOGIN, asi que su privilegio se comprueba por el catalogo.
-[ "$(comoSuperusuario "SELECT has_database_privilege('kamayuk_readonly','sgtm','CONNECT')")" = "t" ] \
+[ "$(comoSuperusuario "SELECT has_database_privilege('kamayuk_readonly','$BASE_DEL_PADRON','CONNECT')")" = "t" ] \
     || { echo "FALLO: kamayuk_readonly perdio el CONNECT sobre la base del padron" >&2; exit 1; }
 
 # ── 5c. Las CUATRO bases del producto, con sus roles aplicados (C-14, punto 2) ─
@@ -175,7 +192,7 @@ echo "· rol_carga_parametros no llega a la base de Keycloak"
 echo "· La base de Keycloak"
 [ "$(comoSuperusuario "SELECT 1 FROM pg_database WHERE datname='keycloak'" postgres)" = "1" ] \
     || { echo "FALLO: la base de Keycloak no existe" >&2; exit 1; }
-[ "$(comoSuperusuario "SELECT has_database_privilege('keycloak','sgtm','CONNECT')" postgres)" = "f" ] \
+[ "$(comoSuperusuario "SELECT has_database_privilege('keycloak','$BASE_DEL_PADRON','CONNECT')" postgres)" = "f" ] \
     || { echo "FALLO: el rol de Keycloak puede conectarse a la base del padron. No la necesita, y una credencial de mas apuntando al padron es una credencial de mas" >&2; exit 1; }
 PGPASSWORD="$CLAVE_IDENTIDAD" psql --username=keycloak --dbname=keycloak --quiet \
     --command 'SELECT 1' >/dev/null 2>&1 \
@@ -223,7 +240,7 @@ echo "  puede pg_backup_start/stop y leer la configuracion: lo justo"
 
 # El rol del respaldo NO necesita entrar a la base del padron: pg_backup_start y
 # pg_backup_stop son operaciones del cluster, no de una base.
-[ "$(comoSuperusuario "SELECT has_database_privilege('kamayuk_respaldo','sgtm','CONNECT')" postgres)" = "f" ] \
+[ "$(comoSuperusuario "SELECT has_database_privilege('kamayuk_respaldo','$BASE_DEL_PADRON','CONNECT')" postgres)" = "f" ] \
     || { echo "FALLO: kamayuk_respaldo puede conectarse a la base del padron, y no la necesita" >&2; exit 1; }
 echo "  y no alcanza la base del padron"
 
@@ -254,13 +271,13 @@ fi
     || { echo "FALLO: kamayuk_monitor no tiene pg_monitor; postgres-exporter no podria leer nada" >&2; exit 1; }
 echo "  tiene pg_monitor: lo justo"
 
-[ "$(comoSuperusuario "SELECT has_database_privilege('kamayuk_monitor','sgtm','CONNECT')" postgres)" = "f" ] \
+[ "$(comoSuperusuario "SELECT has_database_privilege('kamayuk_monitor','$BASE_DEL_PADRON','CONNECT')" postgres)" = "f" ] \
     || { echo "FALLO: kamayuk_monitor puede conectarse a la base del padron, y no la necesita" >&2; exit 1; }
 echo "  y no alcanza la base del padron"
 
 # ── 9. Reiniciar deja los datos donde estaban ────────────────────────────────
 echo "· Reiniciar el motor no pierde datos"
-PGPASSWORD="$CLAVE_OWNER" psql --username=kamayuk_owner --dbname=sgtm --quiet \
+PGPASSWORD="$CLAVE_OWNER" psql --username=kamayuk_owner --dbname="$BASE_DEL_PADRON" --quiet \
     --command 'CREATE TABLE si_sobrevive (dato text)' \
     --command "INSERT INTO si_sobrevive VALUES ('sobrevivio')" >/dev/null
 

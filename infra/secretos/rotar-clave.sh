@@ -40,6 +40,12 @@ set -euo pipefail
 
 AMBIENTE=""
 ROL=""
+
+# Ver `verificar-rotacion.sh`: la base depende del rol desde `E`.
+case "$ROL" in
+    postgres-carga) BASE_DEL_ROL=normativa ;;
+    *)              BASE_DEL_ROL=rentas ;;
+esac
 NAMESPACE=""
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -111,7 +117,7 @@ VALOR_NUEVO=$(openssl rand -base64 32)
 # `:"rol"` interpola como identificador citado, que es lo que hace falta para un nombre
 # de rol que no se conoce hasta que corre el guion.
 kubectl -n "$NAMESPACE" exec -i "$MOTOR" -- env PGPASSWORD="$CLAVE_SUPER" \
-    psql --username=postgres --dbname=sgtm --quiet \
+    psql --username=postgres --dbname="$BASE_DEL_ROL" --quiet \
     -v rol="$ROL_DE_POSTGRES" -v nueva="$VALOR_NUEVO" <<'SQL'
 ALTER ROLE :"rol" PASSWORD :'nueva';
 SQL

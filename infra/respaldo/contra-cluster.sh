@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+
+# La base donde vive el padron, desde `E`. Era `sgtm`, la del monolito, que hoy no tiene ni
+# una tabla del producto. `rentas` es la unica cuyo `crear-roles.sql` concede CONNECT a los
+# cinco roles del cluster, o sea la que menos supuestos hace sobre quien se conecta.
+BASE_DEL_PADRON=rentas
 # El modo `--contra-cluster` de simulacro-de-restauracion.sh (issue #158).
 #
 # No se corre solo: `simulacro-de-restauracion.sh` lo source-ea despues de validar
@@ -23,14 +28,14 @@ MUNICIPALIDAD_DE_ENSAYO=1
 esperar_archivado_cluster() {
     local clave="$1" pod="$2" desde archivados fallidos
     desde=$(kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$clave" \
-        psql --username=postgres --dbname=sgtm --tuples-only --no-align \
+        psql --username=postgres --dbname="$BASE_DEL_PADRON" --tuples-only --no-align \
         --command "SELECT archived_count FROM pg_stat_archiver")
     for _ in $(seq 1 30); do
         archivados=$(kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$clave" \
-            psql --username=postgres --dbname=sgtm --tuples-only --no-align \
+            psql --username=postgres --dbname="$BASE_DEL_PADRON" --tuples-only --no-align \
             --command "SELECT archived_count FROM pg_stat_archiver")
         fallidos=$(kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$clave" \
-            psql --username=postgres --dbname=sgtm --tuples-only --no-align \
+            psql --username=postgres --dbname="$BASE_DEL_PADRON" --tuples-only --no-align \
             --command "SELECT failed_count FROM pg_stat_archiver")
         [ "${archivados:-0}" -gt "${desde:-0}" ] && return 0
         sleep 2
@@ -81,7 +86,7 @@ ensayar_contra_cluster() {
     echo "· Escribiendo la fila BUENA -T_BUENO queda entre esta y la mala-"
     codigoBueno="ENSAYO-PITR-B$$"
     kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveOwner" \
-        psql --username=kamayuk_owner --dbname=sgtm --quiet -v ON_ERROR_STOP=1 <<SQL
+        psql --username=kamayuk_owner --dbname="$BASE_DEL_PADRON" --quiet -v ON_ERROR_STOP=1 <<SQL
 BEGIN;
 SET LOCAL app.municipalidad_id = '$MUNICIPALIDAD_DE_ENSAYO';
 INSERT INTO contribuyente
@@ -93,10 +98,10 @@ VALUES
 COMMIT;
 SQL
     kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveSuper" \
-        psql --username=postgres --dbname=sgtm --quiet --command "SELECT pg_switch_wal()" >/dev/null
+        psql --username=postgres --dbname="$BASE_DEL_PADRON" --quiet --command "SELECT pg_switch_wal()" >/dev/null
     esperar_archivado_cluster "$claveSuper" "$pod"
     tBueno=$(kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveSuper" \
-        psql --username=postgres --dbname=sgtm --tuples-only --no-align \
+        psql --username=postgres --dbname="$BASE_DEL_PADRON" --tuples-only --no-align \
         --command "SELECT clock_timestamp()")
     echo "  T_BUENO = $tBueno"
     sleep 2
@@ -104,7 +109,7 @@ SQL
     echo "· Escribiendo la fila MALA -la que el PITR tiene que dejar fuera-"
     codigoMalo="ENSAYO-PITR-M$$"
     kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveOwner" \
-        psql --username=kamayuk_owner --dbname=sgtm --quiet -v ON_ERROR_STOP=1 <<SQL
+        psql --username=kamayuk_owner --dbname="$BASE_DEL_PADRON" --quiet -v ON_ERROR_STOP=1 <<SQL
 BEGIN;
 SET LOCAL app.municipalidad_id = '$MUNICIPALIDAD_DE_ENSAYO';
 INSERT INTO contribuyente
@@ -116,7 +121,7 @@ VALUES
 COMMIT;
 SQL
     kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveSuper" \
-        psql --username=postgres --dbname=sgtm --quiet --command "SELECT pg_switch_wal()" >/dev/null
+        psql --username=postgres --dbname="$BASE_DEL_PADRON" --quiet --command "SELECT pg_switch_wal()" >/dev/null
     esperar_archivado_cluster "$claveSuper" "$pod"
     echo "  archivada"
 
@@ -225,7 +230,7 @@ CONF
     estado=no
     for _ in $(seq 1 60); do
         if [ "$(kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveSuper" \
-                psql --username=postgres --dbname=sgtm --tuples-only --no-align \
+                psql --username=postgres --dbname="$BASE_DEL_PADRON" --tuples-only --no-align \
                 --command "SELECT pg_get_wal_replay_pause_state()" 2>/dev/null)" = "paused" ]; then
             estado=si
             break
@@ -248,7 +253,7 @@ CONF
 
     consultar() {
         kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveSuper" \
-            psql --username=postgres --dbname=sgtm --tuples-only --no-align --command "$1"
+            psql --username=postgres --dbname="$BASE_DEL_PADRON" --tuples-only --no-align --command "$1"
     }
 
     [ "$(consultar "SELECT count(*) FROM contribuyente WHERE codigo_contribuyente = '$codigoBueno'")" = "1" ] \
@@ -260,7 +265,7 @@ CONF
     echo "  la fila MALA no esta: el objetivo se respeto"
 
     kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveSuper" \
-        psql --username=postgres --dbname=sgtm --quiet --command "SELECT pg_wal_replay_resume()" >/dev/null
+        psql --username=postgres --dbname="$BASE_DEL_PADRON" --quiet --command "SELECT pg_wal_replay_resume()" >/dev/null
     for _ in $(seq 1 60); do
         [ "$(consultar 'SELECT pg_is_in_recovery()')" = "f" ] && break
         sleep 2
@@ -269,7 +274,7 @@ CONF
         || { echo "FALLO: el motor restaurado no salio de recuperacion." >&2; exit 1; }
 
     kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveOwner" \
-        psql --username=kamayuk_owner --dbname=sgtm --quiet -v ON_ERROR_STOP=1 <<SQL >/dev/null
+        psql --username=kamayuk_owner --dbname="$BASE_DEL_PADRON" --quiet -v ON_ERROR_STOP=1 <<SQL >/dev/null
 BEGIN;
 SET LOCAL app.municipalidad_id = '$MUNICIPALIDAD_DE_ENSAYO';
 INSERT INTO contribuyente
@@ -312,7 +317,7 @@ SQL
     echo
     echo "· Dejando constancia de la restauracion verificada en la tabla respaldo (RF-126)"
     marcadas=$(kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveOwner" \
-        psql --username=kamayuk_owner --dbname=sgtm --tuples-only --no-align -v ON_ERROR_STOP=1 <<SQL
+        psql --username=kamayuk_owner --dbname="$BASE_DEL_PADRON" --tuples-only --no-align -v ON_ERROR_STOP=1 <<SQL
 UPDATE respaldo
    SET ultima_restauracion_verificada     = now(),
        ultima_restauracion_verificada_por = 'simulacro-de-restauracion.sh --contra-cluster ($AMBIENTE)'

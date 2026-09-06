@@ -201,26 +201,6 @@ export interface ApplicationSettings {
    */
   imageRepository: string;
   /**
-   * La versión con la que Pulumi **crea** los despliegues y los Jobs.
-   *
-   * `ADR-0011` §5 saca la etiqueta de la imagen del estado de Pulumi, y aquí hay que
-   * decir con precisión qué significa eso, porque «la versión no está en el estado» a
-   * secas es falso: un `Deployment` tiene que nacer con **alguna** imagen.
-   *
-   * Lo que se garantiza es la consecuencia que ADR-0011 §5 buscaba: **liberar y
-   * revertir no ejecutan `pulumi up`**. Este valor se usa al crear el recurso, y de ahí
-   * en adelante el campo `image` queda ignorado por Pulumi (`ignoreChanges`, ver
-   * `index.ts`): el flujo de liberación mueve la etiqueta con `kubectl set image` y el
-   * `preview` diario no lo ve como deriva ni intenta deshacerlo.
-   *
-   * Cambiar este valor, por tanto, **no despliega nada** sobre un clúster que ya corre.
-   * Es la versión con la que un VPS reconstruido desde cero arranca antes de que el
-   * flujo de liberación lo ponga al día, y por eso conviene que no envejezca demasiado.
-   */
-  bootstrapVersion: string;
-  /** Réplicas del perfil `web`. El perfil `batch` son Jobs, no réplicas. */
-  webReplicas: number;
-  /**
    * La municipalidad se da de alta como instalación de demostración.
    *
    * Obligatorio en `stg` (`INF-03` §3.2): mientras D-02a esté abierta, toda cifra sale
@@ -236,22 +216,6 @@ export interface ApplicationSettings {
    * decir que es de demostración. Caer en el valor por omisión no es decidir.
    */
   isDemonstrationDeclared: boolean;
-  /**
-   * Si este ambiente despliega **el monolito** (`C-19`): el `Deployment` del perfil `web`,
-   * la interfaz, el `CronJob` de `lote` y los dos `Job` de arranque del archivo histórico.
-   *
-   * Sin valor por omisión **a propósito**, y es lo mismo que `municipalidadId`: un
-   * `?? true` haría que olvidarlo se leyera igual que declararlo, y lo que se declara aquí
-   * decide si un ambiente sirve o no la aplicación entera. Los dos stacks lo dicen.
-   *
-   * **Lo que NO gobierna, y es la mitad que importa**: la plataforma. El motor, la
-   * identidad, el correo, el `Job` del realm, el respaldo y la observabilidad viven en el
-   * **mismo** namespace `kamayuk-<ambiente>` y **los cuatro sistemas de ADR-0031 se conectan
-   * literalmente** a `kamayuk-<ambiente>-postgres.kamayuk-<ambiente>` (C-17, punto 1). Apagar
-   * esto no puede tocar nada de eso, y una guarda lo mide en vez de confiarlo al
-   * cuidado de quien lea.
-   */
-  deployMonolith: boolean;
 }
 
 /**
@@ -391,8 +355,9 @@ export interface RecursosSettings {
  * `verificaciones/deriva-de-migraciones.ts`: «una sola linea solo puede fechar un `git log`: con
  * varios sistemas hay que declarar una version POR SISTEMA». Esto es esa linea.
  *
- * `applicationBootstrapVersion` **se queda**, y sigue siendo lo que siempre fue: la version del
- * MONOLITO, un `sha` de `sgtm`. Las dos cosas conviven porque son de dos repositorios.
+ * `applicationBootstrapVersion` **ya no existe** (`E`): era la version del MONOLITO, un `sha` de
+ * `sgtm`, y con el monolito fuera no gobierna ningun `Job` ni ningun `Deployment`. Estas cuatro
+ * son las unicas versiones que este despliegue declara.
  *
  * ## Por que cuatro claves y no un mapa
  *
@@ -528,21 +493,6 @@ function requireNumber(reader: ConfigReader, key: string, purpose: string): numb
 }
 
 /**
- * Lo mismo para un booleano (`C-19`).
- *
- * Hace falta porque `reader.boolean` devuelve `undefined` cuando la clave no está y `false`
- * cuando dice `false`, y las dos cosas se leen igual en un `??`. Con esto, «no lo declaré» y
- * «declaré que no» dejan de ser la misma respuesta: la primera revienta nombrando la clave.
- */
-function requireBoolean(reader: ConfigReader, key: string, purpose: string): boolean {
-  const value = reader.boolean(key);
-  if (value === undefined) {
-    throw new MissingConfigError(key, purpose);
-  }
-  return value;
-}
-
-/**
  * El relay SMTP, o `undefined` si el ambiente no lo declara.
  *
  * `keycloakSmtpHost` es el interruptor: sin él no hay relay (ADR-0012, Opción B).
@@ -648,27 +598,10 @@ export function readInvariants(environment: Environment, reader: ConfigReader): 
       imageRepository: requireText(
         reader,
         "applicationImageRepository",
-        "el repositorio de las tres imágenes, SIN etiqueta (ADR-0011 §5)",
+        "el repositorio de las ocho imágenes de los cuatro sistemas, SIN etiqueta (ADR-0011 §5)",
       ),
-      bootstrapVersion: requireText(
-        reader,
-        "applicationBootstrapVersion",
-        "la versión con que se CREAN los despliegues; liberar y revertir no la usan (ADR-0011 §5)",
-      ),
-      webReplicas: reader.number("webReplicas") ?? 2,
       isDemonstration: reader.boolean("esDemostracion") ?? false,
       isDemonstrationDeclared: reader.boolean("esDemostracion") !== undefined,
-      // Sin `??`: ver el docstring del campo. Olvidarlo tiene que reventar aquí, con el
-      // nombre del valor, y no dejar un ambiente desplegando —o dejando de desplegar— la
-      // aplicación entera porque nadie lo escribió.
-      deployMonolith: requireBoolean(
-        reader,
-        "desplegarElMonolito",
-        "si este ambiente despliega el monolito —la aplicación, la interfaz, el CronJob de" +
-          " lote y sus dos Job de arranque—. La plataforma (motor, identidad, correo, realm," +
-          " respaldo y observabilidad) NO depende de esto: los cuatro sistemas se conectan a" +
-          " ella (C-19)",
-      ),
     },
     sistemas: {
       // Una version por sistema, cada una un `sha` de SU repositorio. Sin `??`: un valor por
@@ -934,23 +867,6 @@ export function checkInvariants(s: Invariants): string[] {
         "ADR-0011 §5: la etiqueta de la imagen la pone el flujo de liberación, no Pulumi. Con " +
         "la versión en el estado, cada liberación es un `pulumi up` y cada reversión también, " +
         "y se pierde la reversión que no toca la infraestructura.",
-    );
-  }
-  if (s.application.webReplicas < 1) {
-    problems.push("`webReplicas` tiene que ser al menos 1.");
-  }
-  if (isMovingTag(`imagen:${s.application.bootstrapVersion}`)) {
-    problems.push(
-      `\`applicationBootstrapVersion\` vale «${s.application.bootstrapVersion}» y no fija una ` +
-        "versión. Es la etiqueta con la que un VPS reconstruido desde cero arranca: con una " +
-        "etiqueta móvil, dos reconstrucciones del mismo stack darían dos sistemas distintos y " +
-        "ninguna de las dos se podría nombrar.",
-    );
-  }
-  if (s.application.bootstrapVersion.includes(":")) {
-    problems.push(
-      "`applicationBootstrapVersion` es una etiqueta, no una imagen: no lleva `:`. El " +
-        "repositorio va en `applicationImageRepository`.",
     );
   }
 

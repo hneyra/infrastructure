@@ -55,6 +55,10 @@
 # Requiere: kubectl con el tunel al API del ambiente ya abierto.
 set -euo pipefail
 
+# Los parametros tributarios viven en `normativa` desde el corte (ADR-0031), no en la base del
+# monolito, que es lo que decia esta linea hasta `E`.
+BASE_DE_PARAMETROS=normativa
+
 AMBIENTE=""
 ARCHIVO=""
 NAMESPACE=""
@@ -120,7 +124,7 @@ CLAVE_CARGA=$(kubectl -n "$NAMESPACE" get secret "$SECRETO" -o jsonpath='{.data.
     | base64 --decode)
 if ! kubectl -n "$NAMESPACE" exec "deployment/kamayuk-${AMBIENTE}-postgres" -c postgres -- \
         env PGPASSWORD="$CLAVE_CARGA" psql --host=127.0.0.1 --username=rol_carga_parametros \
-        --dbname=sgtm --quiet --command 'SELECT 1' >/dev/null 2>&1; then
+        --dbname="$BASE_DE_PARAMETROS" --quiet --command 'SELECT 1' >/dev/null 2>&1; then
     cat >&2 <<EOF
 El secreto $SECRETO existe, pero rol_carga_parametros NO se conecta con esa clave.
 

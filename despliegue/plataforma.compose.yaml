@@ -80,7 +80,6 @@ services:
       - ../../catastro/backend/kamayuk-catastro-esquema/src/main/resources/db/roles/crear-roles.sql:/etc/kamayuk/roles/catastro.sql:ro
       - ../../normativa/backend/kamayuk-normativa-esquema/src/main/resources/db/roles/crear-roles.sql:/etc/kamayuk/roles/normativa.sql:ro
       - ../../caja/backend/kamayuk-caja-esquema/src/main/resources/db/roles/crear-roles.sql:/etc/kamayuk/roles/caja.sql:ro
-      - ../backend/sgtm-esquema/src/main/resources/db/roles/crear-roles.sql:/docker-entrypoint-initdb.d/10-crear-roles.sql:ro
       - ./inicializacion-del-motor/20-asignar-claves.sh:/docker-entrypoint-initdb.d/20-asignar-claves.sh:ro
       - datos-plataforma:/var/lib/postgresql/data
     ports:

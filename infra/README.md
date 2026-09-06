@@ -6,9 +6,13 @@ está en [`ADR-0011`](../docs/30-arquitectura/adr/ADR-0011-infraestructura-como-
 la topología, en [`INF-01`](../docs/80-infraestructura/arquitectura-de-infraestructura.md);
 los ambientes, en [`INF-03`](../docs/80-infraestructura/ambientes.md).
 
-**Hoy describe el sistema entero de la fase B**: PostgreSQL con sus cuatro roles, los
-Jobs de migración e implantación, Keycloak con su base y su realm, la aplicación y la
-interfaz, y Traefik con TLS ([qué hace cada componente](componentes/README.md)).
+**Hoy describe la PLATAFORMA**: PostgreSQL con sus cuatro roles y sus cuatro bases,
+Keycloak con su base y su realm, el buzón de correo, el respaldo, la observabilidad y
+Traefik con TLS ([qué hace cada componente](componentes/README.md)). Hasta
+[`E`](../docs/00-gobierno/E-el-monolito-sale-del-sistema.md) describía además el monolito
+—sus dos Jobs de arranque, su `Deployment`, su interfaz y su `CronJob` de lote—; eso se
+retiró. Los Jobs de migración e implantación que hay siguen existiendo, pero los aporta
+**cada sistema** desde su propio descriptor, en su propio espacio de nombres.
 
 ```bash
 cd infra
@@ -35,7 +39,7 @@ etiqueta que se cuela en el estado— se detecta en la máquina de quien lo escr
 | `config.ts` | **Toda** la configuración: se lee, se le ponen valores por omisión y se valida |
 | `config.test.ts` | Un caso que viola cada invariante |
 | `index.ts` | La composición. Una sola, para los dos ambientes |
-| `componentes/` | Los ocho componentes —los cinco de la fase B más el respaldo, la observabilidad y la red de la fase C—, como **funciones puras** que devuelven manifiestos |
+| `componentes/` | Los **seis** componentes de la plataforma, como **funciones puras** que devuelven manifiestos. Eran ocho: `Aplicacion.ts` y `Migracion.ts` se fueron con el monolito (`E`) |
 | `auditoria.ts` | Las convenciones de `INF-01` §4 sobre esos manifiestos. Corre en `yarn verificar` **y** en `pulumi up` |
 | `herramientas/` | `yarn manifiestos` y `yarn secretos`: lo que se desplegaría y el inventario de claves, en JSON, sin Pulumi |
 | `secretos/` | Generar lo que falte y rotar lo que ya existe (`INF-06`, issue #154) — nunca `pulumi up` |
@@ -97,11 +101,15 @@ configuración **no contradiga lo que el proyecto ya decidió por escrito**.
 | `applicationImageRepository` **sin etiqueta** | `ADR-0011` §5 |
 | Las imágenes fijan versión; nada de `latest` | `INF-01` §5 |
 | El `server` del kubeconfig apunta al bucle local | `INF-01` §1.4 — la cicatriz de `../iaac` |
-| `applicationBootstrapVersion` fija una versión, y es una etiqueta, no una imagen | `ADR-0011` §5 |
 | `versionDe<Sistema>` es un `sha` de **cuarenta hexadecimales** del repositorio de ESE sistema | [D-23](../docs/00-gobierno/D-23-quien-publica-las-imagenes.md) |
 | En `prod`, `esDemostracion` **se declara**; heredarlo del valor por omisión no cuenta | #150, D-02a |
 | El ubigeo son seis dígitos y el tipo de municipalidad es DISTRITAL o PROVINCIAL | #150 |
 | `nodeAllocatableCpu`/`nodeAllocatableMemory` son obligatorios, y **medidos** | `INF-01` §2, #252 |
+
+Hasta `E` había una fila más: «`applicationBootstrapVersion` fija una versión, y es una
+etiqueta, no una imagen» (`ADR-0011` §5). Era la versión del **monolito**, un `sha` de
+`sgtm`, y se fue con él. Su sucesora es la fila de `versionDe<Sistema>`, y son cuatro
+—una por repositorio— porque una sola línea sólo puede fechar un `git log`.
 
 Y una que no es de `config.ts` sino de `capacidad.ts`, porque no mira un valor sino la
 suma de todos:
@@ -185,7 +193,7 @@ Todas se ejercen editando archivos reales y viendo el rojo:
 | Declarar una pérdida que ya no ocurre, o dejar de declarar una que sí | el mismo guion, en las dos direcciones: la lista de `rl_perdidas_conocidas` no puede quedarse rancia |
 | Fiarse del código de salida de la restauración | `yarn test`: `(18 errores, código 0)` es lo que da `psql` sobre un volcado plano con el defecto dentro |
 | Hacer `SUPERUSER` a `kamayuk_respaldo`, o darle `CONNECT` al padrón | `verificar-el-motor.sh` y el simulacro |
-| Apuntar `applicationBootstrapVersion` a un `sha` con migraciones de menos | `yarn test`, con **las dos cifras** y las migraciones que faltan |
+| Apuntar `versionDeRentas` —o la de cualquiera de los otros tres— a un `sha` con migraciones de menos | `yarn test`, con **las dos cifras**, el sistema y las migraciones que faltan |
 | Apuntarlo a un `sha` que no está en el clon | `yarn test`: no concluye en vez de contar las del árbol de trabajo, y dice `fetch-depth: 0` |
 | Quitar `db/migration/**` del filtro `paths` de `infra.yml` | `yarn test`: la guarda existiría y no correría al integrar una migración |
 | Que la base tenga MÁS migraciones que la versión declarada | `verificar-el-ambiente.sh`: hasta #675 decía «al día» |
@@ -254,36 +262,47 @@ La etiqueta de la imagen **no la mueve Pulumi** (`ADR-0011` §5): el campo `imag
 `ignoreChanges`, así que el flujo de liberación lo cambia con `kubectl` y el `preview`
 diario no lo ve como deriva.
 
+**Se libera un sistema, no «la aplicación».** Hasta `E` esto nombraba
+`kamayuk-<amb>-aplicacion` y `ghcr.io/hneyra/sgtm-aplicacion`, que eran el `Deployment` y
+la imagen del monolito; hoy cada sistema tiene su espacio de nombres, su `Deployment` y su
+par de imágenes. Con `rentas` de ejemplo:
+
 ```bash
-kubectl -n kamayuk-prod set image deployment/kamayuk-prod-aplicacion aplicacion=ghcr.io/hneyra/sgtm-aplicacion:<sha>
-kubectl -n kamayuk-prod rollout status deployment/kamayuk-prod-aplicacion
+kubectl -n kamayuk-rentas-prod set image deployment/kamayuk-rentas-web \
+  rentas=ghcr.io/hneyra/kamayuk-rentas:<sha>
+kubectl -n kamayuk-rentas-prod rollout status deployment/kamayuk-rentas-web
 # Y revertir, sin pulumi up y en segundos:
-kubectl -n kamayuk-prod rollout undo deployment/kamayuk-prod-aplicacion
+kubectl -n kamayuk-rentas-prod rollout undo deployment/kamayuk-rentas-web
 ```
 
 **Si la versión nueva trae migraciones**, antes hay que correr el Job de migración con
-esa versión. `yarn manifiestos` lo emite ya listo:
+esa versión. `yarn manifiestos` lo emite ya listo — y ya no hay un `--componente
+migracion` que valga para todos, porque el Job de migración es de cada sistema:
 
 ```bash
-yarn manifiestos --ambiente prod --componente migracion | kubectl apply -f -
+yarn manifiestos --ambiente prod --componente rentas | kubectl apply -f -
 ```
 
 El nombre del Job lleva la versión, así que una versión nueva crea un Job nuevo y
 volver a aplicar la misma no hace nada: el migrador es idempotente.
 
-### Y no es la única versión: cada sistema declara la suya (D-23)
+### Cuatro versiones, una por sistema (D-23)
 
-`applicationBootstrapVersion` es la del **monolito**, un `sha` de `sgtm`. Las ocho imágenes
-de los cuatro sistemas se etiquetan con `kamayuk:versionDe<Sistema>`, un `sha` del repositorio
-que construye cada una — porque una etiqueta que no resuelve contra ningún `git log` no
-identifica nada. `yarn imagenes --ambiente <amb>` le pregunta al registro si esas etiquetas
-existen, y ese mismo guion corre **antes de cada `pulumi up`**: un `up` que pida una etiqueta
-inexistente no falla, deja los pods en `ImagePullBackOff` y sale en verde.
+**Ya no hay una versión y una excepción: hay cuatro versiones y nada más.** Hasta `E`
+convivían `applicationBootstrapVersion` —la del monolito, un `sha` de `sgtm`— y las cuatro
+de los sistemas; la primera se fue con el código que gobernaba, y con ella la asimetría.
 
-### Y por eso hay que subir `applicationBootstrapVersion` (issue #675)
+Las ocho imágenes de los cuatro sistemas se etiquetan con `kamayuk:versionDe<Sistema>`, un
+`sha` del repositorio que construye cada una — porque una etiqueta que no resuelve contra
+ningún `git log` no identifica nada. `yarn imagenes --ambiente <amb>` le pregunta al
+registro si esas etiquetas existen, y ese mismo guion corre **antes de cada `pulumi up`**:
+un `up` que pida una etiqueta inexistente no falla, deja los pods en `ImagePullBackOff` y
+sale en verde.
 
-Ese mismo nombre es lo que hace que **no subirla no se note**. Mientras
-`kamayuk:applicationBootstrapVersion` no se mueva, `pulumi up` encuentra el Job de
+### Y por eso hay que subir la versión del sistema que migre (issue #675)
+
+Es la forma del mecanismo lo que hace que **no subirla no se note**. Mientras
+`kamayuk:versionDe<Sistema>` no se mueva, `pulumi up` encuentra el Job de
 migración que ya existe, no crea ninguno, y sale en verde con «unchanged»; no hay ningún
 `Deployment` que quede `NotReady` por ello.
 

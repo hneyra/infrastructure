@@ -37,8 +37,8 @@
 # use, y que ese `path: infrastructure` este puesto.
 name: Clonar los repositorios hermanos
 description: >-
-  Los cuatro sistemas del corte —y, si se pide, el archivo historico— clonados como
-  hermanos de `infrastructure` dentro del espacio de trabajo.
+  Los cuatro sistemas del corte, clonados como hermanos de `infrastructure` dentro del
+  espacio de trabajo.
 
 inputs:
   token:
@@ -57,55 +57,58 @@ inputs:
       existe en el manifiesto de una accion. Costo la corrida `33973367477`, muerta en 8 s
       con «Unrecognized named-value: 'secrets'» sin ejecutar un solo paso.
     required: true
-  con-sgtm:
+  historial-completo:
     description: >-
-      `si` para clonar ademas `hneyra/sgtm`, el archivo historico. Solo lo necesitan los
-      dos trabajos que cuentan migraciones en SU arbol de git —`verificar`, por
-      `deriva-de-migraciones.test.ts`, y `declarar-version.yml`—; los otros trece solo
-      necesitan los cuatro descriptores. Cuando se pide, va SIEMPRE con historial
-      completo: contar las migraciones de una revision exige tenerla, y con el checkout
-      superficial la comprobacion **no concluye** en vez de dar un numero plausible y
-      equivocado (#675).
+      `si` para traer los cuatro con `fetch-depth: 0`. Lo necesita **un solo trabajo**,
+      `verificar`, porque `deriva-de-migraciones.test.ts` cuenta migraciones en el arbol de
+      git de DOS revisiones de cada sistema —la que el stack declara y `origin/main`— y con
+      el checkout superficial ninguna de las dos esta en el clon: la comprobacion **no
+      concluye** en vez de dar un numero plausible y equivocado (#675).
+
+      Sustituye a `con-sgtm`, que traia el archivo historico para lo mismo cuando el
+      esquema que se desplegaba era el del monolito. Desde `E` el monolito no se despliega
+      y **este flujo ya no clona `sgtm` en ningun trabajo**: no queda nada suyo que leer.
+
+      Los otros trabajos van con `fetch-depth: 1`, que es lo barato y lo que necesitan: de
+      los cuatro solo leen archivos del arbol de trabajo —el `src/descriptor` que
+      `descriptor/sistemas.ts` importa y el `crear-roles.sql` que
+      `extensiones-de-las-migraciones.ts` lee—.
+
+      Y las profundidades van **entrecomilladas**, que no es cosmetica: en una expresion de
+      GitHub `&&`/`||` devuelven el OPERANDO, y `0` es falso — asi que
+      `cierto && 0 || 1` vale **1**, o sea el checkout superficial justo en el trabajo que
+      pide el completo, con un sintoma que aparece a mitad de la prueba de deriva y no aqui.
+      Con `'0'` la cadena no esta vacia y la expresion devuelve lo que dice. Una prueba lo
+      fija.
     default: 'no'
 
 runs:
   using: composite
   steps:
     - uses: actions/checkout@v4
-      if: inputs.con-sgtm == 'si'
-      with:
-        repository: hneyra/sgtm
-        path: sgtm
-        fetch-depth: 0
-
-    # `fetch-depth: 1` a proposito, al reves que `sgtm`: de los cuatro no se cuenta nada
-    # en el arbol de git de otro commit; se leen los archivos del arbol de trabajo — el
-    # `src/descriptor` que `descriptor/sistemas.ts` importa, y el `crear-roles.sql` que
-    # `extensiones-de-las-migraciones.ts` lee.
-    - uses: actions/checkout@v4
       with:
         repository: hneyra/rentas
         path: rentas
         token: ${{ inputs.token }}
-        fetch-depth: 1
+        fetch-depth: ${{ inputs.historial-completo == 'si' && '0' || '1' }}
 
     - uses: actions/checkout@v4
       with:
         repository: hneyra/catastro
         path: catastro
         token: ${{ inputs.token }}
-        fetch-depth: 1
+        fetch-depth: ${{ inputs.historial-completo == 'si' && '0' || '1' }}
 
     - uses: actions/checkout@v4
       with:
         repository: hneyra/normativa
         path: normativa
         token: ${{ inputs.token }}
-        fetch-depth: 1
+        fetch-depth: ${{ inputs.historial-completo == 'si' && '0' || '1' }}
 
     - uses: actions/checkout@v4
       with:
         repository: hneyra/caja
         path: caja
         token: ${{ inputs.token }}
-        fetch-depth: 1
+        fetch-depth: ${{ inputs.historial-completo == 'si' && '0' || '1' }}

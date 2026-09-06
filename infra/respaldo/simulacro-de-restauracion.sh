@@ -79,6 +79,11 @@
 #   uso: respaldo/simulacro-de-restauracion.sh [--ambiente stg|prod] [--contra-cluster]
 set -euo pipefail
 
+# La base donde vive el padron, desde `E`. Era `sgtm`, la del monolito, que hoy no tiene ni
+# una tabla del producto. `rentas` es la unica cuyo `crear-roles.sql` concede CONNECT a los
+# cinco roles del cluster, o sea la que menos supuestos hace sobre quien se conecta.
+BASE_DEL_PADRON=rentas
+
 AMBIENTE=stg
 CONTRA_CLUSTER=no
 while [ $# -gt 0 ]; do
@@ -246,7 +251,7 @@ echo "  respaldo base tomado y cifrado"
 echo
 echo "· Escribiendo deuda de dos municipalidades"
 motor_como_su_usuario env PGPASSWORD="$CLAVE_SUPER" psql --quiet --username=postgres \
-    --dbname=sgtm -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
+    --dbname="$BASE_DEL_PADRON" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
 CREATE TABLE simulacro_deuda (
     municipalidad text    NOT NULL,
     contribuyente text    NOT NULL,
@@ -299,7 +304,7 @@ sleep 2
 echo
 echo "· La escritura posterior a T_BUENO —la que el PITR tiene que dejar fuera—"
 motor_como_su_usuario env PGPASSWORD="$CLAVE_SUPER" psql --quiet --username=postgres \
-    --dbname=sgtm -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
+    --dbname="$BASE_DEL_PADRON" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
 INSERT INTO simulacro_deuda VALUES ('sullana', 'ESCRITURA-QUE-SE-PIERDE', 999999.99);
 SELECT pg_switch_wal();
 SQL
@@ -408,7 +413,7 @@ echo "· Comprobando lo restaurado"
 
 consultar() {
     motor_como_su_usuario env PGPASSWORD="$CLAVE_SUPER" psql --username=postgres \
-        --dbname=sgtm --tuples-only --no-align --command "$1"
+        --dbname="$BASE_DEL_PADRON" --tuples-only --no-align --command "$1"
 }
 
 if ! consultar "SELECT 1 FROM pg_tables WHERE tablename = 'simulacro_deuda'" | grep -q 1; then

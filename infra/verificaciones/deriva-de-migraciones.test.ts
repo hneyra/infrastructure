@@ -2,12 +2,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { raizDelRepositorio } from "../componentes/fuentes";
-import { ENVIRONMENTS } from "../config";
-import { invariantesDe } from "./stacks";
+import { ENVIRONMENTS, type Environment } from "../config";
 import {
   ambientesConMigrador,
   clonDe,
-  derivaDeMigraciones,
+  derivasDelAmbiente,
   loQueFalta,
   migracionesDe,
   REVISION_DE_REFERENCIA,
@@ -15,7 +14,7 @@ import {
   sistemaLlamado,
   sistemasDesplegados,
   loQueNoEncaja,
-  unicoSistemaDesplegado,
+  versionDeclarada,
   type DerivaDeMigraciones,
 } from "./deriva-de-migraciones";
 
@@ -35,34 +34,37 @@ import {
  * (`infra.yml`), asi que `stg` es la puerta por la que pasa toda version que llegue a
  * produccion: dejar uno de los dos atras convierte el ensayo en un ensayo de otra cosa.
  *
- * ## Lo que cambio con el corte, y por que estaba en rojo
+ * ## Lo que cambia con `E`: de UN esquema a CUATRO
  *
- * Estas pruebas llevaban seis en rojo desde la mudanza, con el mensaje
- * «`c755de21…` no esta en este clon». **La guarda tenia razon** —se negaba a inventar un
- * numero— y lo que estaba mal era su premisa: resolvia el `sha` en ESTE repositorio,
- * porque en `sgtm` el `Pulumi.<ambiente>.yaml`, el `sha` y las migraciones compartian
- * `git log`. Ya no. Medido: `c755de21…` es un commit de `sgtm`, esta en su `origin/main`
- * y trae **las mismas 68** migraciones que `sgtm origin/main` declara — o sea que **no
- * habia deriva**, y el rojo no era de deriva.
+ * Hasta el 2026-09-06 esto medía un solo esquema, el del monolito, porque era el unico
+ * migrador que el despliegue construia. Los cuatro `Job` de migracion del corte —que llevan
+ * corriendo en `stg` desde que existen— **no los medía nadie**, y estaba declarado como
+ * hueco en C-20.
+ *
+ * El defecto era de una linea y del mismo tipo que C-16 y `D` ya habian encontrado dos
+ * veces: `sistemasDesplegados` leia `construirManifiestos` —la PLATAFORMA— en vez de
+ * `manifiestosDelAmbiente` —los cinco espacios de nombres—, asi que no podia ver los `Job`
+ * que compone el descriptor de cada sistema. Con el censo mirando lo que de verdad se
+ * aplica, cada uno se mide contra SU `git log` y SU linea `kamayuk:versionDe<Sistema>`.
  */
 /**
- * Los ambientes que de verdad migran algo (`C-19`).
- *
- * Desde que `stg` dejo de desplegar el monolito no compone ningun `Job` de migracion, asi
- * que su `applicationBootstrapVersion` no gobierna nada y **no hay deriva que medir**.
- * Medir la de un ambiente que no migra no seria estricto: seria comparar una linea contra
- * un `git log` que nadie aplica, y ponerse rojo por ello ensena a ignorar el rojo.
+ * Los ambientes que de verdad migran algo.
  *
  * Se **deriva de los manifiestos** —no del nombre del ambiente ni de una lista—, y el
- * describe de abajo comprueba las dos direcciones: que el que no migra sea exactamente el
- * que declara que no despliega el monolito, y que quede al menos uno midiendose. Sin esa
- * segunda mitad, este filtro seria la forma de apagar la guarda de #675 entera.
+ * describe de abajo comprueba las dos direcciones: que el censo sea exactamente el de los
+ * cuatro sistemas, y que quede al menos un ambiente midiendose. Sin esa segunda mitad, este
+ * filtro seria la forma de apagar la guarda de #675 entera por lista vacia.
  */
 const CON_MIGRADOR = ambientesConMigrador(ENVIRONMENTS);
 
-describe("los ambientes declaran la version que trae las migraciones de su sistema", () => {
-  it.each(CON_MIGRADOR)("Pulumi.%s.yaml", (ambiente) => {
-    const deriva = derivaDeMigraciones(ambiente);
+/** Cada par (ambiente, sistema) que este despliegue migra. Es la unidad de medida desde `E`. */
+const A_MEDIR: [Environment, string][] = CON_MIGRADOR.flatMap((ambiente) =>
+  sistemasDesplegados(ambiente).map((sistema): [Environment, string] => [ambiente, sistema]),
+);
+
+describe("los ambientes declaran la version que trae las migraciones de cada sistema", () => {
+  it.each(A_MEDIR)("Pulumi.%s.yaml · %s", (ambiente, sistema) => {
+    const deriva = derivaDeUno(ambiente, sistema);
     expect(loQueFalta(deriva), loQueFalta(deriva)).toBe("");
   });
 
@@ -72,8 +74,8 @@ describe("los ambientes declaran la version que trae las migraciones de su siste
    * —o cero para las dos—, que es el modo de fallo de toda comparacion entre dos
    * lecturas del mismo sitio.
    */
-  it.each(CON_MIGRADOR)("y la cuenta de %s no es cero ni inventada", (ambiente) => {
-    const deriva = derivaDeMigraciones(ambiente);
+  it.each(A_MEDIR)("y la cuenta de %s · %s no es cero ni inventada", (ambiente, sistema) => {
+    const deriva = derivaDeUno(ambiente, sistema);
     expect(deriva.traeLaVersion).toBeGreaterThan(0);
     expect(deriva.declaraLaReferencia).toBeGreaterThan(0);
     expect(deriva.version).toMatch(/^[0-9a-f]{40}$/);
@@ -95,8 +97,8 @@ describe("los ambientes declaran la version que trae las migraciones de su siste
    *
    * *Mutacion:* declarar en `Pulumi.stg.yaml` la cabeza de cualquier rama sin integrar.
    */
-  it.each(CON_MIGRADOR)("y el sha de %s esta en la historia de main", (ambiente) => {
-    const deriva = derivaDeMigraciones(ambiente);
+  it.each(A_MEDIR)("y el sha de %s · %s esta en la historia de main", (ambiente, sistema) => {
+    const deriva = derivaDeUno(ambiente, sistema);
     expect(loQueNoEncaja(deriva), loQueNoEncaja(deriva)).toBe("");
   });
 
@@ -104,58 +106,75 @@ describe("los ambientes declaran la version que trae las migraciones de su siste
    * Y la medicion se hace contra el repositorio del sistema que se despliega, **no
    * contra este**.
    *
-   * Es la mitad del reencuadre de P6 puesta donde puede fallar: si alguien devuelve
-   * `MIGRACIONES` a una ruta de `infrastructure`, esta prueba se pone roja diciendo que
-   * la deriva se esta midiendo contra la copia historica que nadie aplica.
+   * Es la mitad del reencuadre de P6 puesta donde puede fallar: si alguien devuelve las
+   * migraciones de un sistema a una ruta de `infrastructure`, esta prueba se pone roja.
    */
-  it.each(CON_MIGRADOR)("y la mide contra el clon de su sistema, no contra este", (ambiente) => {
-    const deriva = derivaDeMigraciones(ambiente);
-    expect(deriva.sistema).toBe("sgtm");
-    expect(clonDe(sistemaLlamado(deriva.sistema))).not.toBe(raizDelRepositorio());
+  it.each(A_MEDIR)("y mide %s · %s contra el clon de su sistema, no contra este", (_ambiente, sistema) => {
+    expect(clonDe(sistemaLlamado(sistema))).not.toBe(raizDelRepositorio());
   });
+
+  /**
+   * Y cada sistema declara **su propia** version, no una compartida.
+   *
+   * Es lo que `unicoSistemaDesplegado` llevaba escrito desde #675 como el error que habria
+   * que arreglar el dia que se desplegara mas de un migrador: «una sola linea solo puede
+   * fechar un `git log`». Ese dia llego, y esto lo fija: si alguien volviera a una linea
+   * unica, los cuatro traerian el mismo `sha` y esta prueba se pondria roja — que es peor
+   * que un rojo, porque tres de los cuatro se medirian contra el `git log` equivocado.
+   */
+  it("y los cuatro sistemas no comparten una sola version", () => {
+    for (const ambiente of CON_MIGRADOR) {
+      const versiones = sistemasDesplegados(ambiente).map((s) =>
+        versionDeclarada(ambiente, sistemaLlamado(s)),
+      );
+      expect(new Set(versiones).size, `«${ambiente}» declara la misma version para varios sistemas`).toBe(
+        versiones.length,
+      );
+    }
+  });
+
+  function derivaDeUno(ambiente: Environment, sistema: string): DerivaDeMigraciones {
+    const deriva = derivasDelAmbiente(ambiente).find((d) => d.sistema === sistema);
+    if (deriva === undefined) {
+      throw new Error(`«${ambiente}» ya no construye el migrador de «${sistema}».`);
+    }
+    return deriva;
+  }
 });
 
 /**
  * Que sistemas migra este despliegue, **leido de los manifiestos**.
  *
- * Aqui esta la puerta por la que el corte tiene que pasar: mientras el despliegue
- * construya un solo `*-migrador`, una sola `applicationBootstrapVersion` puede fechar su
- * `git log` y todo cuadra. En cuanto construya el segundo, esa linea deja de poder
- * decir de que version es cada esquema — y esta comprobacion se pone roja **antes** de
- * que nadie mida una deriva contra el repositorio equivocado, que es el modo de fallo
- * que #675 encontro y que ocho meses en verde no delataron.
+ * Aqui esta la puerta por la que el corte tuvo que pasar. Hasta `E` el censo leia solo la
+ * PLATAFORMA, asi que veia el migrador del monolito y **ninguno de los cuatro**: los `Job`
+ * de los sistemas los compone su descriptor, en su propio namespace desde ADR-0031. El
+ * resultado era una guarda que decia «un migrador, al dia» de un despliegue que corre
+ * cuatro, y ninguno de los cuatro lo medía nadie (hueco de C-20).
  */
 describe("el censo de sistemas desplegados cuadra con lo que se declara", () => {
-  it.each(CON_MIGRADOR)("%s construye exactamente un migrador", (ambiente) => {
-    expect(sistemasDesplegados(ambiente)).toEqual(["sgtm"]);
-    expect(unicoSistemaDesplegado(ambiente)).toBe("sgtm");
+  /** Los cuatro de ADR-0031, escritos aqui a proposito: el censo tiene contra que cuadrar. */
+  const LOS_CUATRO = ["caja", "catastro", "normativa", "rentas"] as const;
+
+  it.each(CON_MIGRADOR)("%s construye los cuatro migradores, y solo esos", (ambiente) => {
+    expect(sistemasDesplegados(ambiente)).toEqual([...LOS_CUATRO]);
   });
 
   /**
-   * C-19 · y el que NO construye ninguno lo hace porque lo declara, no por descuido.
+   * Y `SISTEMAS` no declara ninguno de mas.
    *
-   * Las dos direcciones, que es lo unico que impide que `CON_MIGRADOR` se convierta en la
-   * forma de apagar la guarda de #675: un ambiente sin migrador tiene que ser exactamente
-   * uno que declara `desplegarElMonolito: false`, y un ambiente que lo declara `true`
-   * tiene que construir el suyo.
-   *
-   * *Mutacion:* poner `desplegarElMonolito: "true"` en `Pulumi.stg.yaml` sin devolver los
-   * Jobs, o al reves.
+   * Es la otra direccion: una entrada en `SISTEMAS` que nadie despliega es una tabla que
+   * envejece —fue el caso de `sgtm` desde C-19 hasta `E`, doce dias diciendo «asi se mide su
+   * deriva» de un esquema que ya no se aplicaba en `stg`—. Si algun dia hace falta declarar
+   * un sistema antes de desplegarlo, esto se pone rojo y hay que decidirlo aqui.
    */
-  it.each(ENVIRONMENTS)("%s: hay migrador si y solo si el stack despliega el monolito", (ambiente) => {
-    const conMonolito = invariantesDe(ambiente).application.deployMonolith;
-    expect(
-      sistemasDesplegados(ambiente).length > 0,
-      conMonolito
-        ? `«${ambiente}» declara que despliega el monolito y no construye ningun migrador`
-        : `«${ambiente}» declara que NO despliega el monolito y construye un migrador igual`,
-    ).toBe(conMonolito);
+  it("y `SISTEMAS` declara exactamente los que se despliegan", () => {
+    expect(SISTEMAS.map((s) => s.nombre).sort()).toEqual([...LOS_CUATRO]);
   });
 
   /**
-   * Y queda al menos uno midiendose. Sin esto, apagar el monolito en los dos ambientes
-   * dejaria el describe de arriba con `it.each([])` —cero casos— y la guarda de #675
-   * entera pasaria por lista vacia, en verde y sin haber mirado nada.
+   * Y queda al menos uno midiendose. Sin esto, un ambiente que dejara de componer
+   * migradores dejaria los describes de arriba con `it.each([])` —cero casos— y la guarda
+   * de #675 entera pasaria por lista vacia, en verde y sin haber mirado nada.
    */
   it("y al menos un ambiente sigue midiendo su deriva", () => {
     expect(
@@ -163,46 +182,23 @@ describe("el censo de sistemas desplegados cuadra con lo que se declara", () => 
       "ningun ambiente construye migrador: la guarda de #675 no esta midiendo nada. " +
         "Si eso es lo que se quiere, hay que decidirlo aqui, no dejarlo pasar por lista vacia.",
     ).toBeGreaterThan(0);
+    expect(A_MEDIR.length, "no hay ningun par (ambiente, sistema) que medir").toBeGreaterThan(0);
   });
 
   /**
-   * Y el sistema que SI se despliega trae migraciones en su clon.
+   * Y cada sistema desplegado trae migraciones en su clon.
    *
-   * El contraste, y aqui vale doble: sin el, `derivaDeMigraciones` pasaria en verde
+   * El contraste, y aqui vale doble: sin el, la comparacion de arriba pasaria en verde
    * tambien devolviendo cero para las dos revisiones, que es el modo de fallo de toda
-   * comparacion entre dos lecturas del mismo sitio. Lo que se cuenta es el arbol de git
-   * de `origin/main` **de `sgtm`**, no el de trabajo.
+   * comparacion entre dos lecturas del mismo sitio. Lo que se cuenta es el arbol de git de
+   * `origin/main` **de cada clon hermano**, no el de trabajo.
    *
-   * En CI esto necesita el segundo `actions/checkout` del trabajo `verificar`; sin el,
-   * `clonDe` lanza diciendo que falta el clon y como traerlo, que es lo que se quiere.
+   * En CI esto necesita los cuatro clones hermanos; sin ellos, `clonDe` lanza diciendo cual
+   * falta y como traerlo, que es lo que se quiere.
    */
-  it("el sistema desplegado declara migraciones en su propio clon", () => {
-    const sistema = sistemaLlamado(unicoSistemaDesplegado("prod"));
+  it.each(LOS_CUATRO)("«%s» declara migraciones en su propio clon", (nombre) => {
+    const sistema = sistemaLlamado(nombre);
     expect(migracionesDe(REVISION_DE_REFERENCIA, sistema).length).toBeGreaterThan(0);
-  });
-
-  /**
-   * De los cuatro del corte **no se afirma nada que necesite su clon**, y es deliberado.
-   *
-   * `infrastructure` se verifica en CI con un solo repositorio mas el de `sgtm`; exigir
-   * ademas los cuatro convertiria esta comprobacion en la unica del repositorio que
-   * necesita seis checkouts, y una comprobacion cara de satisfacer se acaba
-   * desactivando. Sus entradas de {@link SISTEMAS} son documentacion **hasta que se
-   * desplieguen**, y quien las valida es `clonDe` el dia que una entre: si el modulo se
-   * renombro o el clon no esta, lanza nombrando la ruta, en el momento en que importa.
-   *
-   * Lo que si se afirma aqui es que ninguna se despliega todavia, que es lo que hace
-   * legitimo no comprobarlas.
-   */
-  it("y ninguno de los cuatro se despliega todavia", () => {
-    const desplegados = new Set(sistemasDesplegados("prod"));
-    const delCorte = SISTEMAS.filter((sistema) => sistema.nombre !== "sgtm").map((s) => s.nombre);
-
-    // Cuando esto se ponga rojo, lo que hay que hacer NO es actualizarlo: es dar a
-    // `config.ts` una version por sistema y pasarla a `manifiestosDeMigracion`. La
-    // alternativa —declarar cuatro migradores con una sola version— deja tres esquemas
-    // cuya deriva no la mide nadie.
-    expect(delCorte.filter((nombre) => desplegados.has(nombre))).toEqual([]);
   });
 });
 
@@ -218,7 +214,7 @@ describe("el censo de sistemas desplegados cuadra con lo que se declara", () => 
 describe("cuando hay deriva, el rojo nombra las dos cifras", () => {
   const inventada: DerivaDeMigraciones = {
     ambiente: "stg",
-    sistema: "sgtm",
+    sistema: "rentas",
     version: "5fc02f3a44931d69ac3012e55b17f02dc616eac8",
     traeLaVersion: 48,
     declaraLaReferencia: 61,
@@ -236,8 +232,8 @@ describe("cuando hay deriva, el rojo nombra las dos cifras", () => {
   it("y nombra de que sistema es la version", () => {
     // Sin esto, el rojo de una instalacion con cuatro migradores no diria cual de los
     // cuatro esquemas es el que se quedo atras.
-    expect(loQueFalta(inventada)).toContain("«sgtm»");
-    expect(loQueNoEncaja({ ...inventada, enLaHistoria: false })).toContain("«sgtm»");
+    expect(loQueFalta(inventada)).toContain("«rentas»");
+    expect(loQueNoEncaja({ ...inventada, enLaHistoria: false })).toContain("«rentas»");
   });
 
   it("nombra las migraciones que faltan y el Job que nunca se creo", () => {
@@ -246,7 +242,9 @@ describe("cuando hay deriva, el rojo nombra las dos cifras", () => {
     expect(mensaje).toContain("V59__otra.sql");
     // El nombre exacto del Job que `yarn manifiestos --ambiente stg | grep migracion`
     // imprime: es la evidencia de que el Job NO se creo, no de que se creara y fallara.
-    expect(mensaje).toContain("kamayuk-stg-migracion-5fc02f3a4493");
+    // Desde `E` lleva el nombre del SISTEMA y no el del ambiente: los cuatro `Job` viven
+    // cada uno en su namespace (ADR-0031) y ahi no hay ambiente que los distinga.
+    expect(mensaje).toContain("kamayuk-rentas-migracion-5fc02f3a4493");
   });
 
   it("y calla cuando no falta ninguna", () => {
@@ -271,86 +269,132 @@ describe("cuando hay deriva, el rojo nombra las dos cifras", () => {
 
   /** Un sistema que se despliega y no esta declarado no se puede medir, y lo dice. */
   it("y un sistema sin declarar dice cuales hay", () => {
-    expect(() => sistemaLlamado("inventado")).toThrowError(/sgtm, rentas, catastro/);
+    expect(() => sistemaLlamado("inventado")).toThrowError(/rentas, catastro, normativa, caja/);
   });
 });
 
 /**
  * Y la guarda tiene que **correr** cuando llega una migracion.
  *
- * Esto es la mitad del defecto de #675 que no esta en ningun archivo de `infra/`: hasta
- * el 2026-09-02, el filtro `paths` de `infra.yml` no nombraba el directorio de las
- * migraciones, asi que **integrar una migracion no disparaba este flujo** —ni la guarda
- * de arriba, ni `aplicar-stg`, que es quien despliega—. Trece migraciones entraron sin
- * que ninguna corrida se pusiera roja.
+ * Esto es la mitad del defecto de #675 que no esta en ningun archivo de `infra/`: hasta el
+ * 2026-09-02, el filtro `paths` de `infra.yml` no nombraba el directorio de las migraciones,
+ * asi que **integrar una migracion no disparaba este flujo** —ni la guarda de arriba, ni
+ * `aplicar-stg`, que es quien despliega—. Trece migraciones entraron sin que ninguna corrida
+ * se pusiera roja.
  *
- * Es la misma leccion que #192 §2 y que el propio `infra.yml` ya tiene escrita para los
- * archivos de identidad: un archivo que las pruebas LEEN y el filtro no nombra cambia sin
- * que corra quien lo mira — verde rancio, no verde.
+ * **Y el corte se llevo esa mitad, medido.** Un filtro `paths` solo puede nombrar rutas de SU
+ * repositorio, y desde `E` las migraciones que se despliegan son las de los cuatro clones: una
+ * migracion de `rentas` **no puede** disparar el flujo de `infrastructure`. Se cierra con un
+ * disparo entre repositorios (`repository_dispatch`) y **no esta hecho**; el hueco esta
+ * declarado en `E` y en `P6-contratos-y-observabilidad.md`.
  *
- * **Y el corte se lleva esta mitad, medido.** Un filtro `paths` solo puede nombrar rutas
- * de SU repositorio, y las migraciones que se despliegan ya no estan aqui: una migracion
- * de `sgtm` —o manana de `rentas`— no puede disparar el flujo de `infrastructure`. Las
- * entradas que siguen abajo vigilan la copia historica de `backend/sgtm-esquema/`, que
- * **nadie modifica**, asi que hoy no pueden dispararse. Se conservan porque el dia que
- * esa copia se retire su ausencia tiene que ser deliberada, y el hueco esta declarado en
- * `P6-contratos-y-observabilidad.md`.
+ * Lo que si se puede fijar aqui, y se fija, es que el flujo traiga lo que la guarda necesita
+ * para poder contar: los cuatro clones **con historial completo**.
  */
-describe("el flujo corre cuando llega una migracion", () => {
+describe("el flujo trae lo que la guarda necesita para contar", () => {
   const flujo = readFileSync(join(raizDelRepositorio(), ".github/workflows/infra.yml"), "utf8");
 
-  it.each([
-    ["las migraciones", "backend/sgtm-esquema/src/main/resources/db/migration/**"],
-    ["los roles y sus extensiones", "backend/sgtm-esquema/src/main/resources/db/roles/**"],
-    ["el guion de extensiones", "despliegue/crear-extensiones.sh"],
-  ])("`paths` de infra.yml nombra %s", (_que, ruta) => {
-    expect(flujo).toContain(`- '${ruta}'`);
+  it("`paths` de infra.yml nombra el guion de extensiones", () => {
+    expect(flujo).toContain("- 'despliegue/crear-extensiones.sh'");
   });
 
   /**
-   * Y con `fetch-depth: 0`, o la guarda de arriba no puede contar nada: las dos
-   * revisiones se cuentan en el arbol de git de su commit, y con el checkout superficial
-   * ninguno esta en el clon.
+   * Y el filtro **ya no nombra nada del monolito**, que es la otra direccion.
+   *
+   * Sin esto, las dos entradas de `backend/sgtm-esquema/**` podrian quedarse: no romperian
+   * nada —ese directorio no existe, asi que nunca casarian— y dejarian creyendo que una
+   * migracion dispara el flujo cuando ninguna lo hace. Un filtro que nombra una ruta muerta
+   * es peor que uno que no la nombra.
+   */
+  it("y no nombra ninguna ruta del monolito, que ya no existe", () => {
+    // Se leen **las lineas del filtro**, no el archivo entero: los comentarios de `infra.yml`
+    // explican por que esas rutas se fueron, y nombrarlas ahi es lo que hace que el cambio se
+    // pueda entender. Lo que no puede quedar es una ENTRADA muerta.
+    const declaradas = flujo
+      .split("\n")
+      .map((linea) => linea.trim())
+      .filter((linea) => /^- '.*'$/.test(linea));
+    expect(declaradas.length, "el filtro `paths` no declara ninguna ruta").toBeGreaterThan(3);
+    for (const muerta of ["backend/", "frontend/"]) {
+      expect(
+        declaradas.filter((linea) => linea.includes(muerta)),
+        `«${muerta}» ya no existe en este repositorio: un filtro que nombra una ruta muerta ` +
+          "deja creyendo que algo dispara el flujo cuando nada lo hace",
+      ).toEqual([]);
+    }
+  });
+
+  /**
+   * Y con `fetch-depth: 0`, o la guarda de arriba no puede contar nada: las dos revisiones
+   * se cuentan en el arbol de git de su commit, y con el checkout superficial ninguno esta
+   * en el clon.
    */
   it("y `verificar` hace checkout con el historial completo", () => {
     expect(trabajoDeVerificar()).toContain("fetch-depth: 0");
   });
 
   /**
-   * Y trae el clon del sistema que se despliega, que desde el corte **no es este**.
+   * Y trae los clones de los sistemas desplegados, que desde el corte **no son este**.
    *
-   * Sin este paso, `clonDe` lanza en CI y las cinco pruebas de deriva se ponen rojas por
-   * un motivo que no es el que miden. Es el mismo reparto que `settings.gradle.kts` de
-   * los cuatro backends: el clon hermano se exige, y su ausencia se dice con el comando
-   * que la arregla en vez de saltarse la comprobacion.
+   * Sin este paso, `clonDe` lanza en CI y las pruebas de deriva se ponen rojas por un motivo
+   * que no es el que miden. Es el mismo reparto que `settings.gradle.kts` de los cuatro
+   * backends: el clon hermano se exige, y su ausencia se dice con el comando que la arregla
+   * en vez de saltarse la comprobacion.
    *
-   * `path: sgtm` y no `path: ../sgtm` desde C-9a: `actions/checkout` se niega a escribir
-   * fuera del espacio de trabajo, asi que el hermano se consigue clonando ESTE
-   * repositorio en `path: infrastructure` y dejando que el espacio de trabajo haga de
-   * padre. La disposicion es la misma —hermanos—; lo que se movio es el anfitrion.
+   * `path: infrastructure` y no `path: ../rentas` desde C-9a: `actions/checkout` se niega a
+   * escribir fuera del espacio de trabajo, asi que el hermano se consigue clonando ESTE
+   * repositorio en un directorio propio y dejando que el espacio de trabajo haga de padre.
+   *
+   * **Y con historial completo en los cuatro** (`E`). Antes bastaba `fetch-depth: 1` para
+   * ellos porque de los cuatro solo se leian archivos del arbol de trabajo, y el unico que
+   * necesitaba historia era `sgtm`. Ahora la deriva se mide sobre los cuatro: con el checkout
+   * superficial, el `sha` que el stack declara no esta en el clon y `migracionesDe` **se niega
+   * a contar** —que es lo correcto, y seria un rojo por un motivo que no es el que se mide—.
    */
-  it("y trae el clon del sistema desplegado, como hermano dentro del espacio de trabajo", () => {
+  it("y trae los cuatro clones, con historial completo", () => {
     const verificar = trabajoDeVerificar();
     expect(verificar, "este repositorio tiene que clonarse en un directorio propio, o el hermano no cabe").toContain(
       "path: infrastructure",
     );
-    // Desde C-20 el clon no se escribe aqui: se PIDE. `verificar` es uno de los dos
-    // trabajos de todo el repositorio que necesitan el archivo historico, y lo dice en
-    // una linea; los otros trece solo necesitan los cuatro descriptores del corte.
     expect(verificar).toContain("clonar-los-hermanos");
-    expect(verificar, "sin `con-sgtm` la accion no clona el archivo historico").toContain(
-      "con-sgtm: 'si'",
-    );
+    expect(
+      verificar,
+      "sin `historial-completo` la accion clona superficial y la deriva no se puede contar",
+    ).toContain("historial-completo: 'si'");
 
-    // Y la accion lo clona de verdad, con historial completo. Comprobar solo la linea de
-    // arriba dejaria que la peticion apuntara a una accion que no clona nada.
     const accion = readFileSync(
       join(raizDelRepositorio(), ".github/actions/clonar-los-hermanos/action.yml"),
       "utf8",
     );
-    expect(accion).toContain("repository: hneyra/sgtm");
-    expect(accion).toContain("path: sgtm");
-    expect(accion).toMatch(/path: sgtm\n\s+fetch-depth: 0/);
+    // Y la accion clona los cuatro, y ya **ninguno** es `sgtm`.
+    for (const sistema of ["rentas", "catastro", "normativa", "caja"]) {
+      expect(accion).toContain(`repository: hneyra/${sistema}`);
+    }
+    expect(accion, "el flujo ya no clona el archivo historico").not.toContain("hneyra/sgtm");
+
+    /**
+     * Y las dos profundidades van **entrecomilladas**.
+     *
+     * En una expresion de GitHub `&&`/`||` devuelven el OPERANDO, y `0` es falso: con
+     * `cierto && 0 || 1` la expresion vale **1**, o sea el checkout superficial justo en el
+     * trabajo que pide el completo. El sintoma aparecería a mitad de la prueba de deriva —«no
+     * esta en el clon»— y no donde esta el defecto.
+     */
+    // Se leen **las lineas de `fetch-depth`**, no el archivo entero: el docstring de la accion
+    // explica el defecto escribiendo la forma mala, y esa explicacion es lo que impide que
+    // alguien la reintroduzca.
+    const profundidades = accion
+      .split("\n")
+      .map((linea) => linea.trim())
+      .filter((linea) => linea.startsWith("fetch-depth:"));
+    expect(profundidades.length, "la accion ya no declara ninguna profundidad").toBe(4);
+    for (const linea of profundidades) {
+      expect(
+        linea,
+        "`&& 0 || 1` sin comillas devuelve 1 SIEMPRE —`0` es falso en una expresion de " +
+          "GitHub—, o sea el checkout superficial justo en el trabajo que pide el completo",
+      ).toContain("&& '0' || '1'");
+    }
   });
 
   function trabajoDeVerificar(): string {

@@ -7,7 +7,11 @@ import { raizDelRepositorio } from "../componentes/fuentes";
 import { demandaDelStack } from "../capacidad";
 import { podsDe, type Contenedor, type Manifiesto } from "../componentes/tipos";
 import { ENVIRONMENTS, type Environment } from "../config";
-import { entornoDelAmbiente, manifiestosDeLosSistemas } from "../herramientas/emitir-manifiestos";
+import {
+  entornoDelAmbiente,
+  manifiestosDelAmbiente,
+  manifiestosDeLosSistemas,
+} from "../herramientas/emitir-manifiestos";
 import { SISTEMAS } from "../descriptor/sistemas";
 import { prefijoDeLaImplantacion, variableDe } from "./prefijo-de-la-implantacion";
 import { correElBackend } from "./procesos-de-un-sistema";
@@ -490,27 +494,39 @@ describe("C-14 · lo que los cuatro sistemas anaden al nodo", () => {
   });
 
   /**
-   * Y la otra mitad, que es la que este censo existe para decir en voz alta: **hoy los cuatro no
-   * caben junto al monolito en el nodo que `prod` declara.** No se «arregla» bajando peticiones
-   * hasta que cuadre —eso seria inventar una holgura que no existe—: lo que hay que decidir es
-   * si el monolito y los cuatro conviven, y eso es ADR-0029.
+   * Y la otra mitad, remedida en `E`: **lo permanente ya cabe; el pico del arranque, no.**
    *
-   * Se afirma el estado de HOY. El dia que quepa, esta prueba se pone roja y lo que hay que
-   * hacer no es actualizar el numero: es leer por que cambio.
+   * Hasta el 2026-09-06 esto decia «los cuatro no caben junto al monolito», y era cierto: lo
+   * permanente pedia 1 940m contra los 1 800m que el nodo reparte. Con el monolito fuera pide
+   * **1 340m**, o sea que el sistema **en regimen entra**. Lo que sigue sin entrar es el pico
+   * del arranque —1 810m y 7 520Mi—, que es justo lo que `capacidad.ts` mide y por lo que la
+   * brecha (#1) de `prod` sigue declarada: por CPU faltan **10m** y por memoria **1 792Mi**.
+   *
+   * Los dos numeros se afirman a la vez a proposito. Si solo se afirmara que no cabe, la
+   * mejora que este cambio produce no se veria en ninguna parte; y si solo se afirmara que lo
+   * permanente cabe, se leeria como «ya se puede desplegar», que es falso: un pod `Pending`
+   * por el pico deja el `pulumi up` colgado exactamente igual (issue #252).
+   *
+   * El dia que el pico quepa, esta prueba se pone roja y lo que hay que hacer no es actualizar
+   * el numero: es retirar la brecha, que `capacidad.test.ts` exige que siga sin caber.
    */
-  it("y hoy NO caben junto al monolito en el nodo de prod, que es el hallazgo", () => {
-    const plataforma = construirManifiestos(invariantesDe("prod"));
-    const todos = [...plataforma, ...manifiestosDeLosSistemas(invariantesDe("prod"), plataforma)];
-    const demanda = demandaDelStack(todos);
+  it("en prod ya cabe lo permanente, y sigue sin caber el pico del arranque", () => {
+    const demanda = demandaDelStack(manifiestosDelAmbiente(invariantesDe("prod")));
     const nodo = invariantesDe("prod").node;
     // 200m/160Mi de los pods de serie de k3s, como descuenta `auditarCapacidad`.
-    const disponible = 2000 - 200;
+    const cpuDisponible = 2000 - 200;
     expect(nodo.allocatableCpu).toBe("2");
+
     expect(
       demanda.permanente.cpuEnMili,
-      "los cuatro sistemas ya caben en `prod` por CPU. Si eso es cierto, lo que hay que revisar " +
-        "es esta prueba y el hueco 3 de C-14, no el numero.",
-    ).toBeGreaterThan(disponible);
+      "lo permanente de `prod` dejo de caber por CPU: eso es un empeoramiento, no un numero " +
+        "que actualizar.",
+    ).toBeLessThanOrEqual(cpuDisponible);
+    expect(
+      demanda.picoDeArranque.cpuEnMili,
+      "el pico del arranque de `prod` ya cabe por CPU. Si eso es cierto, lo que hay que " +
+        "revisar es la brecha declarada (#1), no este numero.",
+    ).toBeGreaterThan(cpuDisponible);
   });
 });
 

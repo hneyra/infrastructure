@@ -23,7 +23,7 @@
 LIB_MOTOR_AQUI=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LIB_MOTOR_INFRA=$(cd "$LIB_MOTOR_AQUI/../.." && pwd)
 
-CONTENEDOR=sgtm-motor-verificacion-$$
+CONTENEDOR=kamayuk-motor-verificacion-$$
 MODO=""
 
 export PGHOST=127.0.0.1
@@ -113,7 +113,7 @@ motor_arrancar_con_docker() {
 
 motor_docker_run() {
     docker run --detach --name "$CONTENEDOR" \
-        --env POSTGRES_DB=sgtm \
+        --env POSTGRES_DB=postgres \
         --env POSTGRES_USER=postgres \
         --env POSTGRES_PASSWORD="$CLAVE_SUPER" \
         --env KAMAYUK_CLAVE_OWNER="$CLAVE_OWNER" \
@@ -160,16 +160,23 @@ motor_arrancar_localmente() {
     # y aqui son estas variables. El guion NO se toca — es el mismo archivo que se
     # montaria en k3s, y esa es media prueba.
     export PGPASSWORD="$CLAVE_SUPER"
-    psql --quiet --username=postgres --command 'CREATE DATABASE sgtm' postgres >/dev/null
+    # NO se crea ninguna base aqui desde `E`. Se creaba `sgtm` —la del monolito— para que el
+    # `10-crear-roles.sql` cayera dentro; ese archivo se fue con el monolito y las cuatro del
+    # producto las crea `05-crear-bases.sh`, que es uno de los guiones del bucle de abajo. La
+    # base de mantenimiento `postgres` la trae `initdb`.
 
     for guion in "$TRABAJO"/inicializacion/*; do
         echo "  · $(basename "$guion")"
         case "$guion" in
-            *.sql) psql --quiet -v ON_ERROR_STOP=1 --username=postgres --file="$guion" sgtm \
+            # Sigue habiendo rama para `.sql` aunque hoy no quede ninguno: la inicializacion
+            # es un `ConfigMap` y el dia que vuelva a entrar uno tiene que ejecutarse, no
+            # saltarse en silencio. Va contra la base de mantenimiento, que es la que el
+            # `entrypoint` usa cuando un `.sql` no dice otra cosa.
+            *.sql) psql --quiet -v ON_ERROR_STOP=1 --username=postgres --file="$guion" postgres \
                        >/dev/null ;;
             # `KAMAYUK_DIR_KAMAYUK` existe justo para esto: los dos guiones de C-14 leen de
             # `/etc/kamayuk` dentro del contenedor y de aqui cuando se corren fuera.
-            *.sh) POSTGRES_USER=postgres POSTGRES_DB=sgtm \
+            *.sh) POSTGRES_USER=postgres POSTGRES_DB=postgres \
                   KAMAYUK_DIR_KAMAYUK="$TRABAJO/kamayuk" \
                   KAMAYUK_CLAVE_OWNER="$CLAVE_OWNER" KAMAYUK_CLAVE_APP="$CLAVE_APP" \
                   KAMAYUK_CLAVE_CARGA="$CLAVE_CARGA" \
@@ -217,8 +224,24 @@ motor_detener() {
     motor_esperar_puerto_libre "$PUERTO" || true
 }
 
+# La base del PADRON por omision, y no la de mantenimiento (`E`).
+#
+# Era `sgtm` —el padron del monolito—, y con `POSTGRES_DB=postgres` esa base dejo de crearse:
+# toda consulta que no dijera la suya moria con «FATAL: database "sgtm" does not exist».
+#
+# EL PRIMER ARREGLO FUE PONER `postgres` AQUI, Y ESTABA MAL. De los 36 sitios que llaman a
+# esto, **35 no pasan base**: los que preguntan por el cluster —roles, privilegios, catalogos—
+# funcionan desde cualquiera, pero los que LEEN LO QUE ACABAN DE ESCRIBIR no. Con `postgres`
+# por omision, `verificar-el-motor.sh` escribia `si_sobrevive` en el padron y la leia en
+# mantenimiento, y `simulacro-de-restauracion.sh` hacia lo mismo con `simulacro_deuda`: las dos
+# fallaron con «relation … does not exist», que es la misma frase por la misma causa.
+#
+# La traduccion fiel de lo que habia es el PADRON, no mantenimiento. Quien necesite el cluster
+# lo pide explicitamente, que es lo que ya hacen las consultas de `has_database_privilege`.
+BASE_DEL_PADRON=${BASE_DEL_PADRON:-rentas}
+
 motor_como_superusuario() {
-    PGPASSWORD="$CLAVE_SUPER" psql --username=postgres --dbname="${2:-sgtm}" \
+    PGPASSWORD="$CLAVE_SUPER" psql --username=postgres --dbname="${2:-$BASE_DEL_PADRON}" \
         --tuples-only --no-align --command "$1"
 }
 

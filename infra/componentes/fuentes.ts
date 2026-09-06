@@ -56,20 +56,18 @@ function leer(ruta: string): string {
 }
 
 /**
- * `crear-roles.sql`, del modulo del esquema.
+ * **`crearRolesSql()` ya no existe** (`E`).
  *
- * Es el mismo archivo que monta el compose y el mismo que la prueba de aislamiento da
- * por hecho. Crea los cuatro roles `NOLOGIN`, `NOSUPERUSER` y `NOBYPASSRLS`, y las
- * extensiones que la migracion necesita.
+ * Era el `crear-roles.sql` del monolito, y entraba al `ConfigMap` del motor como
+ * `10-crear-roles.sql`. Hacia tres cosas y ninguna sigue haciendo falta desde aqui: crear
+ * los cuatro roles del cluster —lo hace `06-roles-de-los-sistemas.sh` aplicando el
+ * `crear-roles.sql` de CADA sistema, que los crea con `IF NOT EXISTS` y corre ANTES—,
+ * conceder privilegios sobre el `public` de una base que ya no usa nadie, e instalar
+ * extensiones en esa misma base.
+ *
+ * Lo que sigue leyendose sin copiarse son los cuatro de los clones hermanos, en
+ * {@link crearRolesDeSistema}.
  */
-export function crearRolesSql(): string {
-  return leer(
-    join(
-      raizDelRepositorio(),
-      "backend/sgtm-esquema/src/main/resources/db/roles/crear-roles.sql",
-    ),
-  );
-}
 
 /**
  * `20-asignar-claves.sh`, de la inicializacion del motor del compose.
@@ -285,15 +283,10 @@ export function tableroResumenOperativoJson(): string {
 }
 
 /**
- * `nginx.conf` de la interfaz, **el del repositorio**.
+ * **`nginxConf()` ya no existe** (`E`).
  *
- * La imagen ya lo trae dentro, pero apunta al `aplicacion:8080` de la red del compose y
- * en el clúster el servicio se llama de otra manera. `Aplicacion.ts` le cambia esa
- * linea y monta el resultado; lo que **no** se hace es escribir aqui una segunda
- * configuracion de nginx, porque entonces la del compose y la del clúster se separarian
- * el dia que alguien toque una —y es exactamente la trampa que `ADR-0011` anota entre
- * los costos de tener dos formas de levantar el sistema—.
+ * Servia el `frontend/nginx.conf` del monolito al `ConfigMap` de su interfaz, que
+ * `componentes/Aplicacion.ts` componia reescribiendo el `proxy_pass`. Los dos se fueron con
+ * el monolito, y el archivo con ellos: ninguno de los cuatro sistemas tiene interfaz todavia,
+ * asi que no queda nada que servir por nginx.
  */
-export function nginxConf(): string {
-  return leer(join(raizDelRepositorio(), "frontend/nginx.conf"));
-}

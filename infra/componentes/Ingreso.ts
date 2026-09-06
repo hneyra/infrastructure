@@ -1,6 +1,6 @@
 import { commonLabels, resourceName, type Environment } from "../config";
 import { RUTA_DE_IDENTIDAD } from "./Identidad";
-import { servicioDeAplicacion, servicioDeIdentidad, servicioDeInterfaz } from "./convenciones";
+import { servicioDeIdentidad } from "./convenciones";
 import type { HelmChartConfig, IngressRoute, Manifiesto, Middleware, TLSOption } from "./tipos";
 
 /**
@@ -55,7 +55,6 @@ export interface IngresoArgs {
    * La de la identidad NO depende de esto: Keycloak es plataforma, y los cuatro sistemas
    * de ADR-0031 validan sus tokens contra el (C-14, punto 3).
    */
-  conMonolito: boolean;
 }
 
 /** El resolvedor de certificados. Un nombre, usado en tres sitios. */
@@ -72,7 +71,7 @@ export const RESOLVEDOR = "letsencrypt";
 export const ACME_DE_PRUEBAS = "https://acme-staging-v02.api.letsencrypt.org/directory";
 
 export function manifiestosDeIngreso(args: IngresoArgs): Manifiesto[] {
-  const { environment, namespace, domain, acmeEmail, acmeStaging, conMonolito } = args;
+  const { environment, namespace, domain, acmeEmail, acmeStaging } = args;
   const etiquetas = commonLabels(environment, "ingreso");
 
   const configuracionDeTraefik: HelmChartConfig = {
@@ -149,47 +148,6 @@ export function manifiestosDeIngreso(args: IngresoArgs): Manifiesto[] {
     options: { name: versionMinima.metadata.name, namespace },
   };
 
-  const interfaz: IngressRoute = {
-    apiVersion: "traefik.io/v1alpha1",
-    kind: "IngressRoute",
-    metadata: { name: resourceName(environment, "interfaz"), namespace, labels: etiquetas },
-    spec: {
-      entryPoints: ["websecure"],
-      routes: [
-        {
-          match: `Host(\`${domain}\`)`,
-          kind: "Rule",
-          // La menor prioridad de las tres: es la ruta que recoge todo lo que no
-          // cayo en las otras dos. Traefik ordena por longitud de la regla, y
-          // declararlo evita depender de ese detalle.
-          priority: 1,
-          services: [{ name: servicioDeInterfaz(environment), port: 8080 }],
-          middlewares: [{ name: limiteDeTasa.metadata.name }],
-        },
-      ],
-      tls,
-    },
-  };
-
-  const api: IngressRoute = {
-    apiVersion: "traefik.io/v1alpha1",
-    kind: "IngressRoute",
-    metadata: { name: resourceName(environment, "api"), namespace, labels: etiquetas },
-    spec: {
-      entryPoints: ["websecure"],
-      routes: [
-        {
-          match: `Host(\`${domain}\`) && PathPrefix(\`/api/v1\`)`,
-          kind: "Rule",
-          priority: 20,
-          services: [{ name: servicioDeAplicacion(environment), port: 8080 }],
-          middlewares: [{ name: limiteDeTasa.metadata.name }],
-        },
-      ],
-      tls,
-    },
-  };
-
   const identidad: IngressRoute = {
     apiVersion: "traefik.io/v1alpha1",
     kind: "IngressRoute",
@@ -221,10 +179,19 @@ export function manifiestosDeIngreso(args: IngresoArgs): Manifiesto[] {
     versionMinima,
     limiteDeTasa,
     limiteDeIdentidad,
-    // Las dos del monolito, o ninguna. `limite-de-tasa` se queda aunque se vayan: un
-    // `Middleware` sin ruta que lo nombre es inerte —no se aplica a nada— y volver a
-    // declararlo el dia que el monolito vuelva seria un segundo sitio donde acordarse.
-    ...(conMonolito ? [interfaz, api] : []),
+    // **Una sola ruta publica: la identidad** (`E`). Hasta el 2026-09-06 habia tres —la
+    // interfaz del monolito en `/`, su API en `/api/v1` y esta—, y las dos primeras se van
+    // con el monolito. Ninguno de los cuatro sistemas publica todavia interfaz ni API por
+    // el ingreso: sus `Service` viven en su propio namespace y hoy nadie los enruta, asi
+    // que la raiz del dominio contesta el 404 de Traefik. Es la diferencia que importa
+    // frente a dejar las rutas puestas: una `IngressRoute` que apunta a un `Service`
+    // ausente **no se queda callada**, contesta `503` —y un `503` en la raiz del dominio
+    // publico se lee como «el sistema esta caido» y no como «aqui no hay nada desplegado»
+    // (C-19 §2.1).
+    //
+    // `limite-de-tasa` se queda aunque ninguna ruta lo nombre: un `Middleware` sin ruta es
+    // inerte —no se aplica a nada, no ocupa nodo— y es lo que las rutas de los cuatro
+    // sistemas van a necesitar el dia que se publiquen.
     identidad,
   ];
 }

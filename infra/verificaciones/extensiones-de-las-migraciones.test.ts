@@ -39,7 +39,7 @@ import {
  * se puede atrapar barato: **CI nunca lo ve**, porque su volumen siempre nace vacio y
  * ahi `crear-roles.sql` corre entero.
  */
-describe("#742/C-2 — la extension que una migracion usa esta declarada, en los cinco", () => {
+describe("#742/C-2 — la extension que una migracion usa esta declarada, en los cuatro", () => {
   it("EL CONTRASTE: hoy no falta ninguna en ninguno, y no hay ningun falso positivo", () => {
     // Va primero a proposito. Una comprobacion que grita por una migracion que no
     // depende de nada deja de leerse — la leccion que #437 midio al descartar
@@ -51,14 +51,8 @@ describe("#742/C-2 — la extension que una migracion usa esta declarada, en los
     // El censo entero, medido. Cuando esto se ponga rojo lo que hay que hacer NO es
     // actualizar la lista: es leer que esquema empezo —o dejo— de depender de que.
     expect(usosEnLasMigraciones().map((u) => `${u.sistema}|${u.migracion}|${u.extension}`)).toEqual([
-      "infrastructure (copia del esquema del monolito)|V11__busqueda_por_aproximacion.sql|unaccent",
-      "infrastructure (copia del esquema del monolito)|V11__busqueda_por_aproximacion.sql|pg_trgm",
-      "infrastructure (copia del esquema del monolito)|V61__geometria_del_predio.sql|postgis",
-      "infrastructure (copia del esquema del monolito)|V72__vigencias_que_no_se_pisan.sql|btree_gist",
-      "sgtm|V11__busqueda_por_aproximacion.sql|unaccent",
-      "sgtm|V11__busqueda_por_aproximacion.sql|pg_trgm",
-      "sgtm|V61__geometria_del_predio.sql|postgis",
-      "sgtm|V72__vigencias_que_no_se_pisan.sql|btree_gist",
+      // Las ocho del monolito —cuatro de su clon y cuatro de la copia local— se fueron con
+      // el en `E`. Las siete que quedan son las de los cuatro esquemas que se despliegan.
       "rentas|V1__baseline.sql|unaccent",
       "rentas|V1__baseline.sql|pg_trgm",
       // C-4: V11 vuelve a escribir `nombre_normalizado`, con `unaccent` cualificado.
@@ -108,21 +102,16 @@ describe("#742/C-2 — la extension que una migracion usa esta declarada, en los
 });
 
 describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse rancia", () => {
-  it("son los cinco sistemas de SISTEMAS, mas la copia local del monolito", () => {
+  it("son los cuatro sistemas de SISTEMAS, y ninguno mas", () => {
     // Derivarla de SISTEMAS es lo que impide el defecto de #742: alli la ruta estaba
     // escrita a mano, y al aparecer cuatro repositorios nuevos la guarda siguio mirando
-    // uno solo **sin ponerse roja**. Si manana entra un sexto sistema, entra aqui solo.
-    expect(esquemas().map((e) => e.nombre)).toEqual([
-      "infrastructure (copia del esquema del monolito)",
-      ...SISTEMAS.map((s) => s.nombre),
-    ]);
-    expect(SISTEMAS.map((s) => s.nombre)).toEqual([
-      "sgtm",
-      "rentas",
-      "catastro",
-      "normativa",
-      "caja",
-    ]);
+    // uno solo **sin ponerse roja**. Si manana entra un quinto sistema, entra aqui solo.
+    //
+    // Eran SEIS hasta `E`: los cinco de SISTEMAS —`sgtm` incluido— mas la copia local del
+    // esquema del monolito que este repositorio llevaba en `backend/sgtm-esquema`. Las dos
+    // del monolito se fueron con el.
+    expect(esquemas().map((e) => e.nombre)).toEqual(SISTEMAS.map((s) => s.nombre));
+    expect(SISTEMAS.map((s) => s.nombre)).toEqual(["rentas", "catastro", "normativa", "caja"]);
   });
 
   it("y los dos archivos de cada uno existen de verdad", () => {
@@ -144,8 +133,10 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
     const cuantas = Object.fromEntries(esquemas().map((e) => [e.nombre, migraciones(e).length]));
 
     expect(cuantas).toEqual({
-      "infrastructure (copia del esquema del monolito)": 68,
-      sgtm: 68,
+      // Las dos entradas del monolito -`infrastructure (copia del esquema del monolito)` y
+      // `sgtm`, las dos con 68- se fueron en `E`: el censo deriva de SISTEMAS, y ahi ya no
+      // esta. La copia local se retiro con `backend/`, y `sgtm` no lo despliega ningun
+      // ambiente.
       // catastro 10 desde la etapa 1 del territorio: `V6` trajo el CUC del SNCP y
       // `frente_predio` (T-0, ADR-0034/ADR-0036), y `V7`..`V10` la zonificacion, la gestion
       // del riesgo, la fiscalizacion catastral y el buzon del territorio.
@@ -178,13 +169,6 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
     );
 
     expect(declaradas).toEqual({
-      "infrastructure (copia del esquema del monolito)": [
-        "btree_gist",
-        "pg_trgm",
-        "postgis",
-        "unaccent",
-      ],
-      sgtm: ["btree_gist", "pg_trgm", "postgis", "unaccent"],
       rentas: ["pg_trgm", "unaccent"],
       // TRES desde C-13: `pg_trgm` se fue porque la busqueda por aproximacion de nombre
       // es del padron de contribuyentes, que es de `rentas`.
@@ -202,7 +186,7 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
 });
 
 describe("C-13 — lo declarado y no usado es ROJO, y hoy no hay ninguna", () => {
-  it("ninguno de los seis esquemas declara una extension que no use", () => {
+  it("ninguno de los cuatro esquemas declara una extension que no use", () => {
     // C-2 dejo esto como CENSO porque un rojo «naceria disparado en dos de los seis», y
     // una comprobacion que grita el primer dia se acaba silenciando (#437). C-13 retiro
     // las cinco —`pg_trgm` de `catastro` y las cuatro de `normativa`—, asi que el rojo
@@ -361,13 +345,17 @@ describe("#742 — una clase de operadores que no se sabe atribuir se DICE", () 
   });
 
   it("una migracion que pide la misma extension por dos vias la pide UNA vez", () => {
-    // `V11` del monolito nombra `gin_trgm_ops` y ademas llama a `similarity()`.
-    const sgtm = esquemas().find((e) => e.nombre === "sgtm");
-    const deV11 = usosDelEsquema(sgtm!).filter(
-      (u) => u.migracion.startsWith("V11__") && u.extension === "pg_trgm",
+    // Se medía sobre el `V11` del monolito, que nombra `gin_trgm_ops` y ademas llama a
+    // `similarity()`. Se fue con el (`E`), y el sujeto equivalente es el `V1__baseline.sql`
+    // de `rentas`, que hace las dos cosas por herencia de aquel: sin la deduplicacion, el
+    // censo de arriba traeria `pg_trgm` dos veces por la misma migracion.
+    const rentas = esquemas().find((e) => e.nombre === "rentas");
+    expect(rentas, "no esta el esquema de `rentas`: esta prueba no tendria sujeto").toBeDefined();
+    const delBaseline = usosDelEsquema(rentas!).filter(
+      (u) => u.migracion.startsWith("V1__") && u.extension === "pg_trgm",
     );
 
-    expect(deV11).toHaveLength(1);
+    expect(delBaseline).toHaveLength(1);
   });
 });
 
@@ -434,7 +422,7 @@ function extensionesSegunElShell(archivo: string): string[] {
  * diferencia que #731 dejo escrita al probar `puerto.sh`.
  */
 describe("C-10 — el shell y esta guarda leen lo mismo, y se comprueba ejecutandolo", () => {
-  it("las dos lecturas coinciden en los seis esquemas", () => {
+  it("las dos lecturas coinciden en los cuatro esquemas", () => {
     // Dos implementaciones del mismo patron —una en TypeScript, una en shell— es
     // exactamente el defecto que este modulo existe para cerrar, un escalon mas abajo.
     // No se supone que coincidan: se ejecuta la de shell y se comparan.
@@ -447,7 +435,7 @@ describe("C-10 — el shell y esta guarda leen lo mismo, y se comprueba ejecutan
   });
 
   it("y el shell tampoco cuenta la que solo se nombra en un comentario", () => {
-    // Ninguno de los seis archivos reales tiene hoy esta trampa, asi que quitarle el
+    // Ninguno de los cuatro archivos reales tiene hoy esta trampa, asi que quitarle el
     // `sed` a la funcion no cambiaria nada medido contra ellos. Por eso se fabrica.
     const fabricado = esquemaFabricado(
       "V1__baseline.sql",

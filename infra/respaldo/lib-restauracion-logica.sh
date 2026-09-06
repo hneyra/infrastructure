@@ -128,7 +128,7 @@ rl_migraciones_en_orden() {
 #
 # `V21` del monolito hace `GRANT SELECT ON flyway_schema_history TO kamayuk_app`, asi que su
 # esquema no se puede aplicar con `psql` a secas: falta la tabla que normalmente crea
-# Flyway. Se DERIVA en vez de escribir «si el sistema es sgtm», por lo mismo que C-10 no
+# Flyway. Se DERIVA en vez de escribir el nombre de un sistema, por lo mismo que C-10 no
 # escribio la lista de extensiones: el dia que otro esquema la nombre, esto ya lo sabe.
 #
 # Los comentarios no cuentan: los cuatro baselines la nombran en su cabecera para explicar
@@ -148,17 +148,17 @@ rl_necesita_libro_de_flyway() {
 # Donde vive el esquema de cada sistema
 # ---------------------------------------------------------------------------
 
-# Los cinco esquemas del producto, en el orden en que el simulacro los recorre.
+# Los cuatro esquemas del producto, en el orden en que el simulacro los recorre.
 #
 # **No es una lista nueva**: es la misma de `SISTEMAS` en
 # `verificaciones/deriva-de-migraciones.ts`, y `restauracion-logica.test.ts` EJECUTA esta
 # funcion y compara las dos. Escribirla dos veces seria un segundo sitio donde olvidarse de
 # un sistema, que es el defecto que C-2 y C-10 cerraron un escalon mas abajo.
 #
-# El monolito va primero a proposito: es el unico que declara perdidas, y verlo primero
-# deja claro que el resumen distingue «pierde lo declarado» de «no pierde nada».
+# Eran cinco: el monolito iba primero porque era el unico que declaraba perdidas. Se fue con
+# `E`, y con el las trece que declaraba — que siguen siendo ciertas DE EL, en su repositorio.
 rl_sistemas() {
-    printf '%s\n' sgtm rentas catastro normativa caja
+    printf '%s\n' rentas catastro normativa caja
 }
 
 
@@ -183,18 +183,15 @@ rl_unico() {
 
 # La raiz del esquema de un sistema: `db/`, con `roles/` y `migration/` dentro.
 #
-# Para `sgtm`, la copia de ESTE repositorio: es la que de verdad se aplica —el `ConfigMap`
-# del cluster y el compose montan esta— y es la misma regla que ya usa
-# `crear-extensiones.sh`. Para los otros cuatro, el clon hermano, con comodin sobre el
-# nombre del modulo.
+# Cada uno en SU clon hermano, con comodin sobre el nombre del modulo: es la misma regla
+# que ya usa `crear-extensiones.sh`. Hasta `E` habia una excepcion —`sgtm` se resolvia a la
+# copia local de este repositorio, que era la que el `ConfigMap` montaba—, y se fue con el
+# monolito.
 rl_db_de() {
     local sistema=${1:?falta el sistema}
     local raiz=${2:?falta la raiz de infrastructure}
-    if [ "$sistema" = "sgtm" ]; then
-        rl_unico "copia local del esquema del monolito" \
-            "$raiz/backend/sgtm-esquema/src/main/resources/db"
-        return
-    fi
+    # Desde `E` no hay ninguna copia local: el esquema del monolito salio del repositorio
+    # con el monolito, y los cuatro que quedan viven cada uno en su clon hermano.
     local clon="$raiz/../$sistema"
     [ -d "$clon/.git" ] || {
         echo "No esta el clon de «${sistema}» en «${clon}», asi que no se puede volcar" >&2
@@ -257,48 +254,23 @@ rl_restauracion_limpia() {
 
 # Objetos que la restauracion logica de ese esquema pierde, con su motivo.
 #
-# Hoy solo el monolito, y **no se puede arreglar**: `sgtm` es el archivo historico, su
-# `V11` es una migracion aplicada —editarla cambia su suma de Flyway— y no admite
-# migraciones nuevas (C-4 §8, hueco 1). Los cuatro sistemas del corte lo arreglaron con
-# una migracion nueva cada uno; el monolito no tiene esa salida.
+# **Hoy NINGUNO** (`E`), y es un resultado y no un descuido. La unica entrada eran las trece
+# del monolito —`contribuyente_nombre_trgm_ix` con su `COMMENT`, y la tabla `via` entera con
+# todo lo que cuelga de ella, porque `V66` le dio una columna generada cuya expresion se
+# inserta en linea al CREAR LA TABLA—. El monolito salio del sistema y su esquema ya no se
+# recorre desde aqui: esa perdida sigue siendo cierta DE EL, en su repositorio.
 #
-# LO QUE C-11 MIDIO Y CORRIGE DE C-4: son TRECE objetos, no uno.
-#
-# C-4 dejo escrito que el monolito pierde «el mismo indice, y su COMMENT» —2 errores—, y
-# eso es exacto para `contribuyente_nombre_trgm_ix`. Lo que su medida no cubrio es que
-# `V66` (#565) le dio a `via` la MISMA columna generada que tiene `catastro`:
-#
-#     ALTER TABLE via ADD COLUMN nombre_busqueda text
-#         GENERATED ALWAYS AS (nombre_normalizado(nombre)) STORED;
-#
-# y la expresion de una columna generada se inserta en linea al CREAR LA TABLA. Medido con
-# las 68 migraciones aplicadas: **21 errores**, `via` no se crea, y detras se van su clave
-# primaria, sus tres indices, su politica de RLS, su secuencia, sus tres restricciones y
-# las dos foraneas que la nombran desde `arancel` y `predio`. Y **sus filas**.
+# Los cuatro sistemas del corte lo arreglaron cada uno con una migracion nueva (C-4), que es
+# la salida que el monolito no tenia: su `V11` es una migracion aplicada, y editarla cambia
+# su suma de Flyway.
 #
 # La lista vale en LAS DOS DIRECCIONES, como `DECLARADAS_DE_MAS` en C-10: el simulacro se
 # pone rojo si un esquema pierde algo que no esta aqui, **y tambien** si algo de aqui deja
-# de perderse. Asi no puede quedarse rancia.
+# de perderse. Vacia no apaga nada — la primera perdida que aparezca en cualquiera de los
+# cuatro se pone roja.
 rl_perdidas_conocidas() {
     local sistema=${1:?falta el sistema}
     case "$sistema" in
-        sgtm)
-            cat <<'PERDIDAS'
-INDICE contribuyente_nombre_trgm_ix EN contribuyente
-INDICE via_codigo_prefijo_ix EN via
-INDICE via_codigo_uq EN via
-INDICE via_nombre_busqueda_ix EN via
-INDICE via_pk EN via
-POLITICA_RLS via.via_tenant
-RESTRICCION arancel.arancel_via_fk
-RESTRICCION predio.predio_via_fk
-RESTRICCION via.via_codigo_uq
-RESTRICCION via.via_municipalidad_id_fkey
-RESTRICCION via.via_pk
-SECUENCIA via_id_seq
-TABLA via
-PERDIDAS
-            ;;
         *) : ;;
     esac
 }

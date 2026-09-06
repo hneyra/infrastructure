@@ -1,13 +1,9 @@
-import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { raizDeInfra } from "../componentes/fuentes";
 import { demandaDelStack } from "../capacidad";
 import { construirManifiestos } from "../componentes";
 import { podsDe, type Manifiesto } from "../componentes/tipos";
 import { ENTRADAS_DEL_PERFIL_MINIMO, recursosDe } from "../componentes/convenciones";
-import { ENVIRONMENTS, PERFILES_DE_RECURSOS, type Environment, type Invariants } from "../config";
+import { ENVIRONMENTS, PERFILES_DE_RECURSOS, type Environment } from "../config";
 import { SISTEMAS } from "../descriptor/sistemas";
 import { entornoDelAmbiente, manifiestosDelAmbiente } from "../herramientas/emitir-manifiestos";
 import { invariantesDe } from "./stacks";
@@ -33,18 +29,6 @@ import { invariantesDe } from "./stacks";
 
 const manifiestosDe = (ambiente: Environment) => manifiestosDelAmbiente(invariantesDe(ambiente));
 
-/** El mismo ambiente, componiéndolo como si declarara otra cosa. */
-const como = (ambiente: Environment, cambio: (i: Invariants) => Invariants): Invariants =>
-  cambio(invariantesDe(ambiente));
-
-const conMonolito = (i: Invariants, valor: boolean): Invariants => ({
-  ...i,
-  application: { ...i.application, deployMonolith: valor },
-});
-
-const nombresDe = (ms: { kind: string; metadata: { name: string; namespace?: string } }[]) =>
-  ms.map((m) => `${m.metadata.namespace ?? "-"}|${m.kind}/${m.metadata.name}`);
-
 /** Los `resources` de todo contenedor —normal o de inicializacion— de unos manifiestos. */
 const peticionesDe = (ms: Manifiesto[]) =>
   ms.flatMap(podsDe).flatMap(({ pod }) => [
@@ -53,52 +37,74 @@ const peticionesDe = (ms: Manifiesto[]) =>
   ]);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1 · El monolito
+// 1 · El monolito, que ya no está
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("C-19 · el monolito lo declara quien lo despliega, y sólo ése", () => {
+/**
+ * `E` — **ningún ambiente compone el monolito, y la plataforma sigue entera.**
+ *
+ * C-19 medía aquí tres cosas de la bandera `desplegarElMonolito`: que hiciera algo, que lo
+ * compuesto coincidiera con lo declarado, y que `verificar-el-ambiente.sh` la leyera igual
+ * que `config.ts`. Las tres se van con la bandera, y lo que las sustituye es una guarda que
+ * mide lo contrario: que **ninguno de los objetos del monolito vuelva a componerse**.
+ *
+ * La que **no** cambia es la última —«la plataforma no se va con él»—, y es la que más vale:
+ * era la mitad que importaba de C-19 y sigue siéndolo, porque los cuatro sistemas se
+ * conectan literalmente a los dos `Service` que compone este componente.
+ */
+describe("E · el monolito no se compone, y la plataforma sigue entera", () => {
   /**
-   * Lo primero, y sin ello lo demás no dice nada: que la bandera **haga algo**.
-   *
-   * Se mide componiendo el mismo ambiente en las dos direcciones y restando, no
-   * comparando contra una lista de objetos escrita aquí: una lista sería el segundo sitio
-   * donde acordarse el día que el monolito gane un manifiesto más, y el que envejecería
-   * sin ponerse rojo.
+   * Los nombres de lo que el monolito ponía. Se escriben **uno a uno y a mano**, que es lo
+   * contrario de lo que C-19 hacía —allí la lista se derivaba restando las dos composiciones—
+   * y aquí es lo correcto: ya no hay dos composiciones que restar, y lo que hay que impedir
+   * es que cualquiera de estos nombres reaparezca. Salen de la medición del 2026-09-06,
+   * comparando `yarn manifiestos` antes y después: `prod` pasó de 101 objetos a 84.
    */
-  it.each(ENVIRONMENTS)("«%s»: apagar la bandera quita manifiestos, y encenderla los trae", (ambiente) => {
-    const con = new Set(nombresDe(construirManifiestos(como(ambiente, (i) => conMonolito(i, true)))));
-    const sin = new Set(nombresDe(construirManifiestos(como(ambiente, (i) => conMonolito(i, false)))));
+  const DEL_MONOLITO = [
+    "aplicacion",
+    "interfaz",
+    "interfaz-nginx",
+    "lote",
+    "migracion",
+    "implantacion",
+    "api",
+  ] as const;
 
-    const diferencia = [...con].filter((n) => !sin.has(n));
-    expect(
-      diferencia.length,
-      "`desplegarElMonolito` no cambia ni un manifiesto: la bandera está declarada y no la " +
-        "lee nadie, que se lee igual que no tenerla.",
-    ).toBeGreaterThan(0);
-    // Y en la otra dirección no entra nada: apagar el monolito no puede AÑADIR objetos.
-    expect([...sin].filter((n) => !con.has(n))).toEqual([]);
+  it.each(ENVIRONMENTS)("«%s»: la plataforma no compone ni un objeto del monolito", (ambiente) => {
+    // Se compara contra el nombre **sin el prefijo del ambiente**, y no con un `includes`:
+    // `PriorityClass/kamayuk-stg-prioridad-lote` contiene «-lote» y es de la plataforma —es
+    // la clase de prioridad baja que usa la observabilidad—. Un `includes` la habría dado por
+    // resto del monolito, que es un rojo por un motivo que no es el que se mide.
+    const prefijo = `kamayuk-${ambiente}-`;
+    const restos = construirManifiestos(invariantesDe(ambiente))
+      .map((m) => ({ kind: m.kind, resto: m.metadata.name.replace(prefijo, "") }));
+    for (const trozo of DEL_MONOLITO) {
+      expect(
+        restos
+          .filter(({ resto }) => resto === trozo || resto.startsWith(`${trozo}-`))
+          .map(({ kind, resto }) => `${kind}/${prefijo}${resto}`),
+        `«${ambiente}» vuelve a componer un objeto del monolito con «${trozo}» en el nombre. ` +
+          "El monolito salió del sistema en `E`: `componentes/Aplicacion.ts` y " +
+          "`componentes/Migracion.ts` están borrados, y volver a encenderlo no es una línea.",
+      ).toEqual([]);
+    }
   });
 
   /**
-   * Y lo que cada ambiente compone de verdad es lo que su stack declara.
-   *
-   * *Mutación:* que `construirManifiestos` ignore la bandera. → rojo en `stg`, con los
-   * diez objetos nombrados.
+   * Y **el `Deployment` de un sistema no cuenta como «la aplicación»**: el contraste que
+   * impide que la guarda de arriba se satisfaga por vacío. Los cuatro siguen ahí, en su
+   * namespace, y esta prueba se pondría roja si alguien los borrara creyendo que son restos
+   * del monolito.
    */
-  it.each(ENVIRONMENTS)("«%s»: lo compuesto coincide con lo declarado en su stack", (ambiente) => {
-    const invariantes = invariantesDe(ambiente);
-    const declarado = invariantes.application.deployMonolith;
-    const real = nombresDe(construirManifiestos(invariantes));
-    const esperado = nombresDe(
-      construirManifiestos(conMonolito(invariantes, declarado)),
-    );
-    expect(real).toEqual(esperado);
-
-    const conLaOtra = nombresDe(construirManifiestos(conMonolito(invariantes, !declarado)));
-    expect(
-      real,
-      `«${ambiente}» declara \`desplegarElMonolito: ${String(declarado)}\` y compone lo contrario.`,
-    ).not.toEqual(conLaOtra);
+  it.each(ENVIRONMENTS)("«%s»: y los cuatro Deployment de los sistemas siguen estando", (ambiente) => {
+    const nombres = manifiestosDe(ambiente)
+      .filter((m) => m.kind === "Deployment")
+      .map((m) => m.metadata.name);
+    for (const sistema of ["rentas", "catastro", "normativa", "caja"]) {
+      expect(nombres, `falta el Deployment web de «${sistema}» en «${ambiente}»`).toContain(
+        `kamayuk-${sistema}-web`,
+      );
+    }
   });
 
   /**
@@ -211,45 +217,6 @@ describe("C-19 · el monolito lo declara quien lo despliega, y sólo ése", () =
         "sin disparar ninguna alerta y enseñando a no mirar la lista de objetivos.",
     ).toEqual([]);
   });
-  /**
-   * Y quien comprueba el ambiente DESPLEGADO lee la misma bandera que quien lo compone.
-   *
-   * `verificar-el-ambiente.sh` mira cosas que sólo existen con el monolito —el
-   * `Deployment` de la aplicación, y el `Service` al que hace `port-forward` para la
-   * escalera de identidad—. Sin esto, `aplicar-stg` y `deteccion-de-deriva` quedarían
-   * **rojos para siempre** por algo que nadie puede arreglar en un PR, que es lo que
-   * `infra.yml` lleva escrito en su cabecera que no puede pasar; y darlo por bueno sin
-   * mirarlo sería peor. El guion dice «no se hace», que no es «está bien» (C-15/C-16).
-   *
-   * Lo que aquí se compara son **las dos lecturas del mismo archivo**: la del guion
-   * —ejecutando su propia tubería `grep`/`sed`/`tr`— y la de `config.ts`. Una prueba que
-   * sólo mirara que el guion nombra la clave pasaría con la tubería rota.
-   */
-  it.each(ENVIRONMENTS)("«%s»: `verificar-el-ambiente.sh` lee la bandera igual que config.ts", (ambiente) => {
-    const guion = readFileSync(
-      join(raizDeInfra(), "verificaciones/ambiente/verificar-el-ambiente.sh"),
-      "utf8",
-    );
-    const tuberia = /MONOLITO=\$\(grep -E '([^']+)'[\s\S]*?sed -E 's([^']+)'/.exec(guion);
-    expect(tuberia, "el guion ya no lee `desplegarElMonolito` con una tuberia reconocible").not
-      .toBeNull();
-
-    const leido = execFileSync(
-      "sh",
-      [
-        "-c",
-        `grep -E '${tuberia?.[1] ?? ""}' "$0" | sed -E 's/.*:\\s*//' | tr -d '"'"'"' '`,
-        join(raizDeInfra(), `Pulumi.${ambiente}.yaml`),
-      ],
-      { encoding: "utf8" },
-    ).trim();
-
-    expect(
-      leido === "true",
-      `el guion lee «${leido}» de Pulumi.${ambiente}.yaml y config.ts lee ` +
-        `«${String(invariantesDe(ambiente).application.deployMonolith)}».`,
-    ).toBe(invariantesDe(ambiente).application.deployMonolith);
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -258,16 +225,18 @@ describe("C-19 · el monolito lo declara quien lo despliega, y sólo ése", () =
 
 describe("C-19 · el perfil de recursos de un ambiente no alcanza al otro", () => {
   /**
-   * **`prod` no se mueve ni un milicore**, y se fija con las dos cifras medidas.
+   * **Lo que `prod` pide, congelado en dos cifras.**
    *
-   * Un número congelado en una prueba es caro a propósito. La decisión de C-19 fue bajar
-   * lo que pide `stg` **sin tocar `prod`**, donde el margen es el que el issue #158 midió
-   * desplegando y donde `nodeCapacityGapIssue` sigue puesto: la única forma de afirmar
-   * «no se movió» que no dependa de que alguien vuelva a mirar es escribir lo que pide.
+   * Un número congelado en una prueba es caro a propósito: es la única forma de afirmar
+   * «esto no se movió» que no dependa de que alguien vuelva a mirar. Y cambiarlo **no es
+   * arreglar la prueba**: es declarar que la demanda de producción cambió, y eso se decide,
+   * se mide contra el nodo y se escribe en el entregable.
    *
-   * Cambiar estas cifras **no es arreglar la prueba**: es declarar que la demanda de
-   * producción cambió, y eso se decide, se mide contra el nodo y se escribe en el
-   * entregable.
+   * Cambió en `E`, y ésta es la medida: al irse el monolito, `prod` pasa de
+   * `1940m / 6304Mi` permanentes y `2610m / 9696Mi` de pico a lo que dice abajo. Sigue sin
+   * caber —su brecha (#1) sigue declarada y `capacidad.test.ts` exige que siga sin caber—,
+   * pero por mucho menos: por CPU faltan **10m** donde faltaban 810m, y por memoria
+   * **1 792Mi** donde faltaban 3 968Mi.
    *
    * *Mutación:* que `recursosDe` ignore el perfil y devuelva siempre el `minimo`. → rojo
    * aquí con las dos cifras, y `stg` sigue en verde: es el defecto que C-19 existe para
@@ -286,10 +255,10 @@ describe("C-19 · el perfil de recursos de un ambiente no alcanza al otro", () =
    * en la cantidad exacta que cuesta, y esa cantidad queda escrita aquí y no en la cabeza de
    * nadie.
    */
-  it("prod pide exactamente lo medido, y lo que subió tiene nombre", () => {
+  it("prod pide exactamente lo medido en `E`", () => {
     const demanda = demandaDelStack(manifiestosDe("prod"));
-    expect(demanda.permanente).toEqual({ cpuEnMili: 1990, memoriaEnMi: 6368 });
-    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 2660, memoriaEnMi: 9760 });
+    expect(demanda.permanente).toEqual({ cpuEnMili: 1390, memoriaEnMi: 5216 });
+    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 1860, memoriaEnMi: 7584 });
   });
 
   /** Y `prod` declara el perfil dimensionado, que es la tabla base. */

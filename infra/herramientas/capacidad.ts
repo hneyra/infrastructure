@@ -6,7 +6,7 @@ import { invariantesDe } from "../verificaciones/stacks";
 /**
  * El veredicto de `capacidad.ts` desde la linea de ordenes.
  *
- * Existe para dos cosas: mirarlo a mano cuando alguien cambia `webReplicas` o los
+ * Existe para dos cosas: mirarlo a mano cuando alguien cambia las replicas o los
  * `requests` —«¿esto todavia cabe?» sin desplegar—, y para que
  * `verificar-contra-el-planificador.sh` pueda contrastar ese veredicto con lo que hace
  * el planificador de Kubernetes de verdad.

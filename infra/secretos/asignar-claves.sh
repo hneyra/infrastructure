@@ -74,11 +74,11 @@ CLAVE_SUPER=$(kubectl -n "$NAMESPACE" get secret "$SECRETO_SUPER" \
 
 # El inventario, una linea por rol de PostgreSQL: «rol secreto clave rolDePostgres base».
 #
-# La base sale del inventario y **no se supone `sgtm`**: `kamayuk_respaldo` no tiene
-# `CONNECT` sobre el padron a proposito (#155) y `keycloak` tiene la suya, asi que
-# sondearlos contra `sgtm` daria un rojo falso justo en los dos roles cuyo aislamiento
-# es deliberado — paso al escribir este guion, y el rojo era indistinguible del de un
-# rol sin `LOGIN`.
+# La base sale del inventario y **no tiene valor por omision** (`E`): `kamayuk_respaldo` no
+# tiene `CONNECT` sobre ninguna base del producto a proposito (#155), `keycloak` tiene la
+# suya y `rol_carga_parametros` solo alcanza `normativa` (C-7 §6). Hasta `E` la omision se
+# replegaba a `sgtm`, la base del monolito, que existe en los dos ambientes y no tiene ni
+# una tabla: sondear contra ella pasaba en verde sin medir nada.
 # shellcheck disable=SC2016  # `${}` aqui son plantillas de JavaScript, no del shell
 inventario=$(yarn --silent secretos --ambiente "$AMBIENTE" | node -e '
   const datos = JSON.parse(require("fs").readFileSync(0, "utf8"));
@@ -89,9 +89,20 @@ inventario=$(yarn --silent secretos --ambiente "$AMBIENTE" | node -e '
     // con valores que tienen que ser el mismo, y el ultimo decidiria. Quien manda es el `Secret`
     // de la plataforma, que es de donde `bootstrap-secretos.sh` los copia.
     .filter((e) => e.rolDePostgres && e.espejoDe === undefined)
-    .map((e) =>
-      [e.rol, e.namespace, e.secreto, e.clave, e.rolDePostgres, e.baseDeDatos || "sgtm"].join(" "),
-    );
+    .map((e) => {
+      // Sin repliegue desde `E`. Hasta entonces esto decia `e.baseDeDatos || "sgtm"`, y
+      // esa base es la del monolito: existe en los dos ambientes y no tiene ni una tabla
+      // del producto, asi que una entrada sin declarar su base pasaba en VERDE habiendo
+      // abierto una sesion que no dice nada. Ahora se rompe la corrida nombrando el rol.
+      if (!e.baseDeDatos) {
+        throw new Error(
+          `«${e.rol}» declara el rol de PostgreSQL «${e.rolDePostgres}» y no declara contra ` +
+            "que base se conecta. Sin ese dato, comprobar la credencial no dice nada: hay que " +
+            "declararlo en `componentes/secretos.ts` (`baseDeDatos`).",
+        );
+      }
+      return [e.rol, e.namespace, e.secreto, e.clave, e.rolDePostgres, e.baseDeDatos].join(" ");
+    });
   process.stdout.write(filas.join("\n"));
 ')
 [ -n "$inventario" ] || { echo "El inventario no trae ningun rol de PostgreSQL." >&2; exit 1; }
@@ -115,7 +126,7 @@ while read -r rol ns secreto clave rolDePostgres base; do
         # `:'clave'` entrecomilla como literal —una clave con comilla simple se asigna
         # bien en vez de romper la sentencia— y `:"rol"` como identificador citado.
         kubectl -n "$NAMESPACE" exec -i "$MOTOR" -c postgres -- env PGPASSWORD="$CLAVE_SUPER" \
-            psql --username=postgres --dbname=sgtm --quiet \
+            psql --username=postgres --dbname=postgres --quiet \
             -v rol="$rolDePostgres" -v clave="$valor" <<'SQL' >/dev/null
 ALTER ROLE :"rol" LOGIN PASSWORD :'clave';
 SQL

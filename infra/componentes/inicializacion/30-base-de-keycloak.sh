@@ -32,17 +32,25 @@ SELECT format('CREATE DATABASE keycloak OWNER keycloak')
  WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'keycloak') \gexec
 SQL
 
-# La base del padron no es suya. Sin esto, `keycloak` heredaria de PUBLIC el
-# CONNECT sobre `sgtm`: no podria ver ninguna fila —RLS esta forzada y no es
-# propietaria de nada—, pero seria una credencial mas apuntando al padron.
+# AQUI NO SE TOCA `$POSTGRES_DB`, Y ES LO CONTRARIO DE LO QUE HACIA (`E`).
 #
-# Revocar de PUBLIC obliga a conceder explicitamente a los cuatro roles del SGTM,
-# que hasta ahora se conectaban por esa misma herencia. Los dos pasos van juntos y
-# en este orden: al reves, la aplicacion se queda sin poder conectarse.
+# Estas cuatro lineas revocaban el CONNECT de PUBLIC sobre `$POSTGRES_DB` y se lo
+# devolvian a los cuatro roles, para que `keycloak` no heredara acceso al padron.
+# El razonamiento valia mientras `$POSTGRES_DB` fuera `sgtm`, la base del monolito.
+#
+# Desde `E` vale `postgres`, la base de MANTENIMIENTO, y con ella dentro la misma
+# sentencia hace un dano que nadie pidio: `40-rol-de-respaldo.sh` y
+# `50-rol-de-monitoreo.sh` se conectan ahi Y LO DICEN POR ESCRITO —«conectarse a
+# `postgres` evita tocar el REVOKE CONNECT que 30-base-de-keycloak.sh le hace a
+# PUBLIC»—, asi que revocarlo deja al exportador sin metricas y al respaldo sin
+# poder abrir sesion. Medido en CI: tres paneles de `pg_*` en «No data», y el
+# respaldo habria fallado a las 06:00 con un mensaje que no se parece a su causa.
+#
+# Y lo que aquellas lineas protegian **ya lo hace otro**: el `crear-roles.sql` de
+# cada sistema revoca el CONNECT de PUBLIC sobre SU base (C-7 §6), que es donde
+# vive el padron desde el corte. `keycloak` no alcanza ninguna de las cuatro, y no
+# por herencia sino porque cada una lo dice.
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<SQL
-REVOKE CONNECT ON DATABASE "$POSTGRES_DB" FROM PUBLIC;
-GRANT  CONNECT ON DATABASE "$POSTGRES_DB"
-    TO kamayuk_owner, kamayuk_app, kamayuk_readonly, rol_carga_parametros;
 REVOKE CONNECT ON DATABASE keycloak FROM PUBLIC;
 GRANT  CONNECT ON DATABASE keycloak TO keycloak;
 SQL

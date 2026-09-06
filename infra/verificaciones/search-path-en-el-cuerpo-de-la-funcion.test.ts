@@ -12,7 +12,7 @@ import {
   fragilidadesDelEsquema,
 } from "./search-path-en-el-cuerpo-de-la-funcion";
 
-/** La muestra vive fuera de los seis esquemas, para poder medir la guarda sin tocarlos. */
+/** La muestra vive fuera de los cuatro esquemas, para poder medir la guarda sin tocarlos. */
 const MUESTRA = {
   nombre: "muestra",
   raiz: raizDelRepositorio(),
@@ -32,10 +32,11 @@ const MUESTRA = {
  * Corre en `yarn verificar`, sin cluster y sin motor.
  */
 describe("C-4 — ningun cuerpo de funcion SQL depende del search_path", () => {
-  it("EL CONTRASTE: hoy solo lo hace el monolito, que no se puede arreglar", () => {
+  it("EL CONTRASTE: hoy no queda ninguna fragil", () => {
     // Va primero, como en C-2 y C-3: es la mitad que dice que el arbol esta limpio.
     // `rentas` y `catastro` lo arreglaron con una migracion nueva —V11 y V4— y no
-    // editando su baseline, porque el baseline ya corrio.
+    // editando su baseline, porque el baseline ya corrio. Las cuatro entradas que quedaban
+    // eran del monolito, y se fueron con el (`E`).
     const censo = fragilidades().map((f) => ({
       sistema: f.sistema,
       migracion: f.migracion,
@@ -55,7 +56,10 @@ describe("C-4 — ningun cuerpo de funcion SQL depende del search_path", () => {
     // de ser cierta —porque alguien la arreglo— tambien se pone roja. Esto lo dice con
     // todas las letras para que no se lea como una lista de excepciones mudas: es la
     // misma decision que `DECLARADAS_DE_MAS` en C-2.
-    expect(FRAGILIDADES_QUE_NO_SE_ARREGLAN.length).toBeGreaterThan(0);
+    // La lista esta VACIA desde `E`, y por eso este `for` no ejercita nada: lo que
+    // sostiene la comprobacion es el `toEqual` de arriba, que compara listas enteras y se
+    // pone rojo con la primera fragilidad que aparezca. Este bucle se conserva —no se
+    // borra— porque es lo que impide que una entrada nueva entre sin motivo escrito.
     for (const declarada of FRAGILIDADES_QUE_NO_SE_ARREGLAN) {
       expect(declarada.porque.length).toBeGreaterThan(20);
       expect(
@@ -69,11 +73,11 @@ describe("C-4 — ningun cuerpo de funcion SQL depende del search_path", () => {
     }
   });
 
-  it("mide las seis copias del esquema, y ninguna se queda sin mirar", () => {
+  it("mide las cuatro copias del esquema, y ninguna se queda sin mirar", () => {
     // Sin esto, un `esquemas()` que devolviera la lista vacia dejaria las dos
     // comprobaciones de arriba en verde sin haber abierto un archivo — el modo de fallo
     // que #675 escribio primero.
-    expect(esquemas().length).toBe(6);
+    expect(esquemas().length).toBe(4);
     expect(esquemas().map((e) => e.nombre)).toContain("rentas");
     expect(esquemas().map((e) => e.nombre)).toContain("catastro");
   });
@@ -167,7 +171,7 @@ describe("C-4 — ningun cuerpo de funcion SQL depende del search_path", () => {
 
   it("el rojo nombra el repositorio, la migracion, la linea y la funcion", () => {
     // Un rojo que dijera solo «hay un nombre sin esquema» obligaria a buscarlo a mano en
-    // seis copias de esquema y 4 000 lineas.
+    // cuatro copias de esquema y 4 000 lineas.
     expect(
       descripcionDeLaFragilidad({
         sistema: "rentas",

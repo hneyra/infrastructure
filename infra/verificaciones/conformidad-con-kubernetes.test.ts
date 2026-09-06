@@ -57,14 +57,15 @@ describe("cada manifiesto es asignable a su tipo de @pulumi/kubernetes", () => {
     const trabajos: k8s.types.input.batch.v1.Job[] = de("Job");
     const programados: k8s.types.input.batch.v1.CronJob[] = de("CronJob");
 
-    // Nueve despliegues: motor, identidad, aplicacion, interfaz, y los cinco de
-    // observabilidad —Prometheus, Alertmanager, node-exporter, kube-state-metrics,
-    // Grafana— (#156).
-    expect(despliegues).toHaveLength(9);
-    // Tres Jobs: migracion, implantacion y reconciliacion del realm.
-    expect(trabajos).toHaveLength(3);
-    // Dos CronJob: el lote de la aplicacion (suspendido) y el respaldo base (#155).
-    expect(programados).toHaveLength(2);
+    // Siete despliegues: motor, identidad y los cinco de observabilidad —Prometheus,
+    // Alertmanager, node-exporter, kube-state-metrics, Grafana— (#156). Eran NUEVE hasta
+    // `E`: la aplicacion del monolito y su interfaz se fueron con el.
+    expect(despliegues).toHaveLength(7);
+    // Un Job: la reconciliacion del realm. Eran tres —los dos de arranque del monolito—, y
+    // los de los cuatro sistemas viven en SU namespace, compuestos por su descriptor.
+    expect(trabajos).toHaveLength(1);
+    // Un CronJob: el respaldo base (#155). Eran dos, con el lote de la aplicacion.
+    expect(programados).toHaveLength(1);
   });
 
   it("ServiceAccount, ClusterRole y ClusterRoleBinding: solo kube-state-metrics", () => {
@@ -82,7 +83,10 @@ describe("cada manifiesto es asignable a su tipo de @pulumi/kubernetes", () => {
   it("NetworkPolicy: denegar-todo mas las excepciones nombradas (issue #157)", () => {
     const politicas: k8s.types.input.networking.v1.NetworkPolicy[] = de("NetworkPolicy");
 
-    expect(politicas).toHaveLength(24);
+    // Diecisiete. Eran 24 hasta `E`: se fueron las siete que seleccionaban pods del
+    // monolito —ingreso y salida de la interfaz, ingreso y salida de la aplicacion, y la
+    // salida de `migracion`, `implantacion` y `lote`—.
+    expect(politicas).toHaveLength(17);
   });
 
   it("los recursos de Traefik llevan el grupo de la v3", () => {

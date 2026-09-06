@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { construirManifiestos } from "../componentes";
 import { raizDelRepositorio } from "../componentes/fuentes";
 import type { Environment } from "../config";
+import { manifiestosDelAmbiente } from "../herramientas/emitir-manifiestos";
 import { invariantesDe } from "./stacks";
 
 /**
@@ -113,15 +113,15 @@ export interface Sistema {
  *
  * **Ninguna entrada se despliega por estar aqui.** Quien decide eso es
  * {@link sistemasDesplegados}, que lo lee de los manifiestos. Esta tabla solo contesta
- * «si se desplegara, ¿de que `git log` sale su `sha`?», y por eso incluye a los cuatro
- * sistemas del corte aunque hoy no se despliegue ninguno: el dia que el primero entre,
- * la comprobacion sabe donde mirar sin que nadie tenga que acordarse.
+ * «si se desplegara, ¿de que `git log` sale su `sha`?».
  *
- * `sgtm` sigue aqui porque **es el que se despliega hoy**. No es historia: `Migracion.ts`
- * construye `sgtm-migrador` y `Aplicacion.ts` construye `sgtm-aplicacion`.
+ * **`sgtm` ya no esta** (`E`). Estuvo hasta el 2026-09-06 porque era el que se desplegaba;
+ * con el monolito fuera, ningun ambiente construye su migrador y su `sha` no gobierna nada.
+ * Las cuatro entradas que quedan son las que de verdad migran, y por eso esta comprobacion
+ * pasa de medir un esquema a medir cuatro: hasta hoy los cuatro `Job` de migracion del
+ * corte **no los medía nadie** (hueco declarado en C-20).
  */
 export const SISTEMAS: readonly Sistema[] = [
-  { nombre: "sgtm", clon: "sgtm", migraciones: "backend/sgtm-esquema/src/main/resources/db/migration/" },
   {
     nombre: "rentas",
     clon: "rentas",
@@ -286,14 +286,25 @@ export function loQueLeFaltaA(version: string, referencia: string, sistema: Sist
  * Los sistemas cuyo migrador construye este ambiente, **leidos de los manifiestos**.
  *
  * No de una lista: una lista escrita a mano es el segundo sitio donde olvidarse, y el
- * dia que alguien anada el `Job` de migracion de `rentas` sin declarar su version, esa
+ * dia que alguien anada el `Job` de migracion de un sistema sin declarar su version, esa
  * lista seria justamente la que diria que todo esta bien. Aqui el censo sale de la imagen
  * de cada contenedor, que es lo unico que decide de verdad que esquema se migra.
+ *
+ * **Y se leen los CINCO espacios de nombres, no solo la plataforma** (`E`). Hasta el
+ * 2026-09-06 esto llamaba a `construirManifiestos` a secas —la plataforma— y por eso solo
+ * podia ver el migrador del monolito: los `Job` de los cuatro sistemas los compone el
+ * descriptor, en su propio namespace desde ADR-0031. Es el mismo defecto que C-16 arreglo
+ * en `capacidad.ts` y `D` en `index.ts`, repetido por tercera vez en otro llamador; con el
+ * censo mirando lo que de verdad se aplica, el hueco de C-20 —«los cuatro Job de migracion
+ * del corte no los mide nadie»— se cierra solo.
  */
 export function sistemasDesplegados(ambiente: Environment): string[] {
   const nombres = new Set<string>();
-  const manifiestos = construirManifiestos(invariantesDe(ambiente)) as unknown[];
-
+  const manifiestos = manifiestosDelAmbiente(invariantesDe(ambiente)) as unknown[];
+  // La imagen de un migrador es `<registro>/kamayuk-<sistema>-migrador:<sha>`
+  // (`descriptor/entorno.ts`). Se casa contra {@link SISTEMAS} en vez de recortar el
+  // prefijo con un regex: asi una imagen que nadie declaro no entra en el censo con un
+  // nombre inventado — se queda fuera y `unicoSistemaDesplegado` no la puede resolver.
   const recorrer = (valor: unknown): void => {
     if (Array.isArray(valor)) {
       valor.forEach(recorrer);
@@ -302,9 +313,9 @@ export function sistemasDesplegados(ambiente: Environment): string[] {
     if (valor === null || typeof valor !== "object") return;
     for (const [clave, dentro] of Object.entries(valor as Record<string, unknown>)) {
       if (clave === "image" && typeof dentro === "string") {
-        const migrador = /(?:^|\/)([a-z0-9-]+)-migrador:/.exec(dentro);
-        const nombre = migrador?.[1];
-        if (nombre !== undefined) nombres.add(nombre);
+        for (const sistema of SISTEMAS) {
+          if (dentro.includes(`/kamayuk-${sistema.nombre}-migrador:`)) nombres.add(sistema.nombre);
+        }
       }
       recorrer(dentro);
     }
@@ -339,13 +350,33 @@ export function ambientesConMigrador(ambientes: readonly Environment[]): Environ
   return ambientes.filter((ambiente) => sistemasDesplegados(ambiente).length > 0);
 }
 
+/**
+ * La version que un ambiente declara para un sistema.
+ *
+ * Era **una** —`applicationBootstrapVersion`, la del monolito— y desde `E` son cuatro, una
+ * por `kamayuk:versionDe<Sistema>`. `unicoSistemaDesplegado` llevaba escrito desde #675 el
+ * error que esto cierra: «una sola linea solo puede fechar un `git log`».
+ */
+export function versionDeclarada(ambiente: Environment, sistema: Sistema): string {
+  const version = invariantesDe(ambiente).sistemas.versiones[sistema.nombre];
+  if (version === undefined) {
+    throw new Error(
+      `El ambiente «${ambiente}» construye el migrador de «${sistema.nombre}» y su stack no ` +
+        `declara \`kamayuk:versionDe${sistema.nombre[0]?.toUpperCase()}${sistema.nombre.slice(1)}\`.\n` +
+        "  Sin esa linea nadie puede saber que esquema trae la imagen que el Job baja, que es " +
+        "exactamente el estado que #675 encontro y que ocho meses en verde no delataron.",
+    );
+  }
+  return version;
+}
+
 /** La deriva de un ambiente, medida contra la revision de referencia de SU sistema. */
 export function derivaDeMigraciones(
   ambiente: Environment,
   referencia: string = REVISION_DE_REFERENCIA,
   sistema: Sistema = sistemaLlamado(unicoSistemaDesplegado(ambiente)),
 ): DerivaDeMigraciones {
-  const version = invariantesDe(ambiente).application.bootstrapVersion;
+  const version = versionDeclarada(ambiente, sistema);
   const deLaVersion = migracionesDe(version, sistema);
   const deLaReferencia = migracionesDe(referencia, sistema);
   const trae = new Set(deLaVersion);
@@ -359,6 +390,22 @@ export function derivaDeMigraciones(
     faltan: deLaReferencia.filter((archivo) => !trae.has(archivo)),
     enLaHistoria: estaEnLaHistoriaDe(version, referencia, sistema),
   };
+}
+
+/**
+ * La deriva de **cada** sistema que este ambiente migra.
+ *
+ * Es la forma que sustituye a `derivaDeMigraciones(ambiente)` a secas desde `E`: aquel
+ * suponia un solo migrador por ambiente, que es lo que valia mientras el monolito era el
+ * unico. Hoy son cuatro y cada uno tiene su `git log` y su linea de version.
+ */
+export function derivasDelAmbiente(
+  ambiente: Environment,
+  referencia: string = REVISION_DE_REFERENCIA,
+): DerivaDeMigraciones[] {
+  return sistemasDesplegados(ambiente).map((nombre) =>
+    derivaDeMigraciones(ambiente, referencia, sistemaLlamado(nombre)),
+  );
 }
 
 /**
@@ -419,7 +466,8 @@ export function loQueNoEncaja(deriva: DerivaDeMigraciones): string {
   return (
     `El ambiente «${deriva.ambiente}» declara la version ${deriva.version}, que no esta ` +
     `en la historia de ${REVISION_DE_REFERENCIA} de «${deriva.sistema}».\n` +
-    "  Las tres imagenes se publican al integrar en main (`publicar-imagenes.yml`), asi " +
+    "  Las dos imagenes de cada sistema se publican al integrar en main de SU repositorio " +
+    "(`publicar-imagenes.yml`), asi " +
     "que una revision que no esta ahi no tiene ninguna: el Job pediria una etiqueta que " +
     "nadie construyo.\n" +
     "  Remedio: declarar un sha de main. Y tomarlo con `git rev-parse`, no tecleado: " +
@@ -444,10 +492,15 @@ export function loQueFalta(deriva: DerivaDeMigraciones): string {
     `${deriva.declaraLaReferencia}: le faltan ${deriva.faltan.length} ` +
     `(${deriva.faltan.join(", ")}).\n` +
     "  Nada lo delata solo: el Job lleva la version EN EL NOMBRE, asi que mientras esa " +
-    `linea no se mueva «kamayuk-${deriva.ambiente}-migracion-${corta}» ya existe, ` +
+    `linea no se mueva «kamayuk-${deriva.sistema}-migracion-${corta}» ya existe, ` +
     "`pulumi up` no crea ninguno y sale en verde.\n" +
-    "  Remedio: subir `kamayuk:applicationBootstrapVersion` en " +
-    `infra/Pulumi.${deriva.ambiente}.yaml al ultimo sha de main con las tres imagenes ` +
-    "publicadas (publicar-imagenes.yml en verde para ese sha)."
+    `  Remedio: subir \`kamayuk:versionDe${mayuscula(deriva.sistema)}\` en ` +
+    `infra/Pulumi.${deriva.ambiente}.yaml al ultimo sha de main de «${deriva.sistema}» con ` +
+    "sus dos imagenes publicadas (publicar-imagenes.yml de ESE repositorio en verde)."
   );
+}
+
+/** `rentas` -> `Rentas`. La clave del stack lleva el nombre del sistema capitalizado. */
+function mayuscula(sistema: string): string {
+  return `${sistema[0]?.toUpperCase() ?? ""}${sistema.slice(1)}`;
 }

@@ -280,7 +280,7 @@ export function fragilidadesDelEsquema(esquema: Esquema): Fragilidad[] {
   return hallazgos;
 }
 
-/** El censo entero: las seis copias del esquema, en el orden de `esquemas()`. */
+/** El censo entero: las cuatro copias del esquema, en el orden de `esquemas()`. */
 export function fragilidades(): Fragilidad[] {
   return esquemas().flatMap(fragilidadesDelEsquema);
 }
@@ -293,45 +293,17 @@ export function fragilidades(): Fragilidad[] {
  * que deje de ser cierta —porque alguien la arreglo— tambien. No hay donde esconder una ni
  * donde dejar rancia la otra.
  *
- * `sgtm` es el archivo historico y su `V11` es una migracion **aplicada**: editarla cambia
- * su suma de Flyway y deja «la base de al lado distinta sin que nada se ponga rojo». Y una
- * migracion nueva tampoco sirve alli, porque el monolito no se toca. De modo que el
- * monolito **no se puede restaurar de un `pg_dump` sin perder `contribuyente_nombre_trgm_ix`**,
- * y eso es un hecho que conviene tener escrito donde se lea y no en un documento.
+ * **Y desde `E` esta VACIA**, que es un resultado y no un descuido. Las cuatro entradas que
+ * tenia eran del monolito: dos de la copia local de su esquema —`backend/sgtm-esquema`, que
+ * se retiro con el— y dos del clon de `sgtm`, que este repositorio ya no lee. La fragilidad
+ * de aquel `V11` sigue existiendo **en el monolito**, y el monolito ya no es de aqui.
+ *
+ * Una lista vacia no apaga nada: la prueba compara en las DOS direcciones, asi que la
+ * primera fragilidad que aparezca en cualquiera de los cuatro esquemas se pone roja aqui.
  */
 export const FRAGILIDADES_QUE_NO_SE_ARREGLAN: readonly {
   sistema: string;
   migracion: string;
   nombre: string;
   porque: string;
-}[] = [
-  {
-    sistema: "infrastructure (copia del esquema del monolito)",
-    migracion: "V11__busqueda_por_aproximacion.sql",
-    nombre: "'unaccent'::regdictionary",
-    porque:
-      "es la copia local del esquema del monolito: se arregla cuando se arregle el " +
-      "monolito, o nunca, porque el monolito es archivo historico",
-  },
-  {
-    sistema: "infrastructure (copia del esquema del monolito)",
-    migracion: "V11__busqueda_por_aproximacion.sql",
-    nombre: "unaccent(...)",
-    porque: "el mismo cuerpo, la otra mitad: la funcion tambien se resuelve por search_path",
-  },
-  {
-    sistema: "sgtm",
-    migracion: "V11__busqueda_por_aproximacion.sql",
-    nombre: "'unaccent'::regdictionary",
-    porque:
-      "V11 es una migracion APLICADA del archivo historico: editarla cambia su suma de " +
-      "Flyway, y sgtm no admite migraciones nuevas. Consecuencia medida y asumida: un " +
-      "pg_dump del monolito se restaura con 2 errores y sin el indice del padron",
-  },
-  {
-    sistema: "sgtm",
-    migracion: "V11__busqueda_por_aproximacion.sql",
-    nombre: "unaccent(...)",
-    porque: "el mismo cuerpo, la otra mitad",
-  },
-];
+}[] = [];
