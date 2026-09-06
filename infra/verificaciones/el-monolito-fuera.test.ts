@@ -288,3 +288,84 @@ describe("E · el repositorio ya no lleva el esquema del monolito", () => {
     }
   });
 });
+
+describe("E · nadie revoca el CONNECT sobre la base de mantenimiento", () => {
+  /**
+   * La guarda que faltaba, y que un cambio de una palabra necesitaba.
+   *
+   * `30-base-de-keycloak.sh` revocaba `CONNECT ON DATABASE "$POSTGRES_DB" FROM PUBLIC`, y eso
+   * era correcto mientras `$POSTGRES_DB` fuera `sgtm`: servia para que `keycloak` no heredara
+   * acceso al padron. `E` movio `POSTGRES_DB` a `postgres` —la base de mantenimiento— y con ese
+   * cambio la MISMA sentencia pasa a revocar el acceso a la base de la que dependen los otros
+   * dos guiones: `40-rol-de-respaldo.sh` y `50-rol-de-monitoreo.sh` se conectan ahi **y lo dicen
+   * por escrito**, «conectarse a `postgres` evita tocar el REVOKE CONNECT que
+   * 30-base-de-keycloak.sh le hace a PUBLIC».
+   *
+   * **No lo vio nada, y por eso existe esto.** `yarn verificar` no ejecuta los guiones, y el
+   * sintoma aparecio dos trabajos de CI mas tarde y con otra cara: tres paneles de `pg_*` en
+   * «No data» —el exportador sin poder abrir sesion— y un respaldo que habria fallado a las
+   * 06:00 con un mensaje que no se parece a su causa.
+   *
+   * Se leen los guiones **del ConfigMap que se despliega**, no del disco.
+   */
+  const guionesDelMotor = (): Record<string, string> => {
+    const inicializacion = manifiestosDelAmbiente(invariantesDe("stg")).find(
+      (m: { kind?: string; metadata?: { name?: string } }) =>
+        m.kind === "ConfigMap" && (m.metadata?.name ?? "").endsWith("postgres-inicializacion"),
+    ) as { data?: Record<string, string> } | undefined;
+    expect(inicializacion?.data, "no esta el ConfigMap de inicializacion del motor").toBeDefined();
+    return inicializacion?.data ?? {};
+  };
+
+  it("ningun guion revoca CONNECT sobre `postgres` ni sobre `$POSTGRES_DB`", () => {
+    const guiones = guionesDelMotor();
+    expect(Object.keys(guiones).length, "el ConfigMap vino vacio").toBeGreaterThan(3);
+
+    for (const [nombre, texto] of Object.entries(guiones)) {
+      const revocaciones = texto
+        .split("\n")
+        .filter((l) => /REVOKE\s+CONNECT\s+ON\s+DATABASE/i.test(l) && !l.trim().startsWith("#"));
+      for (const linea of revocaciones) {
+        expect(
+          /"\$POSTGRES_DB"|\bpostgres\b/.test(linea),
+          `«${nombre}» revoca el CONNECT de la base de mantenimiento:\n    ${linea.trim()}\n` +
+            "  `40-rol-de-respaldo.sh` y `50-rol-de-monitoreo.sh` se conectan ahi a proposito, y " +
+            "sin CONNECT el exportador se queda sin metricas y el respaldo no puede ni abrir " +
+            "sesion — a las 06:00, con un mensaje que no se parece a su causa.",
+        ).toBe(false);
+      }
+    }
+  });
+
+  /**
+   * Y el contraste, sin el cual lo de arriba se satisface borrando el archivo entero: el
+   * `REVOKE` que SI tiene que estar es el de la base de Keycloak.
+   */
+  it("y el de la base de Keycloak sigue puesto", () => {
+    const guiones = guionesDelMotor();
+    const keycloak = Object.entries(guiones).find(([n]) => n.includes("keycloak"))?.[1] ?? "";
+    expect(keycloak, "no esta el guion de la base de Keycloak").not.toBe("");
+    expect(keycloak).toMatch(/REVOKE\s+CONNECT\s+ON\s+DATABASE\s+keycloak\s+FROM\s+PUBLIC/i);
+  });
+
+  /**
+   * Y lo que aquella revocacion protegia lo hace ahora cada sistema sobre SU base (C-7 §6):
+   * sin esto, retirarla se leeria como «keycloak puede llegar al padron otra vez».
+   */
+  it.each(SISTEMAS_DEL_PRODUCTO)("«%s» revoca el CONNECT de PUBLIC sobre su base", (sistema) => {
+    const roles = readFileSync(
+      join(
+        clonDe(sistemaLlamado(sistema)),
+        "backend",
+        `kamayuk-${sistema}-esquema`,
+        "src/main/resources/db/roles/crear-roles.sql",
+      ),
+      "utf8",
+    );
+    expect(
+      roles,
+      `«${sistema}» ya no revoca el CONNECT de PUBLIC sobre su base: cualquier rol del cluster ` +
+        "—`keycloak` incluido— podria abrir sesion contra el padron",
+    ).toMatch(/REVOKE\s+CONNECT\s+ON\s+DATABASE/i);
+  });
+});

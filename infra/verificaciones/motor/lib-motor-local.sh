@@ -113,7 +113,7 @@ motor_arrancar_con_docker() {
 
 motor_docker_run() {
     docker run --detach --name "$CONTENEDOR" \
-        --env POSTGRES_DB=sgtm \
+        --env POSTGRES_DB=postgres \
         --env POSTGRES_USER=postgres \
         --env POSTGRES_PASSWORD="$CLAVE_SUPER" \
         --env KAMAYUK_CLAVE_OWNER="$CLAVE_OWNER" \
@@ -169,7 +169,7 @@ motor_arrancar_localmente() {
                        >/dev/null ;;
             # `KAMAYUK_DIR_KAMAYUK` existe justo para esto: los dos guiones de C-14 leen de
             # `/etc/kamayuk` dentro del contenedor y de aqui cuando se corren fuera.
-            *.sh) POSTGRES_USER=postgres POSTGRES_DB=sgtm \
+            *.sh) POSTGRES_USER=postgres POSTGRES_DB=postgres \
                   KAMAYUK_DIR_KAMAYUK="$TRABAJO/kamayuk" \
                   KAMAYUK_CLAVE_OWNER="$CLAVE_OWNER" KAMAYUK_CLAVE_APP="$CLAVE_APP" \
                   KAMAYUK_CLAVE_CARGA="$CLAVE_CARGA" \
