@@ -25,7 +25,7 @@ la base `sgtm` — que existe en los dos ambientes y **no tiene ni una tabla del
 | **2** | Nada de los cuatro sistemas ni de la plataforma se va con él | **Cumplido**: 0 objetos nuevos, y los 6/7 que cambian por dentro son los que tenían que cambiar | §4 |
 | **3** | Cada arreglo con su mutación, restaurada por copia comparada con `cmp` | **Cumplido**, nueve mutaciones, **una en verde** | §5 |
 | **4** | La guarda de #675 sigue midiendo, y mide más que antes | **Cumplido**: de un esquema a cuatro | §3 |
-| **5** | Las cifras no bajan, y los rojos se leen contra su línea base | **Cumplido**: base `F` 687/**0**, rama 698/**0** | §6 |
+| **5** | Las cifras no bajan, y los rojos se leen contra su línea base | **Cumplido**: base `F` 687/**0**, rama 704/**0** | §6 |
 
 ---
 
@@ -79,6 +79,51 @@ a una base que no exista en un clúster **ya creado** deja al motor declarándos
 reiniciándose para siempre, porque el `entrypoint` no crea bases sobre un volumen que no está
 vacío; y elegir la de uno de los cuatro sistemas ataría la sonda del motor a que ese sistema
 exista.
+
+---
+
+## 2.3 Los dos que encontró CI, y `yarn verificar` no podía ver
+
+Los dos son la misma forma que los tres de §2.2 —algo que colgaba de la base `sgtm`— y los dos se
+escaparon por el mismo sitio: **`yarn verificar` no ejecuta los guiones**. Aparecieron dos trabajos
+de CI más tarde y con otra cara.
+
+### (d) El `REVOKE` que apuntaba al monolito y pasó a apuntar a la base de mantenimiento
+
+`30-base-de-keycloak.sh` revocaba `CONNECT ON DATABASE "$POSTGRES_DB" FROM PUBLIC`. Era correcto
+mientras `$POSTGRES_DB` fuera `sgtm`: impedía que `keycloak` heredara acceso al padrón. Este
+trabajo movió `POSTGRES_DB` a `postgres` —la base de **mantenimiento**, §2.2 (c)— y con ese cambio
+**la misma sentencia** revoca el acceso a la base de la que dependen los otros dos guiones.
+
+Y no hay que deducirlo: `40-rol-de-respaldo.sh` y `50-rol-de-monitoreo.sh` **lo dicen por escrito**
+—«conectarse a `postgres` evita tocar el `REVOKE CONNECT` que `30-base-de-keycloak.sh` le hace a
+PUBLIC»—. Medido en CI: **tres paneles de `pg_*` en «No data»**, el exportador sin poder abrir
+sesión; y el respaldo habría fallado a las 06:00, que es el mismo daño que (a) por otra puerta.
+
+Se retiran las dos líneas, y se puede porque **lo que protegían ya lo hace otro**: el
+`crear-roles.sql` de cada sistema revoca el `CONNECT` de PUBLIC sobre **su** base (C-7 §6), que es
+donde vive el padrón desde el corte. Una prueba nueva fija que los cuatro lo siguen haciendo —sin
+esa mitad, retirarlas se leería como «`keycloak` puede llegar al padrón otra vez»—.
+
+### (e) El guion del motor tenía `sgtm` escrito ocho veces
+
+`verificar-el-motor.sh` medía contra la base del monolito, y `lib-motor-local.sh` levantaba el
+motor con `POSTGRES_DB=sgtm`. **La mitad de esas comprobaciones habría pasado en verde sin medir
+nada**: «`kamayuk_app` no puede crear tablas» es trivialmente cierto en una base donde no tiene
+ningún privilegio. Lo que falló ruidosamente —`kamayuk_owner` creando la tabla del paso 9— fue la
+suerte de que `10-crear-roles.sql` fuera justo quien concedía ese `CREATE` sobre `public`.
+
+Pasa a `BASE_DEL_PADRON=rentas`, por lo mismo que el registro del respaldo, y
+`rol_carga_parametros` a `BASE_DE_LA_CARGA=normativa`, que es su única base (C-7 §6): medirlo
+contra otra diría lo contrario de la verdad.
+
+### Y lo que no se pudo verificar aquí, con todas las letras
+
+**`verificar-el-motor.sh` no corre en la máquina donde se escribió esto** —«ignoring
+`/docker-entrypoint-initdb.d/*`», el motor no acepta conexiones—. El control lo dice: falla
+**igual sobre `F`**, donde CI lo pasa en verde, así que es ese Docker y no el cambio. Significa que
+estos dos arreglos **los valida CI y no quien los escribió**, y eso se dice en vez de darlos por
+buenos.
 
 ---
 
@@ -213,9 +258,9 @@ hermanos avanzan por su cuenta y `catastro` avanzó.
 | | Pruebas | Rojas |
 |---|---|---|
 | base: [`F`](F-la-interfaz-llega-a-caja.md) | 687 | **0** |
-| esta rama, encima | 698 | **0** |
+| esta rama, encima | 704 | **0** |
 
-**Las once que suben son las de `E`**, y no queda ninguna roja.
+**Las diecisiete que suben son las de `E`**, y no queda ninguna roja.
 
 > **Esta medición se rehízo DOS veces, y conviene decir por qué.** La primera se tomó contra
 > `71943d8` —`main` cuando la rama salió— y daba 680/**5**. Mientras el trabajo estaba en curso
