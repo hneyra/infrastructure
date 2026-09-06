@@ -1218,7 +1218,7 @@ public final class ReglasDeArquitectura {
                 }
             }
             String nombre = nombreDelParametro(metodo, parametro.getIndex());
-            if (nombre != null && nombraGeometria(nombre)) {
+            if (nombraGeometria(nombre)) {
                 return "el parametro «" + nombre + "»";
             }
             if (tipo.isRecord()) {
@@ -1244,24 +1244,53 @@ public final class ReglasDeArquitectura {
          * pasaba en VERDE sobre exactamente el defecto que existe para atrapar. Medido sobre {@code
          * PlanoCatastralController}.
          *
-         * <p>El nombre esta en el bytecode porque los cinco backends compilan con {@code
-         * -parameters}, que es tambien lo que Spring necesita para resolverlo. Si algun dia dejara
-         * de estarlo, aqui se devuelve {@code null} y esta mitad de la regla deja de mirar — pero
-         * entonces Spring tampoco sabria enlazar el parametro, asi que el defecto no llegaria a
-         * existir por otro camino.
+         * <p>El nombre esta en el bytecode porque los cuatro backends compilan con {@code
+         * -parameters} —{@code kamayuk.java-base.gradle.kts}, que les llega a todos los modulos por
+         * la cadena {@code modulo -> java-base} y {@code pruebas -> calidad -> java-base}—, que es
+         * tambien lo que Spring necesita para resolverlo.
+         *
+         * <p><b>Y si dejara de estarlo, esto LANZA en vez de devolver {@code null}.</b> La version
+         * anterior se lo tragaba por dos salidas —{@code !isNamePresent()}, que es EXACTAMENTE el
+         * sintoma de que falta {@code -parameters}, y el {@code catch}—, y las dos significan lo
+         * mismo: esta mitad de la regla acaba de dejar de mirar, en verde. Es lo que C-15/C-16
+         * decidieron que no se hace («no se pudo comprobar» no puede leerse igual que «esta bien»)
+         * y lo que C-9a implemento en {@code flujosDe}, que lanza cuando el clon no trae sus
+         * flujos. El argumento de que «Spring tampoco sabria enlazarlo» solo cubre la primera
+         * salida y solo para {@code @RequestParam} sin nombre; la segunda no tiene nada que ver con
+         * {@code -parameters} y dejaba la regla muda METODO A METODO, sin dejar rastro.
          */
         private static String nombreDelParametro(JavaMethod metodo, int indice) {
+            java.lang.reflect.Parameter[] parametros;
             try {
-                java.lang.reflect.Parameter[] parametros = metodo.reflect().getParameters();
-                if (indice >= parametros.length || !parametros[indice].isNamePresent()) {
-                    return null;
-                }
-                return parametros[indice].getName();
+                parametros = metodo.reflect().getParameters();
             } catch (RuntimeException | LinkageError inalcanzable) {
-                // La clase esta en el classpath —ArchUnit la importo de ahi—, pero si no se
-                // pudiera resolver, no mirar es mejor que fallar por una causa que no es la regla.
-                return null;
+                throw new IllegalStateException(
+                        "No se pudo leer la firma de "
+                                + metodo.getFullName()
+                                + ": esta regla no puede mirar el nombre de sus parametros, y no"
+                                + " mirar no es estar bien (C-15/C-16). Remedio: que la clase este"
+                                + " en el classpath de prueba",
+                        inalcanzable);
             }
+            if (indice >= parametros.length) {
+                throw new IllegalStateException(
+                        "El parametro "
+                                + indice
+                                + " de "
+                                + metodo.getFullName()
+                                + " no existe en la firma reflejada: ArchUnit y el bytecode no"
+                                + " coinciden, asi que esta regla no esta mirando lo que cree");
+            }
+            if (!parametros[indice].isNamePresent()) {
+                throw new IllegalStateException(
+                        metodo.getFullName()
+                                + " no trae el nombre de sus parametros en el bytecode: este modulo"
+                                + " no compila con -parameters, y sin el la mitad de"
+                                + " TODA_GEOMETRIA_ENTRA_POR_BATCH pasa en verde sobre el defecto"
+                                + " que existe para atrapar (T-0 §3.2). Remedio: anadir"
+                                + " \"-parameters\" a options.compilerArgs de este modulo");
+            }
+            return parametros[indice].getName();
         }
 
         /**
@@ -1270,9 +1299,26 @@ public final class ReglasDeArquitectura {
          * <p>Compara por segmentos y no por «contiene», para que {@code bbox} y {@code marco} sigan
          * pasando: un marco es lo que ADR-0034 obliga a mandar, y una regla que lo prohibiera
          * estaria prohibiendo la unica forma correcta de pedir una tesela.
+         *
+         * <p><b>El camelCase se parte ANTES de bajar a minusculas, y ese orden es la regla.</b> Al
+         * reves —que es como nacio— el {@code toLowerCase} destruye la unica frontera de palabra
+         * que tiene un identificador Java, la mayuscula, y entonces «por segmentos» devuelve un
+         * solo segmento: el identificador entero. Solo pasaban los nombres que son EXACTAMENTE una
+         * palabra del conjunto, o sea que {@code wkt} salia rojo y {@code wktDelLote}, {@code
+         * geometriaDelLote} y {@code nuevoPoligono} pasaban en VERDE. Y el estilo de la casa es el
+         * segundo: CLAUDE.md exige camelCase en los campos de la API, y el codigo real ya escribe
+         * {@code codigoDeSector} y {@code codRefCatastral}. Medido: la rotura con que esta regla se
+         * demostro usaba {@code wkt}, el nombre mas corto posible, asi que el defecto de verdad
+         * —escrito como lo escribiria quien no intenta que la regla muerda— se escapaba.
+         *
+         * <p>El contraste se conserva: {@code bbox}, {@code marcoOeste} y {@code MarcoGeografico}
+         * siguen dando {@code false} con el corte de camelCase puesto.
          */
         private static boolean nombraGeometria(String nombre) {
-            String limpio = nombre.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z]", " ");
+            String limpio =
+                    nombre.replaceAll("([a-z0-9])([A-Z])", "$1 $2")
+                            .toLowerCase(java.util.Locale.ROOT)
+                            .replaceAll("[^a-z]", " ");
             return Arrays.stream(limpio.split(" +")).anyMatch(NOMBRES_DE_GEOMETRIA::contains);
         }
     }

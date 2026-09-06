@@ -111,7 +111,7 @@ public abstract class ArquitecturaTestBase {
     @DisplayName("el codigo de produccion cumple todas las reglas")
     void elCodigoDeProduccionCumpleTodasLasReglas() {
         // Se aplican TODAS, tenga este repositorio negocio o no. Con solo el migrador dentro, las
-        // dieciocho pasan y eso no es vacio: es que el migrador las cumple. Lo que demuestra que
+        // veinte pasan y eso no es vacio: es que el migrador las cumple. Lo que demuestra que
         // muerden es ReglasDeArquitecturaMuerdenTestBase, que corre igual desde el primer dia
         // porque las muestras viajan con las reglas.
         //

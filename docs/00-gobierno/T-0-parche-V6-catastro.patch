@@ -1,0 +1,53 @@
+diff --git a/backend/kamayuk-catastro-esquema/src/main/resources/db/migration/V6__identidad_sncp_y_frente.sql b/backend/kamayuk-catastro-esquema/src/main/resources/db/migration/V6__identidad_sncp_y_frente.sql
+index 92226ba..4f7d930 100644
+--- a/backend/kamayuk-catastro-esquema/src/main/resources/db/migration/V6__identidad_sncp_y_frente.sql
++++ b/backend/kamayuk-catastro-esquema/src/main/resources/db/migration/V6__identidad_sncp_y_frente.sql
+@@ -62,8 +62,17 @@
+ 
+ -- ── El CUC del SNCP: identidad distinta, no un alias del codigo municipal ────
+ 
+-CREATE DOMAIN cuc_sncp AS character(12)
+-    CONSTRAINT cuc_sncp_check CHECK ((VALUE ~ '^[0-9A-Z]{12}$'::text));
++-- `character varying` y NO `character(12)`, y lo decide el tercer hallazgo de RLS y no
++-- una preferencia: `varchar -> text` es *binary-coercible* —sin funcion de por medio—,
++-- asi que el indice de prefijo de abajo puede ir sobre la COLUMNA. Con `character(12)`
++-- hay que envolverla en `(cuc)::text`, y ese cast compila a `text(character)`, que NO es
++-- *leakproof*: bajo la politica no se promueve por encima de ella y el indice no se usa.
++-- Medido contra PostgreSQL 16.13, 30 000 predios por municipalidad, rol NOSUPERUSER
++-- NOBYPASSRLS: con la expresion, 677 bloques y 30 000 filas descartadas en el `Filter`;
++-- sobre la columna, 3 bloques con las TRES condiciones —las dos del rango y la de la
++-- politica— dentro del `Index Cond`. El `CHECK` se comporta igual con los dos tipos.
++CREATE DOMAIN cuc_sncp AS character varying(12)
++    CONSTRAINT cuc_sncp_check CHECK (((VALUE)::text ~ '^[0-9A-Z]{12}$'::text));
+ 
+ COMMENT ON DOMAIN cuc_sncp IS
+     'Codigo Unico Catastral del SNCP (Ley 28294): 8 posiciones de rango asignado por '
+@@ -97,16 +106,19 @@ CREATE UNIQUE INDEX predio_cuc_uq ON predio USING btree (municipalidad_id, cuc)
+ -- primeras posiciones son el rango asignado al distrito, asi que «las unidades
+ -- catastrales de este rango» es una consulta por prefijo y no otra cosa.
+ --
+--- Va sobre la EXPRESION `(cuc)::text` y no sobre la columna, y eso lo decidio el
+--- motor y no una preferencia: `cuc_sncp` es un dominio sobre `character(12)`, y
+--- `CREATE INDEX ... (cuc text_pattern_ops)` falla con «operator class
+--- "text_pattern_ops" does not accept data type cuc_sncp». `bpchar_pattern_ops`
+--- tambien sirve y NO se toma: dejaria DOS convenciones de busqueda por prefijo en la
+--- misma tabla —una con relleno de blancos y otra sin el— y la consulta del CUC no se
+--- podria escribir igual que la del codigo de referencia, que es lo unico que impide
+--- que una de las dos se escriba con `LIKE` el dia que nadie mire.
++-- Va sobre la COLUMNA y no sobre una expresion, igual que `predio_codigo_prefijo_ix`
++-- (V1) sobre el dominio `cod_catastral`. Escribir el rango es NECESARIO Y NO
++-- SUFICIENTE: envuelto en una funcion que no es *leakproof*, PostgreSQL no lo evalua
++-- antes que la politica y no puede ser condicion de ningun indice — es la leccion de
++-- `V66`, que materializo `via.nombre_busqueda` por esto mismo, y la de C-12.
++--
++-- Lo que lo hace posible es que el dominio sea `character varying` (ver arriba): sobre
++-- `character(12)` el unico indice escribible era el de la expresion, y ese es el que no
++-- se usa. `bpchar_pattern_ops` sobre la columna tambien habria funcionado —medido: 3
++-- bloques— y no se toma, porque dejaria DOS convenciones de busqueda por prefijo en la
++-- misma tabla, una con relleno de blancos y otra sin el.
+ CREATE INDEX predio_cuc_prefijo_ix ON predio
+-    USING btree (municipalidad_id, ((cuc)::text) text_pattern_ops)
++    USING btree (municipalidad_id, cuc text_pattern_ops)
+     WHERE (cuc IS NOT NULL);
+ 
+ -- ── El frente de predio ─────────────────────────────────────────────────────

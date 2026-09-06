@@ -1305,6 +1305,48 @@ public abstract class ProhibicionesEnElCodigoFuenteTestBase {
     }
 
     @Test
+    @DisplayName("el marco en el SELECT no exime: hay que FILTRAR por el, no nombrarlo")
+    void elMarcoEnElSelectNoExime() {
+        // La forma mas natural de escribir el defecto, y la que pasaba en VERDE: devolver la caja
+        // al cliente del mapa es normal —el visor la dibuja—, pero la sentencia sigue cruzando el
+        // padron entero con el operador espacial, que es el defecto que V65 arreglo (4 530 bloques
+        // contra 347).
+        String fuente =
+                """
+                class Malo {
+                    private static final String LOTES =
+                            "SELECT p.id, p.marco_oeste, p.marco_sur, p.marco_este, p.marco_norte,"
+                                    + " ST_AsGeoJSON(p.geometria) AS forma FROM predio p"
+                                    + " WHERE ST_Intersects(p.geometria::geometry,"
+                                    + " ST_MakeEnvelope(:oeste, :sur, :este, :norte, 4326))";
+                }
+                """;
+        assertThat(RevisorDeCodigoFuente.revisarEspacial("Malo.java", fuente))
+                .as(
+                        "el marco esta NOMBRADO en la lista del SELECT y no COMPARADO en el WHERE:"
+                                + " no acota ni una fila, asi que no puede eximir al operador")
+                .hasSize(1);
+    }
+
+    @Test
+    @DisplayName("un solo eje del marco tampoco exime: un marco son cuatro desigualdades")
+    void unSoloEjeDelMarcoNoExime() {
+        String fuente =
+                """
+                class Malo {
+                    private static final String LOTES =
+                            "SELECT p.id FROM predio p WHERE p.marco_oeste <= :este"
+                                    + " AND ST_Intersects(p.geometria::geometry, :poligono)";
+                }
+                """;
+        assertThat(RevisorDeCodigoFuente.revisarEspacial("Malo.java", fuente))
+                .as(
+                        "con un eje la sentencia no acota: bastaria escribir marco_oeste <= :x para"
+                                + " eximir un ST_Intersects sobre el padron entero")
+                .hasSize(1);
+    }
+
+    @Test
     @DisplayName("el revisor deja pasar el LIKE de repliegue del prefijo sin sucesor")
     void elRevisorDejaPasarElLikeDeRepliegue() {
         String fuente =

@@ -60,4 +60,31 @@ public abstract class ReglasDeArquitecturaMuerdenTestBase {
                         () -> ReglasDeArquitectura.EL_DOMINIO_NO_CONOCE_FRAMEWORKS.check(muestras))
                 .isInstanceOf(AssertionError.class);
     }
+
+    /**
+     * La geometria que entra por el NOMBRE del parametro, que el {@code @TestFactory} no puede
+     * sujetar.
+     *
+     * <p>Aquel exige que la regla lance, y le basta <b>una</b> violacion en el paquete: la muestra
+     * tiene cuatro puertas y tres llegan por el tipo, por el valor de la anotacion o por un
+     * componente del {@code record}, que {@code motivoDe} evalua ANTES. De modo que hacer que
+     * {@code nombreDelParametro} devolviera siempre {@code null} —o sea, perder {@code
+     * -parameters}— dejaba esta mitad de la regla muda y las pruebas en VERDE en los cuatro
+     * backends. Es la mitad que T-0 §3.2 llama «el trabajo entero», y no estaba demostrada.
+     *
+     * <p>Por eso esta prueba mira el MENSAJE y no solo que lance: exige que nombre el parametro
+     * cuyo unico camino posible es el nombre del bytecode.
+     */
+    @Test
+    @DisplayName("la geometria que solo se ve por el nombre del parametro tambien se detecta")
+    void laGeometriaQueEntraPorElNombreDelParametroSeDetecta() {
+        assertThatThrownBy(
+                        () -> ReglasDeArquitectura.TODA_GEOMETRIA_ENTRA_POR_BATCH.check(muestras))
+                .as(
+                        "sin leer el nombre del parametro del bytecode, esta puerta —la que Spring"
+                                + " resuelve sin nombre en la anotacion— pasa en verde")
+                .isInstanceOf(AssertionError.class)
+                .hasMessageContaining("corregirSinNombrarElParametro")
+                .hasMessageContaining("wktDelLote");
+    }
 }
