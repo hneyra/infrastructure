@@ -2,11 +2,9 @@ import { namespaceName, resourceName, type Environment, type SmtpSettings } from
 import {
   ETIQUETA_DE_NAMESPACE_DE_SISTEMA,
   servicioDeAlertmanager,
-  servicioDeAplicacion,
   servicioDeBaseDeDatos,
   servicioDeGrafana,
   servicioDeIdentidad,
-  servicioDeInterfaz,
   servicioDeKubeStateMetrics,
   servicioDeNodeExporter,
   servicioDePrometheus,
@@ -127,53 +125,27 @@ function permitirDns(namespace: string): NetworkPolicy {
 }
 
 /**
- * Lo que Traefik alcanza, y nada mas: las tres rutas que `Ingreso.ts` publica
- * (issues #150–#153), cada una en su propia politica —`podSelector` no admite un
- * «o» entre valores de `app`, y tres politicas explicitas son mas faciles de leer
- * que una con una etiqueta inventada solo para agruparlas—.
+ * Lo que Traefik alcanza, y nada mas: **la unica ruta que `Ingreso.ts` publica** desde `E`.
+ *
+ * Eran tres —la interfaz del monolito en `/`, su API en `/api/v1` y la identidad—, cada una
+ * con su politica porque `podSelector` no admite un «o» entre valores de `app`. Las dos
+ * primeras se fueron con el monolito, y con ellas las politicas que seleccionaban sus pods:
+ * una politica cuyo `podSelector` no casa con nadie es inerte, pero tambien es una regla que
+ * nadie puede leer contra un pod real — y quien la lea creera que ese pod existe.
  */
 function permitirIngresoPublico(environment: Environment, namespace: string): NetworkPolicy[] {
   const desdeTraefik = [{ namespaceSelector: KUBE_SYSTEM }];
   return [
-    politica(namespace, "permitir-ingreso-interfaz", {
-      podSelector: { matchLabels: { app: servicioDeInterfaz(environment) } },
-      policyTypes: ["Ingress"],
-      ingress: [{ from: desdeTraefik, ports: [puerto(8080)] }],
-    }),
-    // La contraparte de "Traefik llega directo... y la interfaz por su proxy_pass
-    // interno" de mas abajo: esa frase describe una conexion que la interfaz
-    // INICIA, y sin esta politica de salida `denegar-todo` la bloquea aunque el
-    // ingreso de la aplicacion la admita -las dos puntas de un flujo se declaran
-    // por separado, y esta faltaba (encontrado verificando `Red.ts` contra un CNI
-    // que de verdad aplica NetworkPolicy, issue #157).
-    politica(namespace, "permitir-salida-interfaz", {
-      podSelector: { matchLabels: { app: servicioDeInterfaz(environment) } },
-      policyTypes: ["Egress"],
-      egress: [{ to: [deApp(servicioDeAplicacion(environment))], ports: [puerto(8080)] }],
-    }),
-    politica(namespace, "permitir-ingreso-aplicacion", {
-      podSelector: { matchLabels: { app: servicioDeAplicacion(environment) } },
-      policyTypes: ["Ingress"],
-      ingress: [
-        {
-          // Traefik llega directo por `/api/v1` (issue #153), y la interfaz por su
-          // `proxy_pass` interno (`frontend/nginx.conf`) — las dos rutas reales.
-          from: [...desdeTraefik, deApp(servicioDeInterfaz(environment))],
-          ports: [puerto(8080)],
-        },
-      ],
-    }),
     politica(namespace, "permitir-ingreso-identidad", {
       podSelector: { matchLabels: { app: servicioDeIdentidad(environment) } },
       policyTypes: ["Ingress"],
       ingress: [
         {
-          // Traefik por la consola/login (issue #153), la aplicacion por el JWKS
-          // interno (`convenciones.jwksInterno`), y el Job de `reconciliar-realm`
-          // por `kcadm.sh` (`Identidad.ts`).
+          // Traefik por la consola/login (issue #153) y el Job de `reconciliar-realm`
+          // por `kcadm.sh` (`Identidad.ts`). El monolito estaba aqui por el JWKS interno
+          // y se fue con `E`; los cuatro sistemas entran por `DE_LOS_SISTEMAS`, abajo.
           from: [
             ...desdeTraefik,
-            deApp(servicioDeAplicacion(environment)),
             deApp("realm"),
             // Y los cuatro sistemas, por el JWKS interno (C-14, punto 3). Su `issuer-uri` es el
             // publico —es lo que se compara con el `iss` del token—, pero las claves se traen por
@@ -204,15 +176,12 @@ function permitirIngresoPostgres(environment: Environment, namespace: string): N
     policyTypes: ["Ingress"],
     ingress: [
       {
-        // Los cuatro procesos que de verdad se conectan como `kamayuk_app`,
-        // `kamayuk_owner`, `keycloak` o `kamayuk_respaldo` — nunca la interfaz, que no
-        // tiene ni deberia tener credencial ninguna sobre el motor.
+        // Los procesos que de verdad se conectan como `kamayuk_app`, `kamayuk_owner`,
+        // `keycloak` o `kamayuk_respaldo`. Hasta `E` estaban ademas los cinco pods del
+        // monolito —su `Deployment`, sus dos `Job` de arranque y su `CronJob` de lote—; se
+        // van con el, y dejarlos nombrados haria creer que existen.
         from: [
-          deApp(servicioDeAplicacion(environment)),
           deApp(servicioDeIdentidad(environment)),
-          deApp("migracion"),
-          deApp("implantacion"),
-          deApp("lote"),
           deApp(resourceName(environment, "respaldo")),
           // Y los cuatro sistemas, cada uno a SU base (C-14, punto 2). Van por
           // `namespaceSelector` porque desde ADR-0031 viven en otro namespace, y un
@@ -286,39 +255,16 @@ function permitirSalidaIdentidad(
   return politicas;
 }
 
-/** La aplicacion: sale a lo que necesita, y no hay ningun destino de internet en la lista. */
-function permitirSalidaAplicacion(environment: Environment, namespace: string): NetworkPolicy {
-  return politica(namespace, "permitir-salida-aplicacion", {
-    podSelector: { matchLabels: { app: servicioDeAplicacion(environment) } },
-    policyTypes: ["Egress"],
-    egress: [
-      {
-        // Hoy la aplicacion no tiene NINGUNA dependencia externa: valida el token
-        // contra el JWKS interno, nunca contra el emisor publico (`ADR-0005`), y
-        // el resto de lo que hace es SQL. Es una lista BLANCA vacia de internet a
-        // proposito, no una negra: el dia que exista una integracion real —una
-        // pasarela, un servicio del MEF— se declara aqui, con su motivo, no se
-        // abre `0.0.0.0/0` para no tener que volver.
-        to: [deApp(servicioDeBaseDeDatos(environment)), deApp(servicioDeIdentidad(environment))],
-        ports: [puerto(5432), puerto(8080)],
-      },
-    ],
-  });
-}
-
-/** Los procesos de un solo uso que hablan con PostgreSQL, y nada mas. */
+/**
+ * Los procesos de un solo uso de la PLATAFORMA. Hoy queda uno: el `Job` del realm.
+ *
+ * Eran cuatro. Los otros tres —`migracion`, `implantacion` y `lote`— eran los del monolito,
+ * y se van con el (`E`). Los `Job` de migracion e implantacion de los cuatro sistemas viven
+ * en el namespace de su sistema desde ADR-0031, asi que sus politicas de salida las declara
+ * el descriptor de cada uno, no este componente.
+ */
 function permitirSalidaDeLote(environment: Environment, namespace: string): NetworkPolicy[] {
-  const soloPostgres = (app: string): NetworkPolicy =>
-    politica(namespace, `permitir-salida-${app}`, {
-      podSelector: { matchLabels: { app } },
-      policyTypes: ["Egress"],
-      egress: [{ to: [deApp(servicioDeBaseDeDatos(environment))], ports: [puerto(5432)] }],
-    });
-
   return [
-    soloPostgres("migracion"),
-    soloPostgres("implantacion"),
-    soloPostgres("lote"),
     politica(namespace, "permitir-salida-realm", {
       podSelector: { matchLabels: { app: "realm" } },
       policyTypes: ["Egress"],
@@ -364,7 +310,6 @@ function politicasDeObservabilidad(environment: Environment, namespace: string):
   const alertmanager = servicioDeAlertmanager(environment);
   const nodeExporter = servicioDeNodeExporter(environment);
   const kubeStateMetrics = servicioDeKubeStateMetrics(environment);
-  const aplicacion = servicioDeAplicacion(environment);
   const postgres = servicioDeBaseDeDatos(environment);
 
   return [
@@ -373,8 +318,11 @@ function politicasDeObservabilidad(environment: Environment, namespace: string):
       policyTypes: ["Egress"],
       egress: [
         {
-          to: [deApp(aplicacion), deApp(postgres), deApp(nodeExporter), deApp(kubeStateMetrics)],
-          ports: [puerto(8080), puerto(9187), puerto(9100), puerto(8080)],
+          // Sin la aplicacion desde `E`: su `job_name` se fue con el monolito
+          // (`Observabilidad.ts`), y los cuatro sistemas no entran en su sitio —viven en
+          // otro namespace y este Prometheus raspa por nombre corto—.
+          to: [deApp(postgres), deApp(nodeExporter), deApp(kubeStateMetrics)],
+          ports: [puerto(9187), puerto(9100), puerto(8080)],
         },
         // El propio Traefik de k3s expone `traefik_tls_certs_not_after` en
         // `kube-system` (issue #156, `Ingreso.ts`): es la unica metrica de fuera
@@ -457,7 +405,6 @@ export function manifiestosDeRed(args: ArgsDeRed): Manifiesto[] {
     ...permitirIngresoPublico(environment, namespace),
     permitirIngresoPostgres(environment, namespace),
     ...permitirSalidaIdentidad(environment, namespace, smtp, correoDePrueba),
-    permitirSalidaAplicacion(environment, namespace),
     ...permitirSalidaDeLote(environment, namespace),
     permitirSalidaPostgres(environment, namespace),
     ...permitirSalidaRespaldo(environment, namespace),

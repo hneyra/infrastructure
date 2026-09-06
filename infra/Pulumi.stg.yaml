@@ -49,23 +49,16 @@ config:
   # `limits`, asi que PostgreSQL sigue pudiendo usar los 8 Gi que el nodo tenga libres.
   # Aqui vale porque esta base tiene la municipalidad de demostracion, no un padron real.
   kamayuk:perfilDeRecursos: minimo
-  # `stg` NO despliega el monolito (C-19, decision de la direccion): no lo usa nadie, y era
-  # el mayor consumidor del ambiente. Lo que se va son sus dos `Job` de arranque, el
-  # `Deployment` del perfil `web`, la interfaz, el `CronJob` de `lote` y las dos rutas del
-  # ingreso que apuntaban a sus dos `Service`.
+  # EL MONOLITO YA NO SE DESPLIEGA EN NINGUN AMBIENTE (`E`, 2026-09-06).
   #
-  # LO QUE NO SE VA, y conviene tenerlo escrito porque vive en el MISMO namespace `kamayuk-stg`:
-  # el motor (`kamayuk-stg-postgres`), la identidad, el correo, el `Job` del realm, el respaldo
-  # y la observabilidad. Los cuatro sistemas de ADR-0031 se conectan literalmente a
-  # `kamayuk-stg-postgres.kamayuk-stg` (C-17, punto 1) y validan sus tokens contra `kamayuk-stg-identidad`
-  # (C-14, punto 3): borrar la plataforma con el monolito los rompe a los cuatro, y el sintoma
-  # no seria un error sino cuatro pods que arrancan y no pasan nunca su sonda de arranque.
+  # C-19 lo apago aqui con `kamayuk:desplegarElMonolito: false`; la direccion cerro la
+  # migracion, asi que la bandera se va con el codigo que gobernaba —`componentes/Aplicacion.ts`
+  # y `componentes/Migracion.ts` estan borrados— y con ella
+  # `kamayuk:applicationBootstrapVersion`, que era un `sha` de `sgtm` y no gobierna ya ningun
+  # `Job` ni ningun `Deployment`.
   #
-  # Volver a encenderlo es esta linea, y nada mas. La aplicacion escalada a cero a mano en el
-  # cluster (2026-09-05: `sgtm-stg-aplicacion` 1->0, `sgtm-stg-interfaz` 2->0) es lo que ya
-  # estaba; esto es lo que hace que los manifiestos dejen de declararlo, que es lo que
-  # `yarn capacidad` mide.
-  kamayuk:desplegarElMonolito: "false"
+  # Lo que queda declarado en este archivo son las CUATRO versiones de abajo, una por sistema y
+  # cada una un `sha` de SU repositorio.
   kamayuk:domain: sv-RFoVCw2ifaqy3G9NZ1eT.cloud.elastika.pe
   # A QUIEN se le avisa cuando algo de operacion necesita una persona, y DONDE (C-7 §4).
   # El primero que lo consume es `caja`: ADR-0026 §4 exige que un pago que no se pudo imputar
@@ -97,39 +90,6 @@ config:
   # No es secreto; `registryPullToken` (un PAT con `read:packages`) sí lo es, y CI lo
   # inyecta igual que `backupAccessKeyId` (issue #257).
   kamayuk:registryUsername: hneyra
-  # Sube con `prod`, y en el mismo PR a propósito: `aplicar-prod` tiene
-  # `needs: aplicar-stg` (`infra.yml`), así que `stg` es la puerta por la que pasa toda
-  # versión que llegue a producción, y dejarla atrás convierte el ensayo en un ensayo de
-  # otra cosa. Medido el 2026-08-29, antes de subirla: `stg` corría `1ec6bd6`
-  # (2026-08-25) con **25 migraciones aplicadas** —dos menos que `prod`—, de modo que las
-  # tres tablas de valuación de `V55` no existían tampoco aquí y la secuencia de
-  # publicación de valores normativos (`publicar-cuadros.sh`) no podía correrse de punta a
-  # punta en el único ambiente donde el issue #435 pide correrla.
-  #
-  # Ver el comentario largo de `Pulumi.prod.yaml`: subir esta línea CREA un Job de
-  # migración nuevo —lleva la versión en el nombre— y vuelve a implantar la municipalidad.
-  #
-  # **Y no subirla también hace algo, aunque no lo parezca (issue #675).** Medido el
-  # 2026-09-02: esta línea llevaba desde el 2026-08-29 en `5fc02f3` —que trae **48**
-  # migraciones— mientras `main` declaraba **61**, así que `stg` corría 48 de 61 y le
-  # faltaban `V58`…`V71`, entre ellas la `V68` que añade `cuenta_corriente_asiento.acto`.
-  # Nada lo delataba: el único Job del namespace era `sgtm-stg-migracion-5fc02f3a4493`,
-  # `Complete`, y `verificar-el-ambiente.sh` decía «48 · 48 · OK» con toda la razón,
-  # porque compara la base con **esta** línea y no con `main`. Ese tercer número lo mide
-  # ahora `infra/verificaciones/deriva-de-migraciones.test.ts`, que corre sin clúster.
-  #
-  # **Desde #720 esta linea NO la escribe una persona.** La escribe el merge:
-  # `.github/workflows/declarar-version.yml` se dispara al terminar
-  # `publicar-imagenes.yml` en verde sobre `main` —el unico momento en que se saben las
-  # dos cosas que hacen falta, cual es el `sha` y que sus tres imagenes existen— y la
-  # sube si algun ambiente tiene deriva. Por eso aqui no se narra ningun `sha` concreto:
-  # el valor cambia solo y un comentario que dijera «se sube a X porque trae N
-  # migraciones» quedaria falso en el siguiente merge, sin que nadie lo notara.
-  #
-  # Lo llevaba una persona hasta el 2026-09-02, y ese dia se midio lo que costaba:
-  # **cuatro** PR de dos lineas en hora y media (#705, #715, #717, #719), y el tercero
-  # obsoleto durante su propio CI porque otra migracion entro mientras corria.
-  kamayuk:applicationBootstrapVersion: c755de2149344b8033736958ee8ae6f643c90281
   # LA VERSION DE CADA SISTEMA, que es un `sha` de SU repositorio (D, bloqueo 1).
   #
   # Hasta hoy las ocho imagenes de los cuatro sistemas se etiquetaban con
@@ -153,7 +113,6 @@ config:
   kamayuk:versionDeCatastro: 9296c5ba1b3e132b77776d0ea084783990db1cb4
   kamayuk:versionDeNormativa: b364c22b0fa667b31af47061dd827980391ffb46
   kamayuk:versionDeCaja: 5db1db30f464aa2ce4cd3511c39317513d4e0f96
-  kamayuk:webReplicas: "1"
   # La municipalidad de ensayo. El ubigeo es el de Catacaos, igual que en prod (D-01,
   # 2026-08-24), porque stg restaura los respaldos de prod anonimizados (INF-03 §2 y
   # §3): con otro ubigeo, lo restaurado no cuadraría con lo implantado.

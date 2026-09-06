@@ -34,7 +34,7 @@ import { podsDe, type Manifiesto } from "./componentes/tipos";
  *
  * Corre en los dos sitios donde importa, igual que `auditarManifiestos`:
  *
- * - En `yarn verificar`, sobre los dos ambientes: subir `webReplicas` por encima de
+ * - En `yarn verificar`, sobre los dos ambientes: subir las replicas por encima de
  *   lo que el nodo aguanta se pone rojo **en el PR**, no en el despliegue.
  * - En `index.ts`, antes de crear ningun recurso.
  */
@@ -318,7 +318,7 @@ export function describirCapacidad(environment: string, problemas: string[]): st
     "Las salidas son tres, y la primera es la que INF-01 §2 ya prescribe:",
     "  1. Un nodo del tamano dimensionado (8 CPU / 16 GB). Es lo que la tabla de INF-01 §2",
     "     dice desde el principio y lo que el issue #158 confirmo desplegando.",
-    "  2. Menos demanda: `webReplicas`, o los `requests` de RECURSOS en convenciones.ts.",
+    "  2. Menos demanda: las replicas de cada sistema, o los `requests` de RECURSOS.",
     "  3. Menos reserva del nodo: `infra/vps/reservar-recursos-del-nodo.sh` reserva 1 CPU y",
     "     1 Gi por partida doble (system-reserved y kube-reserved). Bajarla devuelve CPU",
     "     asignable, a costa de lo que esa reserva protege (INF-01 §2: sin ella, una rafaga",

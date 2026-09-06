@@ -1,7 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { raizDelRepositorio } from "../componentes/fuentes";
-import { SISTEMAS, clonDe, type Sistema } from "./deriva-de-migraciones";
+import { SISTEMAS, clonDe } from "./deriva-de-migraciones";
 
 /**
  * Lo que una migracion NECESITA de una extension, contra lo que `crear-roles.sql`
@@ -63,11 +62,9 @@ import { SISTEMAS, clonDe, type Sistema } from "./deriva-de-migraciones";
 /**
  * Una copia del esquema que alguien provisiona: sus migraciones y su `crear-roles.sql`.
  *
- * La unidad NO es el repositorio sino la **copia del esquema**, y la diferencia importa
- * en un solo caso: el monolito tiene dos —la de su clon, de la que
- * `publicar-imagenes.yml` construye `sgtm-migrador`, y la de este repositorio, que es la
- * que el `ConfigMap` y el compose montan como `10-crear-roles.sql`—. Son byte a byte la
- * misma hoy (medido con `diff -rq`), y nada lo garantiza: se miden las dos.
+ * Eran **seis** hasta `E`: los cinco sistemas mas la copia del esquema del monolito que
+ * este repositorio llevaba en `backend/sgtm-esquema`. Esa copia se retiro con el monolito
+ * y ya no quedan cuatro, una por sistema, cada una en su clon hermano.
  */
 export interface Esquema {
   /** Como sale en el rojo. Nombra el repositorio. */
@@ -89,11 +86,11 @@ const ARCHIVO_DE_ROLES = "roles/crear-roles.sql";
 /**
  * El `crear-roles.sql` que le toca a un directorio de migraciones.
  *
- * Se DERIVA en vez de declararse porque los dos son hermanos bajo `db/` en los cinco
+ * Se DERIVA en vez de declararse porque los dos son hermanos bajo `db/` en los cuatro
  * esquemas, y una segunda columna en {@link SISTEMAS} seria una segunda cosa que
  * mantener de acuerdo. Que la convencion se cumpla no se supone: `esquemas()` no admite
  * una ruta que no acabe en `migration/`, y una prueba exige que los dos archivos existan
- * en los seis.
+ * en los cuatro.
  */
 export function rolesDe(migraciones: string): string {
   if (!migraciones.endsWith(SUFIJO_MIGRACIONES)) {
@@ -109,47 +106,24 @@ export function rolesDe(migraciones: string): string {
 }
 
 /**
- * La copia del esquema del monolito que vive en ESTE repositorio.
+ * Las copias del esquema que esta guarda mide: los cuatro sistemas, cada uno en su clon.
  *
- * `CLAUDE.md` la llama «referencia historica» y nadie aplica sus migraciones desde aqui
- * — pero su `crear-roles.sql` **si** se aplica: `componentes/fuentes.ts` lo mete en el
- * `ConfigMap` del cluster y `despliegue/plataforma.compose.yaml` lo monta como
- * `10-crear-roles.sql`. Es la mitad que de verdad se ejecuta del par que despliega el
- * monolito, asi que se mide aunque el clon de `sgtm` no este.
- */
-function copiaLocalDelMonolito(sgtm: Sistema): Esquema {
-  return {
-    nombre: "infrastructure (copia del esquema del monolito)",
-    raiz: raizDelRepositorio(),
-    migraciones: sgtm.migraciones,
-    roles: rolesDe(sgtm.migraciones),
-  };
-}
-
-/**
- * Las copias del esquema que esta guarda mide.
+ * {@link clonDe} es quien exige que el clon este: un sistema cuyo esquema no se puede leer
+ * **no pasa en verde**, por lo mismo que #675 escribio primero.
  *
- * Los cinco sistemas de {@link SISTEMAS} —cada uno en su clon hermano— mas la copia local
- * del monolito. {@link clonDe} es quien exige que el clon este: un sistema cuyo esquema no
- * se puede leer **no pasa en verde**, por lo mismo que #675 escribio primero.
+ * Hasta `E` habia una quinta —la copia del esquema del monolito en `backend/sgtm-esquema`—
+ * y **era la que de verdad se aplicaba**: su `crear-roles.sql` entraba al `ConfigMap` del
+ * cluster como `10-crear-roles.sql`. Se retiro con el monolito, y lo que hacia falta de ella
+ * lo hace `06-roles-de-los-sistemas.sh`, que aplica el `crear-roles.sql` de CADA sistema
+ * contra su base — los cuatro crean los mismos roles del cluster con `IF NOT EXISTS`.
  */
 export function esquemas(): Esquema[] {
-  const sgtm = SISTEMAS.find((sistema) => sistema.nombre === "sgtm");
-  if (sgtm === undefined) {
-    throw new Error(
-      "SISTEMAS ya no declara «sgtm», y este repositorio sigue llevando una copia de su " +
-        "esquema en `backend/sgtm-esquema`. Hay que decidir que se mide, no dejar de mirar.",
-    );
-  }
-  return [
-    copiaLocalDelMonolito(sgtm),
-    ...SISTEMAS.map((sistema) => ({
-      nombre: sistema.nombre,
-      raiz: clonDe(sistema),
-      migraciones: sistema.migraciones,
-      roles: rolesDe(sistema.migraciones),
-    })),
-  ];
+  return SISTEMAS.map((sistema) => ({
+    nombre: sistema.nombre,
+    raiz: clonDe(sistema),
+    migraciones: sistema.migraciones,
+    roles: rolesDe(sistema.migraciones),
+  }));
 }
 
 /**

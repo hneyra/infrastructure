@@ -7,6 +7,7 @@ import {
   type CapacidadDelNodo,
 } from "../capacidad";
 import { construirManifiestos } from "../componentes";
+import type { Manifiesto } from "../componentes/tipos";
 import { ENVIRONMENTS, type Environment } from "../config";
 import { manifiestosDelAmbiente } from "../herramientas/emitir-manifiestos";
 import { namespaceName } from "../config";
@@ -46,14 +47,39 @@ const manifiestosDe = (ambiente: Environment) => manifiestosDelAmbiente(invarian
 /**
  * **Solo el monolito**, sin los cuatro sistemas.
  *
- * Los tres casos historicos de abajo —el nodo justo de 1 900m, los 2 CPU que `prod` reparte
- * hoy y los 3 que dejaria la reserva repartida— afirman cosas del MONOLITO, medidas cuando era
- * lo unico que habia sobre el nodo, y siguen siendo ciertas de el. Se nombra aparte en vez de
- * actualizar sus cifras: la afirmacion «prod cabe en 2 CPU» no se ha vuelto falsa, ha dejado de
- * ser la respuesta a «¿cabe el ambiente?» — y esa segunda pregunta la contesta `manifiestosDe`,
- * con la brecha declarada de #1.
+ * Los tres casos historicos de abajo —el nodo justo, los 2 CPU que `prod` reparte hoy y los 3
+ * que dejaria la reserva repartida— se escribieron del MONOLITO, cuando era lo unico que habia
+ * sobre el nodo. El monolito se fue en `E` y lo que esta funcion devuelve hoy es **la
+ * plataforma**: motor, identidad, correo, respaldo y observabilidad. Las afirmaciones se
+ * remidieron contra ella y sus cifras estan abajo, cada una donde se usa.
  */
-const soloElMonolitoDe = (ambiente: Environment) => construirManifiestos(invariantesDe(ambiente));
+const soloLaPlataformaDe = (ambiente: Environment) => construirManifiestos(invariantesDe(ambiente));
+
+/**
+ * Los mismos manifiestos con los cuatro `Deployment` web a `n` replicas.
+ *
+ * Sustituye a `webReplicas`, que era del monolito y se fue con el (`E`). Lo que se mide con
+ * esto es lo mismo que se medía entonces: **subir la demanda contra un nodo que antes
+ * bastaba**. Hoy quien decide replicas es el descriptor de cada sistema, asi que la mutacion
+ * se hace sobre los manifiestos ya compuestos en vez de sobre una clave de configuracion.
+ */
+function conReplicasWeb(ambiente: Environment, n: number): Manifiesto[] {
+  const ms = manifiestosDelAmbiente(invariantesDe(ambiente));
+  let tocados = 0;
+  for (const m of ms) {
+    if (m.kind === "Deployment" && m.metadata.name.endsWith("-web")) {
+      (m as unknown as { spec: { replicas: number } }).spec.replicas = n;
+      tocados += 1;
+    }
+  }
+  if (tocados === 0) {
+    throw new Error(
+      "Ningun Deployment `*-web` que mutar: esta ayuda existe para subir la demanda, y sin " +
+        "sujeto las pruebas que la usan pasarian en verde sin haber cambiado nada.",
+    );
+  }
+  return ms;
+}
 
 describe("las cantidades de Kubernetes se leen como las lee Kubernetes", () => {
   it("CPU: milicores, enteros y decimales", () => {
@@ -180,11 +206,7 @@ describe("y se demuestra que puede fallar", () => {
    * el dia que alguien devuelva las dos replicas sin mirar el nodo.
    */
   it("la configuracion que colgo prod en agosto de 2026 NO cabe", () => {
-    const invariantes = invariantesDe("prod");
-    const conDosReplicas = construirManifiestos({
-      ...invariantes,
-      application: { ...invariantes.application, webReplicas: 2 },
-    });
+    const conDosReplicas = conReplicasWeb("prod", 2);
 
     const problemas = auditarCapacidad(conDosReplicas, {
       cpuAsignable: "2",
@@ -211,15 +233,20 @@ describe("y se demuestra que puede fallar", () => {
    * despliegue se colgaria de todos modos. Es justo la confusion que la cabecera de
    * `capacidad.ts` describe, escrita como prueba.
    */
-  it("lo permanente del monolito cabe y su pico no: por eso se mide el pico", () => {
-    const nodoJusto = { cpuAsignable: "1900m", memoriaAsignable: "6029348Ki" };
-    const demanda = demandaDelStack(soloElMonolitoDe("prod"));
-    // 1 700m: los 1 900m asignables menos lo que los pods de serie de k3s ya ocupan.
-    const disponible = 1900 - 200;
+  it("lo permanente de la plataforma cabe y su pico no: por eso se mide el pico", () => {
+    // 1 150m asignables, remedido en `E`. Con el monolito fuera la plataforma pide **940m
+    // permanentes y 960m de pico** —los 20m del `Job` del realm—, asi que el nodo justo donde
+    // los dos numeros se separan baja de 1 900m a este. La afirmacion no cambia; cambia el
+    // nodo que la hace visible, y el margen entre los dos numeros es hoy mucho mas estrecho:
+    // por eso la cifra va escrita y no redondeada.
+    const nodoJusto = { cpuAsignable: "1150m", memoriaAsignable: "6029348Ki" };
+    const demanda = demandaDelStack(soloLaPlataformaDe("prod"));
+    // Los asignables menos lo que los pods de serie de k3s ya ocupan.
+    const disponible = 1150 - 200;
 
     expect(demanda.permanente.cpuEnMili).toBeLessThanOrEqual(disponible);
     expect(demanda.picoDeArranque.cpuEnMili).toBeGreaterThan(disponible);
-    expect(auditarCapacidad(soloElMonolitoDe("prod"), nodoJusto).join("\n")).toMatch(
+    expect(auditarCapacidad(soloLaPlataformaDe("prod"), nodoJusto).join("\n")).toMatch(
       /no cabe en el nodo por CPU/,
     );
   });
@@ -231,7 +258,7 @@ describe("y se demuestra que puede fallar", () => {
    */
   it("el monolito de prod cabe en los 2 CPU que el nodo reparte hoy", () => {
     expect(
-      auditarCapacidad(soloElMonolitoDe("prod"), {
+      auditarCapacidad(soloLaPlataformaDe("prod"), {
         cpuAsignable: "2",
         memoriaAsignable: "6029348Ki",
       }),
@@ -246,7 +273,7 @@ describe("y se demuestra que puede fallar", () => {
    */
   it("con los 3 CPU que deja la reserva repartida, el monolito de prod cabe", () => {
     expect(
-      auditarCapacidad(soloElMonolitoDe("prod"), {
+      auditarCapacidad(soloLaPlataformaDe("prod"), {
         cpuAsignable: "3",
         memoriaAsignable: "6029348Ki",
       }),
@@ -259,35 +286,36 @@ describe("y se demuestra que puede fallar", () => {
    * Con dos replicas el pico pedia 6 368Mi contra los 5 728Mi disponibles: no es una
    * preferencia, es que no entra en los ~6 GB que el nodo reparte.
    */
-  it("dos replicas no caben en los ~6 GB de prod, y por eso va con una", () => {
-    const invariantes = invariantesDe("prod");
-    const conDos = construirManifiestos({
-      ...invariantes,
-      application: { ...invariantes.application, webReplicas: 2 },
-    });
+  it("dos replicas de cada sistema no caben en los ~6 GB de prod", () => {
     expect(
-      auditarCapacidad(conDos, { cpuAsignable: "3", memoriaAsignable: "6029348Ki" }).join("\n"),
+      auditarCapacidad(conReplicasWeb("prod", 2), {
+        cpuAsignable: "3",
+        memoriaAsignable: "6029348Ki",
+      }).join("\n"),
     ).toMatch(/no cabe en el nodo por memoria/);
   });
 
-  it("con 4 GB —el nodo que el issue #158 ya probo insuficiente—, NO cabe por memoria", () => {
-    const problemas = auditarCapacidad(soloElMonolitoDe("prod"), {
+  it("con 2 GB, el ambiente NO cabe por memoria", () => {
+    // Eran 4 GB —«el nodo que el issue #158 ya probo insuficiente»— y con el monolito fuera
+    // la plataforma sola ya cabe en 4 GB, asi que ese nodo dejo de separar nada. Se baja a 2
+    // GB, que es donde la plataforma sigue sin entrar: lo que se mide es que la comprobacion
+    // de MEMORIA muerda, no una cifra concreta del nodo.
+    const problemas = auditarCapacidad(soloLaPlataformaDe("prod"), {
       cpuAsignable: "16",
-      memoriaAsignable: "4Gi",
+      memoriaAsignable: "2Gi",
     });
     expect(problemas.join("\n")).toMatch(/no cabe en el nodo por memoria/);
   });
 
-  it("subir `webReplicas` por encima de lo que el nodo aguanta se pone rojo", () => {
+  it("subir las replicas por encima de lo que el nodo aguanta se pone rojo", () => {
     // La comprobacion no vive solo para el nodo que hay hoy: tiene que morder tambien
     // cuando alguien sube la demanda contra un nodo que antes bastaba.
-    const invariantes = invariantesDe("prod");
-    const manifiestos = construirManifiestos({
-      ...invariantes,
-      application: { ...invariantes.application, webReplicas: 40 },
-    });
-    expect(auditarCapacidad(manifiestos, { cpuAsignable: "16", memoriaAsignable: "64Gi" })).not
-      .toEqual([]);
+    expect(
+      auditarCapacidad(conReplicasWeb("prod", 40), {
+        cpuAsignable: "16",
+        memoriaAsignable: "64Gi",
+      }),
+    ).not.toEqual([]);
   });
 
   it("un nodo holgado no inventa problemas", () => {

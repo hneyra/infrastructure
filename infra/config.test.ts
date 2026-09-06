@@ -74,14 +74,9 @@ function baseline(environment: Environment = "prod"): Invariants {
     },
     application: {
       imageRepository: "ghcr.io/hneyra/sgtm",
-      bootstrapVersion: "64de42b4c56eb2491e2a61287bceb4b66b6e53d1",
-      webReplicas: 2,
       isDemonstration: isStg,
       // Declarado en los dos: en prod es obligatorio decidirlo a mano (issue #150).
       isDemonstrationDeclared: true,
-      // C-19: `prod` es el ambiente que sirve el monolito; `stg` lo apago porque no lo usa
-      // nadie y era su mayor consumidor. Los dos lo declaran, sin valor por omision.
-      deployMonolith: !isStg,
     },
     sistemas: {
       // Una version por sistema, cada una un `sha` de SU repositorio (D, bloqueo 1). Aqui son
@@ -294,26 +289,17 @@ describe("ADR-0011 — el estado de Pulumi no guarda ni versiones ni secretos", 
     },
   );
 
-  it("menos de una réplica web", () => {
-    const c = baseline();
-    c.application.webReplicas = 0;
-    expectViolation(c, "`webReplicas` tiene que ser al menos 1");
-  });
 });
 
-describe("ADR-0011 §5 — la version de arranque fija una version", () => {
-  it("una etiqueta movil como version de arranque", () => {
-    const c = baseline();
-    c.application.bootstrapVersion = "latest";
-    expectViolation(c, "no fija una");
-  });
-
-  it("la version de arranque es una etiqueta, no una imagen", () => {
-    const c = baseline();
-    c.application.bootstrapVersion = "ghcr.io/hneyra/sgtm:abc123";
-    expectViolation(c, "es una etiqueta, no una imagen");
-  });
-});
+/**
+ * ADR-0011 §5 — la version de arranque fija una version.
+ *
+ * Las dos invariantes de `applicationBootstrapVersion` —«no es una etiqueta movil» y «es una
+ * etiqueta, no una imagen»— se fueron con el monolito (`E`). Lo que las sustituye es mas
+ * estricto y ya estaba: las cuatro `versionDe<Sistema>` tienen que ser **cuarenta
+ * hexadecimales**, que es lo que `checkInvariants` exige mas abajo. Una etiqueta movil no pasa
+ * esa forma, y una imagen con `:` tampoco.
+ */
 
 describe("issue #150 — la implantacion, decidida antes de tocar el cluster", () => {
   it("en prod, `esDemostracion` heredado del valor por omision no cuenta como decision", () => {
@@ -377,7 +363,6 @@ const VALORES_MINIMOS = {
   backupBucket: "sgtm-prod-respaldos",
   keycloakImage: "quay.io/keycloak/keycloak:26.0",
   applicationImageRepository: "ghcr.io/hneyra/sgtm",
-  applicationBootstrapVersion: "64de42b4c56eb2491e2a61287bceb4b66b6e53d1",
   // Una por sistema, y las cuatro obligatorias: `readInvariants` no admite que falte ninguna,
   // porque un valor por omision haria que olvidarse de declarar la version de un sistema se
   // leyera igual que declararla — y lo que decide es que imagen baja el nodo.
@@ -401,7 +386,6 @@ const VALORES_MINIMOS = {
   // booleano «no lo declare» y «declare que no» se leen igual en un `??`, y aqui lo que se
   // declara decide si el ambiente sirve la aplicacion entera y cuanto reserva sobre su nodo.
   perfilDeRecursos: "dimensionado",
-  desplegarElMonolito: true,
 };
 
 /**
@@ -489,7 +473,6 @@ describe("un valor obligatorio que falta revienta al principio, y dice cuál", (
   it("los valores con omisión no son obligatorios", () => {
     const leidas = readInvariants("prod", reader(VALORES_MINIMOS));
     expect(leidas.backup.walArchiveTimeoutSeconds).toBe(300);
-    expect(leidas.application.webReplicas).toBe(2);
     expect(leidas.identity.realm).toBe("sgtm");
     // Sin `keycloakSmtpHost` no hay relay (ADR-0012, Opción B).
     expect(leidas.identity.smtp).toBeUndefined();

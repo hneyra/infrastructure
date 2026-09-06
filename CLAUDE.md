@@ -15,19 +15,24 @@ modifica**.
 
 | Pieza | Estado |
 |---|---|
-| `infra/` — Pulumi en TypeScript | **Existe**, y `yarn verificar` corre **sin Pulumi, sin token y sin clúster**. Hoy da **680 verdes y 0 rojas**, medido con los seis clones hermanos en disco —sin ellos las guardas que los leen no pueden concluir y salen rojas, que no es lo mismo que estar mal—: los dos defectos heredados de la mudanza se cerraron en P6 —la deriva medía contra el repositorio equivocado, y el `sed` del guion de reserva era sintaxis GNU— y [DEV-02 §2](docs/D0-desarrollo/pruebas.md) conserva su registro |
+| `infra/` — Pulumi en TypeScript | **Existe**, y `yarn verificar` corre **sin Pulumi, sin token y sin clúster**, medido con los clones hermanos en disco —sin ellos las guardas que los leen no pueden concluir y salen rojas, que no es lo mismo que estar mal—. CIFRA_PENDIENTE |
 | `despliegue/plataforma.compose.yaml` | **Existe y levanta**: PostgreSQL con **las cuatro bases**, Keycloak con **sus dos realms**, Mailpit y Traefik |
-| `despliegue/compose.yaml` | El perfil `todo`, heredado del monolito. **Sigue tal cual** y es el que usa CI |
-| `librerias-backend/comun-verificaciones` | **Existe.** **20** reglas de ArchUnit, **cinco** escáneres de fuentes —los tres de siempre más el del operador espacial y el de la búsqueda por prefijo (ADR-0034)—, el revisor de esquema que exige el marco, y **44** clases de muestra más cuatro migraciones de muestra. Las consumen los cinco backends |
-| `backend/sgtm-esquema/…/db/migration` | **Las 68 migraciones del monolito, como referencia.** No las aplica nadie desde aquí; el baseline de cada sistema es [ADR-0032](docs/30-arquitectura/adr/ADR-0032-el-esquema-nace-en-baseline.md) |
+| `despliegue/compose.yaml` | **Retirado en [`E`](docs/00-gobierno/E-el-monolito-sale-del-sistema.md).** Era el compose del monolito, y construía `backend/Dockerfile` y `../frontend`: **ninguno de los dos existía aquí desde el corte**, así que no se podía levantar. Cada sistema trae el suyo |
+| `librerias-backend/comun-verificaciones` | **Existe.** **20** reglas de ArchUnit, **cinco** escáneres de fuentes —los tres de siempre más el del operador espacial y el de la búsqueda por prefijo (ADR-0034)—, el revisor de esquema que exige el marco, y **44** clases de muestra más cuatro migraciones de muestra. Las consumen los cinco backends: `E` retira el monolito de ESTE repositorio, no toca el clon `sgtm` |
+| `backend/` | **Retirado en [`E`](docs/00-gobierno/E-el-monolito-sale-del-sistema.md).** Traía las 68 migraciones del monolito, su `crear-roles.sql` y un `.java`. El baseline de cada sistema es [ADR-0032](docs/30-arquitectura/adr/ADR-0032-el-esquema-nace-en-baseline.md), y la copia entera del monolito vive en el clon `sgtm`. **El censo de extensiones de C-2 pasa por eso de cinco esquemas a cuatro** |
 | `docs/30-arquitectura/adr/` | 13 ADR y el índice |
 | Los cuatro `V1__baseline.sql` | **NO están aquí.** Viven en `sgtm/docs/40-datos/baselines/` |
 | Las librerías `comun-dominio`, `comun-plataforma`, `comun-integracion` | **NO existen.** Sólo `comun-verificaciones`. **D-23** decide quién las publica |
 
 ## Lo que este repositorio NO hace
 
-- **No contiene una sola regla de negocio.** Ni tributo, ni predio, ni recibo. Lo único de
-  dominio que hay aquí es `TipoDocumento`, que las muestras necesitan para compilar.
+- **No contiene una sola regla de negocio.** Ni tributo, ni predio, ni recibo. Ni una línea de
+  Java de dominio desde [`E`](docs/00-gobierno/E-el-monolito-sale-del-sistema.md): el
+  `TipoDocumento` que las muestras usaban era del monolito, y la tabla de formas de documento
+  se contrasta ahora contra el de los cuatro clones.
+- **No despliega el monolito, en ningún ambiente.** `stg` dejó de hacerlo en C-19 y `prod` en
+  `E`, cuando la dirección cerró la migración. Con él se fue la única interfaz web del
+  producto: ninguno de los cuatro sistemas tiene `frontend/` todavía.
 - **No publica `comun-verificaciones` como jar.** Se consume por *composite build* a propósito:
   un jar publicado a mano se queda viejo sin que nada se ponga rojo, y una verificación vieja que
   pasa en verde es el modo de fallo que este proyecto lleva doscientos issues evitando.
@@ -41,9 +46,8 @@ modifica**.
 
 ```
 infra/                  Pulumi en TypeScript con yarn. Componentes, descriptor y verificaciones
-despliegue/             el entorno local: los dos composes, identidad e inicializacion del motor
-librerias-backend/      Gradle. `comun-verificaciones`, que consumen los cinco backends
-backend/sgtm-esquema/   las 68 migraciones del monolito, como referencia historica
+despliegue/             el entorno local: el compose de la plataforma, identidad e inicializacion
+librerias-backend/      Gradle. `comun-verificaciones`, que consumen los cuatro backends
 herramientas/           los guiones del reparto de ADR y su verificador de enlaces
 docs/                   ADR, gobierno, hallazgos de RLS, estandares de codigo y D0-desarrollo
 ```

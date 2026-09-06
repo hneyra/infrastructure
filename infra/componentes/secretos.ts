@@ -1,8 +1,8 @@
 import {
   secretos as nombresDeSecretos,
+  BASE_DE_MANTENIMIENTO,
   CLAVES,
   ROL_DE_IDENTIDAD,
-  servicioDeAplicacion,
   servicioDeBaseDeDatos,
   servicioDeGrafana,
   servicioDeIdentidad,
@@ -68,16 +68,18 @@ export interface EntradaDeSecreto {
    */
   requiereReinicioDe?: string;
   /**
-   * La base a la que ese rol se conecta de verdad, y **no siempre es el padron**
-   * (issue #435).
+   * La base a la que ese rol se conecta de verdad (issue #435).
    *
-   * `kamayuk_respaldo` no tiene `CONNECT` sobre `sgtm` a proposito —`pg_backup_start` y
-   * `pg_backup_stop` son operaciones del cluster, no de una base, y una credencial de
-   * mas apuntando al padron es una credencial de mas (#155)—, y `keycloak` tiene la
-   * suya. Sin este dato, comprobar «¿sirve esta credencial?» conectando a `sgtm` da
-   * un rojo falso justo en los dos roles cuyo aislamiento es deliberado: paso al
-   * escribir `asignar-claves.sh`, y el rojo parecia el mismo que el de un rol sin
-   * `LOGIN`.
+   * **Obligatorio para todo rol de PostgreSQL desde `E`**, y no por gusto: hasta entonces
+   * `asignar-claves.sh` se replegaba a `sgtm` —la base del monolito— cuando faltaba, y con
+   * el monolito fuera esa base existe y no tiene ni una tabla del producto. Comprobar «¿sirve
+   * esta credencial?» contra ella pasaba en verde sin medir nada, y en `rol_carga_parametros`
+   * decia lo contrario de la verdad: su unica base es `normativa` (C-7 §6).
+   *
+   * No todas son iguales, y por eso el dato existe. `kamayuk_respaldo` no tiene `CONNECT`
+   * sobre ninguna base del producto a proposito —`pg_backup_start` y `pg_backup_stop` son
+   * operaciones del cluster, no de una base, y una credencial de mas apuntando a un padron
+   * es una credencial de mas (#155)—, y `keycloak` tiene la suya.
    */
   baseDeDatos?: string;
   /**
@@ -141,25 +143,43 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       // como excepcion en el documento, no en el tipo.
       periodicidad: "nunca-desde-el-nodo",
       rolDePostgres: "postgres",
+      // El superusuario alcanza cualquiera; se declara la de mantenimiento, que es la
+      // unica que existe siempre —en un cluster recien inicializado y en los dos que ya
+      // corren— y la unica que no es de ningun sistema.
+      baseDeDatos: BASE_DE_MANTENIMIENTO,
     },
     {
       rol: "kamayuk-owner",
       namespace: enLaPlataforma,
       secreto: nombres.owner,
       clave: CLAVES.owner,
-      consumidor: "Los dos Jobs: migracion e implantacion. Nunca el Deployment de la aplicacion",
+      consumidor:
+        "Los dos Jobs de cada sistema: migracion e implantacion. Nunca un Deployment web",
       periodicidad: "trimestral",
       rolDePostgres: "kamayuk_owner",
+      // Se conecta a las CUATRO. Una comprobacion de credencial solo puede abrir una
+      // sesion contra una, asi que se declara la que mas dice: `rentas` es la unica que le
+      // concede CONNECT junto a los otros cuatro roles. Hasta `E` esto no se declaraba y
+      // `asignar-claves.sh` se replegaba a la base del monolito, que existe y no tiene ni
+      // una tabla del producto: la comprobacion pasaba en verde sin medir nada.
+      baseDeDatos: "rentas",
     },
     {
       rol: "kamayuk-app",
       namespace: enLaPlataforma,
       secreto: nombres.aplicacion,
       clave: CLAVES.aplicacion,
-      consumidor: "El Deployment de la aplicacion, perfil web y perfil batch",
+      consumidor:
+        "Los Deployment web de los cuatro sistemas, cada uno contra SU base, y sus procesos batch",
       periodicidad: "semestral",
       rolDePostgres: "kamayuk_app",
-      requiereReinicioDe: servicioDeAplicacion(environment),
+      // Ver la nota de `kamayuk-owner`, arriba: misma eleccion y mismo motivo.
+      baseDeDatos: "rentas",
+      // Sin `requiereReinicioDe` desde `E`, y no por descuido: este campo nombra UN
+      // `Deployment`, y desde ADR-0031 los consumidores son CUATRO, uno por namespace.
+      // Poner uno de los cuatro diria que rotar esta clave se cierra reprogramando ese, y
+      // dejaria los otros tres corriendo con la anterior hasta su siguiente reinicio.
+      // El runbook de rotacion los nombra a los cuatro.
     },
     {
       rol: "keycloak-admin",
@@ -256,6 +276,11 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       // de valuacion nacionales, igual que kamayuk-owner: trimestral, no semestral.
       periodicidad: "trimestral",
       rolDePostgres: "rol_carga_parametros",
+      // `normativa` y solo `normativa`: es la unica de las cuatro que le concede CONNECT
+      // (C-7 §6, `quien-se-conecta-a-cada-base.test.ts`). Hasta `E` no se declaraba y la
+      // comprobacion abria sesion contra la base del monolito —donde nadie le habia
+      // revocado nada—, asi que decia «la credencial sirve» de una base sin tablas.
+      baseDeDatos: "normativa",
       // Sin requiereReinicioDe: nadie tiene un pod en marcha leyendo esto. Cada Job
       // es de un solo uso y lee el Secret fresco al crearse, igual que kamayuk-owner.
     },

@@ -79,16 +79,19 @@ on:
     paths: &rutas
       - 'infra/**'
       - '.github/workflows/infra.yml'
-      # Los manifiestos MONTAN estos dos archivos en vez de copiarlos (issue #149), así
-      # que un cambio ahí cambia lo que se despliega aunque `infra/` no se toque.
-      - 'backend/sgtm-esquema/src/main/resources/db/roles/**'
-      # Las migraciones, desde #675. Faltaban, y es lo que dejaba crecer la deriva EN
-      # SILENCIO: una migracion nueva no tocaba ninguna de estas rutas, asi que este
-      # flujo **no corria** al integrarla —ni `verificar`, que es donde vive la guarda de
-      # `deriva-de-migraciones.test.ts`, ni `aplicar-stg`, que es quien despliega—. El
-      # 2026-09-02 el hueco medido eran trece migraciones (`V58`…`V71`): `stg` corria 48
-      # de las 61 que `main` declaraba, y ninguna corrida se habia puesto roja por ello.
-      - 'backend/sgtm-esquema/src/main/resources/db/migration/**'
+      # LAS DOS RUTAS DEL ESQUEMA DEL MONOLITO SE FUERON CON EL (`E`).
+      #
+      # Nombraban `backend/sgtm-esquema/{roles,migration}/**`, y las dos tenian motivo: los
+      # manifiestos MONTABAN el `crear-roles.sql` en vez de copiarlo (#149), y las
+      # migraciones entraron con #675 porque sin ellas una migracion nueva no disparaba este
+      # flujo —ni `verificar`, donde vive la guarda de la deriva, ni `aplicar-stg`, que es
+      # quien despliega—. Ese directorio ya no existe aqui.
+      #
+      # **Y lo que las sustituiria no cabe en un filtro `paths`**: los cuatro esquemas que
+      # hoy se despliegan viven en otros cuatro repositorios, y un filtro solo puede nombrar
+      # rutas del suyo. Una migracion de `rentas` no puede disparar este flujo. Es un hueco
+      # declarado desde P6 y sigue abierto: se cierra con un disparo entre repositorios
+      # (`repository_dispatch`), que no esta hecho.
       - 'despliegue/inicializacion-del-motor/**'
       # `aplicar-stg` y `aplicar-prod` lo ejecutan antes de `pulumi up`: `crear-roles.sql`
       # solo corre con el volumen vacio, asi que una extension anadida despues no llega
@@ -103,10 +106,11 @@ on:
       - 'despliegue/identidad/reconciliar-identidades.sh'
       - 'despliegue/identidad/municipalidades/**'
       - 'despliegue/identidad/ciudadanos/**'
-      # Y el enumerado del dominio contra el que se contrasta la tabla de formas de
-      # documento (#415): un tipo nuevo ahi tiene que poner roja la tabla de `infra/`.
-      - 'backend/sgtm-dominio-compartido/src/main/java/pe/gob/sgtm/dominio/TipoDocumento.java'
-      - 'frontend/nginx.conf'
+      # El enumerado contra el que se contrasta la tabla de formas de documento (#415)
+      # tampoco se puede nombrar aqui desde `E`: vivia en `backend/sgtm-dominio-compartido`
+      # y hoy esta en los cuatro clones. Mismo hueco que el de las migraciones, arriba.
+      #
+      # `frontend/nginx.conf` se fue con la interfaz del monolito.
   push:
     branches: [main]
     paths: *rutas
@@ -181,10 +185,14 @@ jobs:
           # `verificar-el-ambiente.sh` escribio primero.
           fetch-depth: 0
 
-      # Los cinco hermanos, en UN solo sitio desde C-20: `sgtm` con historial completo
-      # —`deriva-de-migraciones.test.ts` cuenta las migraciones que trae un `sha` en el
-      # arbol de git de ESE commit— y los cuatro del corte con el arbol de trabajo, que es
-      # lo unico que `descriptor/sistemas.ts` y `extensiones-de-las-migraciones.ts` leen.
+      # Los CUATRO hermanos, en UN solo sitio desde C-20, y **con historial completo** desde
+      # `E`: `deriva-de-migraciones.test.ts` cuenta las migraciones que trae un `sha` en el
+      # arbol de git de ESE commit, y desde que el monolito se fue los `sha` que se cuentan
+      # son los cuatro `versionDe<Sistema>`. Con el checkout superficial ninguno esta en su
+      # clon y la guarda **se niega a contar**, que es lo correcto y seria un rojo por un
+      # motivo que no es el que mide.
+      #
+      # `sgtm` ya no se clona en ningun trabajo: no queda nada suyo que leer.
       #
       # El porque de cada decision —el `token`, la profundidad, y por que el anfitrion se
       # clona en `path: infrastructure`— esta en la propia accion, que es ahora el unico
@@ -193,7 +201,7 @@ jobs:
       - uses: ./infrastructure/.github/actions/clonar-los-hermanos
         with:
           token: ${{ secrets.GH_CLONE_KEY || github.token }}
-          con-sgtm: 'si'
+          historial-completo: 'si'
 
       - uses: actions/setup-node@v4
         with:

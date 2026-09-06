@@ -6,7 +6,6 @@ import {
   secretos,
   seguridadSinRoot,
   servicioDeAlertmanager,
-  servicioDeAplicacion,
   servicioDeBaseDeDatos,
   servicioDeGrafana,
   servicioDeKubeStateMetrics,
@@ -87,29 +86,18 @@ export interface ObservabilidadArgs {
   namespace: string;
   /** La tabla del perfil de recursos de este ambiente (`C-19`). */
   recursos: TablaDeRecursos;
-  /**
-   * Si este ambiente despliega el monolito (`C-19`).
-   *
-   * Decide **un** objetivo de raspado: el `job_name: aplicacion`. Sin el monolito ese
-   * objetivo apunta a un `Service` que no existe y Prometheus lo declara `down` para
-   * siempre. No dispara ninguna alerta —`alertas.yml` no tiene ninguna sobre
-   * `up{job="aplicacion"}`, comprobado—, y eso es justo lo que lo hace peor: un objetivo
-   * caido permanente en la lista es ruido que ensena a no mirar la lista, que es la misma
-   * leccion que C-17 §5 escribio sobre el `CrashLoopBackOff` del perfil `batch`.
-   */
-  conMonolito: boolean;
   /** A donde Alertmanager envia (`backupAlertWebhookUrl`-style). Ver `config.ts`. */
   alertWebhookUrl?: string;
 }
 
 export function manifiestosDeObservabilidad(args: ObservabilidadArgs): Manifiesto[] {
-  const { environment, namespace, alertWebhookUrl, recursos, conMonolito } = args;
+  const { environment, namespace, alertWebhookUrl, recursos } = args;
   const etiquetas = commonLabels(environment, "observabilidad");
   const prioridad = nombreDePrioridad(environment, "lote");
   const secreto = secretos(environment);
 
   return [
-    ...manifiestosDePrometheus({ environment, namespace, etiquetas, prioridad, recursos, conMonolito }),
+    ...manifiestosDePrometheus({ environment, namespace, etiquetas, prioridad, recursos }),
     ...manifiestosDeAlertmanager({
       environment,
       namespace,
@@ -137,7 +125,7 @@ interface ArgsComunes {
 // Prometheus
 // ─────────────────────────────────────────────────────────────────────────────
 
-function configuracionDePrometheus(environment: Environment, conMonolito: boolean): string {
+function configuracionDePrometheus(environment: Environment): string {
   return [
     "# Generado por infra/componentes/Observabilidad.ts. No editar en el nodo.",
     "global:",
@@ -155,15 +143,14 @@ function configuracionDePrometheus(environment: Environment, conMonolito: boolea
     "  - job_name: prometheus",
     "    static_configs:",
     '      - targets: ["localhost:9090"]',
-    // El monolito, y solo si este ambiente lo despliega (C-19). Ver `ObservabilidadArgs`.
-    ...(conMonolito
-      ? [
-          "  - job_name: aplicacion",
-          "    metrics_path: /actuator/prometheus",
-          "    static_configs:",
-          `      - targets: ["${servicioDeAplicacion(environment)}:8080"]`,
-        ]
-      : []),
+    // **Ningun objetivo de aplicacion** (`E`). Hasta el 2026-09-06 aqui iba
+    // `job_name: aplicacion` apuntando al monolito, detras de la bandera de C-19. El
+    // monolito se fue y **los cuatro sistemas no entran en su sitio**: sus `Service` viven
+    // en su propio namespace desde ADR-0031 y este Prometheus raspa por nombre corto, asi
+    // que anadirlos pide `<servicio>.<namespace>` y decidir que expone cada uno. Queda
+    // como hueco declarado en `E` en vez de dejar cuatro objetivos que no resuelven: un
+    // objetivo permanentemente `down` no dispara ninguna alerta —`alertas.yml` no tiene
+    // ninguna sobre `up`— y ensena a no mirar la lista de objetivos (C-17 §5, C-19 §2.1).
     "  - job_name: postgres",
     "    static_configs:",
     `      - targets: ["${servicioDeBaseDeDatos(environment)}:9187"]`,
@@ -181,8 +168,8 @@ function configuracionDePrometheus(environment: Environment, conMonolito: boolea
   ].join("\n");
 }
 
-function manifiestosDePrometheus(args: ArgsComunes & { conMonolito: boolean }): Manifiesto[] {
-  const { environment, namespace, etiquetas, prioridad, recursos, conMonolito } = args;
+function manifiestosDePrometheus(args: ArgsComunes): Manifiesto[] {
+  const { environment, namespace, etiquetas, prioridad, recursos } = args;
   const nombre = servicioDePrometheus(environment);
 
   const configuracion: ConfigMap = {
@@ -190,7 +177,7 @@ function manifiestosDePrometheus(args: ArgsComunes & { conMonolito: boolean }): 
     kind: "ConfigMap",
     metadata: { name: resourceName(environment, "observabilidad-prometheus"), namespace, labels: etiquetas },
     data: {
-      "prometheus.yml": configuracionDePrometheus(environment, conMonolito),
+      "prometheus.yml": configuracionDePrometheus(environment),
       "alertas.yml": alertasYml(),
     },
   };

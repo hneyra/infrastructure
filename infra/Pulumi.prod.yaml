@@ -79,9 +79,29 @@ config:
   # `?? "dimensionado"` haria que olvidarlo se leyera igual que declararlo. Y `checkInvariants`
   # RECHAZA `minimo` aqui: ese perfil es de un ambiente de ensayo.
   kamayuk:perfilDeRecursos: dimensionado
-  # `prod` SI despliega el monolito (C-19): es el ambiente que lo sirve, y por eso `stg` es el
-  # unico que lo apaga. Sin valor por omision, por lo mismo de arriba.
-  kamayuk:desplegarElMonolito: "true"
+  # EL MONOLITO YA NO SE DESPLIEGA (`E`, 2026-09-06), Y AQUI ES DONDE SE NOTA.
+  #
+  # `stg` lo apago en C-19 y este ambiente lo seguia declarando. **Medido**, comparando
+  # `yarn manifiestos --ambiente prod` antes y despues: este stack pasa de **101 a 84 objetos**,
+  # y los **17** que se van son estos —los dos `Job` de arranque, el `Deployment` del perfil
+  # `web`, su `Service`, la interfaz con su `ConfigMap` de nginx y su `Service`, el `CronJob` de
+  # `lote`, las dos `IngressRoute` y las siete `NetworkPolicy` que seleccionaban esos pods—.
+  # (`stg` pasa de 94 a 87: alli solo quedaban las siete politicas, que C-19 dejo a proposito
+  # porque una politica sin pod que casar es inerte.)
+  #
+  # LO QUE SE PIERDE, dicho y no descubierto: con la interfaz se va **la unica interfaz web del
+  # producto**. Ninguno de los cuatro sistemas tiene `frontend/` todavia, asi que la raiz del
+  # dominio publico deja de servir nada y solo queda `/keycloak`. Eso no es un efecto colateral
+  # que se arregle luego: es el coste de la decision, y quien la tomo lo sabe.
+  #
+  # Sobre el DATO: la direccion midio que este ambiente esta entero a cero —`contribuyente`,
+  # `predio`, `recibo` y los asientos, todos en 0—. **Aqui no se pudo comprobar**: llegar a
+  # `prod` necesita el tunel SSH, y este repositorio todavia no tiene las credenciales de ese
+  # ambiente (`deteccion-de-deriva` se salta todas las noches por eso). Queda como hueco.
+  #
+  # Y no se retira ninguna copia: los respaldos de `sgtm-prod-respaldos` siguen donde estan, con
+  # su clave de cifrado intacta (INF-08 §4). Recuperar el monolito seria recuperar los dos
+  # componentes borrados de este repositorio, no volver a poner una linea.
   kamayuk:domain: vmd120205.contaboserver.net
   # A QUIEN se le avisa cuando algo de operacion necesita una persona, y DONDE (C-7 §4).
   # El primero que lo consume es `caja`: ADR-0026 §4 exige que un pago que no se pudo imputar
@@ -144,7 +164,6 @@ config:
   kamayuk:versionDeCatastro: 9296c5ba1b3e132b77776d0ea084783990db1cb4
   kamayuk:versionDeNormativa: b364c22b0fa667b31af47061dd827980391ffb46
   kamayuk:versionDeCaja: 5db1db30f464aa2ce4cd3511c39317513d4e0f96
-  kamayuk:webReplicas: "1"
   # La versión con la que Pulumi CREA los despliegues. El campo `image` de los tres
   # `Deployment` queda ignorado después (ADR-0011 §5), así que subir esta línea **no**
   # reemplaza la imagen de un `Deployment` que ya corre: eso lo hace el flujo de
@@ -200,7 +219,6 @@ config:
   # Lo llevaba una persona hasta el 2026-09-02, y ese dia se midio lo que costaba:
   # **cuatro** PR de dos lineas en hora y media (#705, #715, #717, #719), y el tercero
   # obsoleto durante su propio CI porque otra migracion entro mientras corria.
-  kamayuk:applicationBootstrapVersion: c755de2149344b8033736958ee8ae6f643c90281
   # La municipalidad que se implanta. D-01 —municipalidad piloto— se decidió el
   # 2026-08-24: Municipalidad Distrital de Catacaos (`decisiones-abiertas.md`), en
   # reemplazo de la Municipalidad Distrital de Chala que se había decidido un día antes.

@@ -4,6 +4,7 @@ import { load } from "js-yaml";
 import { describe, expect, it } from "vitest";
 import { raizDelRepositorio } from "../componentes/fuentes";
 import { SISTEMAS as SISTEMAS_DECLARADOS } from "./deriva-de-migraciones";
+import { invariantesDe } from "./stacks";
 
 /**
  * El compose de la PLATAFORMA (ADR-0031 §4), leido del archivo.
@@ -71,17 +72,16 @@ const RAIZ = raizDelRepositorio();
 const PLATAFORMA = load(
   readFileSync(join(RAIZ, "despliegue/plataforma.compose.yaml"), "utf8"),
 ) as Compose;
-const ENTERO = load(readFileSync(join(RAIZ, "despliegue/compose.yaml"), "utf8")) as Compose;
 
 /**
  * Las cuatro bases de ADR-0029, **derivadas** de la tabla que ya las declara.
  *
  * Hasta C-10 esta lista estaba escrita aqui a mano, que era un cuarto sitio donde
- * olvidarse de un sistema —el defecto de #742 otra vez—. Sale de {@link SISTEMAS} menos
- * el monolito, que es la misma resta que hace `esquemas()` y por el mismo motivo: la base
- * de `sgtm` se llama `sgtm` y la crea el otro compose.
+ * olvidarse de un sistema —el defecto de #742 otra vez—. Sale de {@link SISTEMAS}, que
+ * desde `E` son exactamente los cuatro: la resta del monolito sobra porque el monolito ya
+ * no esta en esa tabla.
  */
-const BASES = SISTEMAS_DECLARADOS.filter((s) => s.nombre !== "sgtm").map((s) => s.nombre);
+const BASES = SISTEMAS_DECLARADOS.map((s) => s.nombre);
 
 describe("la plataforma levanta lo que todo el mundo necesita", () => {
   it("PostgreSQL, Keycloak, el buzon y el ingreso, y nada de ningun sistema", () => {
@@ -94,8 +94,10 @@ describe("la plataforma levanta lo que todo el mundo necesita", () => {
   });
 
   it("el motor es el mismo que el del cluster: PostgreSQL 16 con PostGIS", () => {
-    // `catastro` la necesita desde `V61`, y la imagen oficial no la trae.
-    expect(PLATAFORMA.services["base"]?.image).toBe(ENTERO.services["base"]?.image);
+    // `catastro` la necesita desde `V61`, y la imagen oficial no la trae. Se compara contra
+    // la que declara el stack —que es la que se despliega— y ya no contra el compose del
+    // monolito, que se fue con el (`E`).
+    expect(PLATAFORMA.services["base"]?.image).toBe(invariantesDe("stg").database.image);
     expect(PLATAFORMA.services["base"]?.image).toContain("postgis");
   });
 
@@ -145,8 +147,14 @@ describe("la plataforma levanta lo que todo el mundo necesita", () => {
     const enInitdb = montajes.filter((v) => v.includes(":/docker-entrypoint-initdb.d/"));
 
     expect(enInitdb.filter((v) => v.includes("/etc/kamayuk/"))).toEqual([]);
-    // 05-crear-bases, 06-roles-de-los-sistemas, 10-crear-roles, 20-asignar-claves.
-    expect(enInitdb).toHaveLength(4);
+    // 05-crear-bases, 06-roles-de-los-sistemas, 20-asignar-claves. Eran CUATRO hasta `E`:
+    // el `10-crear-roles.sql` del monolito era el unico `.sql` que caia ahi, y el
+    // entrypoint lo ejecutaba contra la base por omision.
+    expect(enInitdb).toHaveLength(3);
+    expect(
+      enInitdb.filter((v) => v.endsWith(".sql:ro") || v.endsWith(".sql")),
+      "un `.sql` en initdb.d lo ejecuta el entrypoint contra la base por omision",
+    ).toEqual([]);
   });
 
   /**
@@ -172,18 +180,20 @@ describe("la plataforma levanta lo que todo el mundo necesita", () => {
     ).toBeGreaterThan(bases);
   });
 
-  it("el guion de las bases corre ANTES que el de los roles", () => {
-    // `crear-roles.sql` instala extensiones y concede sobre `public`: sin las bases
-    // creadas no tiene donde hacerlo. Lo unico que ordena estos guiones es el numero.
+  it("el guion de las bases corre ANTES que el de los roles de los sistemas", () => {
+    // `crear-roles.sql` de cada sistema instala sus extensiones y concede sobre el `public`
+    // de SU base: sin las bases creadas no tiene donde hacerlo. Lo unico que ordena estos
+    // guiones es el numero. Se compara contra `06` y no contra el `10` del monolito, que se
+    // fue con el (`E`).
     const montajes = (PLATAFORMA.services["base"]?.volumes ?? []).filter((v) =>
       v.includes(":/docker-entrypoint-initdb.d/"),
     );
     const bases = montajes.findIndex((v) => v.includes("crear-bases"));
-    const roles = montajes.findIndex((v) => v.includes("crear-roles"));
+    const roles = montajes.findIndex((v) => v.includes("roles-de-los-sistemas"));
     expect(bases).toBeGreaterThanOrEqual(0);
     expect(roles).toBeGreaterThan(bases);
-    expect(montajes[bases]).toMatch(/\/docker-entrypoint-initdb\.d\/0\d-/);
-    expect(montajes[roles]).toMatch(/\/docker-entrypoint-initdb\.d\/1\d-/);
+    expect(montajes[bases]).toMatch(/\/docker-entrypoint-initdb\.d\/05-/);
+    expect(montajes[roles]).toMatch(/\/docker-entrypoint-initdb\.d\/06-/);
   });
 
   it("Keycloak siembra LOS DOS realms: son dos emisores, no dos clientes de uno", () => {
@@ -205,29 +215,16 @@ describe("la plataforma levanta lo que todo el mundo necesita", () => {
     expect(socket).toMatch(/:ro$/);
   });
 
-  it("no comparte volumen con el compose entero", () => {
-    // Los dos crean bases distintas en su primer arranque, y los guiones de `initdb`
-    // solo corren con el volumen VACIO: compartirlo dejaria al segundo sin ejecutarlos,
-    // y el sintoma seria una base que falta y ningun error.
-    const suyos = Object.keys(PLATAFORMA.volumes ?? {});
-    const ajenos = Object.keys(ENTERO.volumes ?? {});
-    expect(suyos.some((v) => ajenos.includes(v))).toBe(false);
-  });
-});
-
-describe("el compose entero NO se retira: es el perfil `todo`", () => {
-  it("sigue existiendo y sigue levantando la aplicacion", () => {
-    // ADR-0031 §4: «un perfil `todo` levanta los cuatro, para pruebas de integracion y
-    // para CI». Hoy levanta el sistema de la fase B entero, que es el mismo papel.
-    expect(Object.keys(ENTERO.services)).toContain("aplicacion");
-    expect(Object.keys(ENTERO.services)).toContain("migraciones");
-  });
-
-  it("y su servicio `base` conserva la base `sgtm` del monolito", () => {
-    // Mientras `rentas` sea el monolito con los doce contextos dentro (ADR-0032), su
-    // base sigue llamandose `sgtm`. Cambiarlo aqui rompe CI sin arreglar nada.
-    expect(ENTERO.services["base"]?.environment?.["POSTGRES_DB"]).toBe("sgtm");
-  });
+  /**
+   * **`despliegue/compose.yaml` ya no existe** (`E`), y con el las tres pruebas que lo
+   * comparaban con este.
+   *
+   * Era el compose del monolito: levantaba `migraciones`, `aplicacion`, `implantacion` e
+   * `interfaz` construyendo `backend/Dockerfile` y `../frontend`. **Ninguno de los dos
+   * existia en este repositorio desde el corte** —medido: `backend/` traia solo los `.sql`
+   * y un `.java`—, asi que ese compose no podia construirse desde aqui desde el primer dia.
+   * `plataforma.compose.yaml` es el que queda, y cada sistema trae el suyo.
+   */
 });
 
 describe("lo que el archivo no decia y solo se vio levantandolo", () => {

@@ -4,6 +4,9 @@ import { describe, expect, it } from "vitest";
 import { namespacesDelAmbiente } from "../descriptor/entorno";
 import { auditarManifiestos } from "../auditoria";
 import { construirManifiestos } from "../componentes";
+import { manifiestosDelAmbiente } from "../herramientas/emitir-manifiestos";
+import { clonDe, sistemaLlamado } from "./deriva-de-migraciones";
+import { BASE_DEL_REGISTRO_DE_RESPALDO } from "../componentes/convenciones";
 import {
   manifiestosDeIdentidad,
   documentosDelRealm,
@@ -15,7 +18,6 @@ import {
   RUTA_DE_IDENTIDAD,
   PUERTO_DE_LA_CONSOLA,
 } from "../componentes/Identidad";
-import { nginxDelCluster } from "../componentes/Aplicacion";
 import { valoresDeTraefik } from "../componentes/Ingreso";
 import { manifiestosDeObservabilidad } from "../componentes/Observabilidad";
 import { PRIORIDADES, nombreDePrioridad, recursosDe, secretos } from "../componentes/convenciones";
@@ -153,15 +155,20 @@ describe("#149 · la base de datos", () => {
     const enElRepositorio = (ruta: string) =>
       readFileSync(join(raizDelRepositorio(), ruta), "utf8");
 
-    // Identicos, byte a byte. Si alguien pega aqui una version editada de
-    // `crear-roles.sql`, la prueba lo dice: seria un segundo sitio donde olvidar que el
-    // rol no puede ser superusuario.
-    expect(datos["10-crear-roles.sql"]).toBe(
-      enElRepositorio("backend/sgtm-esquema/src/main/resources/db/roles/crear-roles.sql"),
-    );
+    // Identicos, byte a byte. Si alguien pega aqui una version editada, la prueba lo dice:
+    // seria un segundo sitio donde olvidar que el rol no puede ser superusuario.
     expect(datos["20-asignar-claves.sh"]).toBe(
       enElRepositorio("despliegue/inicializacion-del-motor/20-asignar-claves.sh"),
     );
+
+    // Y **ya no hay ningun `.sql`** en `docker-entrypoint-initdb.d` (`E`). El unico que
+    // habia era `10-crear-roles.sql`, el del monolito, que el entrypoint EJECUTABA contra la
+    // base por omision. Los cuatro `crear-roles.sql` que quedan viven en el OTRO ConfigMap,
+    // fuera de initdb.d, y los aplica `06` cada uno contra su base.
+    expect(
+      Object.keys(datos).filter((clave) => clave.endsWith(".sql")),
+      "un `.sql` en initdb.d lo ejecuta el entrypoint contra la base por omision",
+    ).toEqual([]);
   });
 
   /**
@@ -193,8 +200,9 @@ describe("#149 · la base de datos", () => {
     expect(claves.indexOf("06-roles-de-los-sistemas.sh")).toBeGreaterThan(
       claves.indexOf("05-crear-bases.sh"),
     );
-    // Y los dos van DELANTE del `10`, que es el del monolito y corre contra otra base.
-    expect(claves.indexOf("10-crear-roles.sql")).toBeGreaterThan(
+    // Y los dos van DELANTE del `20`, que es el que asigna las claves: un `ALTER ROLE` sobre
+    // un rol que todavia no existe no falla en silencio, pero deja al motor sin credenciales.
+    expect(claves.indexOf("20-asignar-claves.sh")).toBeGreaterThan(
       claves.indexOf("06-roles-de-los-sistemas.sh"),
     );
   });
@@ -267,16 +275,30 @@ describe("#149 · la base de datos", () => {
     ).not.toContain("initdb");
   });
 
-  it("los cuatro roles se crean, y ninguno es superusuario", () => {
-    const datos = (buscar(ms, "ConfigMap", "postgres-inicializacion") as { data: Record<string, string> })
-      .data;
-    const sql = datos["10-crear-roles.sql"] ?? "";
-    for (const rol of ["kamayuk_owner", "kamayuk_app", "kamayuk_readonly", "rol_carga_parametros"]) {
-      expect(sql, `falta el rol ${rol}`).toContain(rol);
-    }
-    expect(sql).toContain("NOSUPERUSER");
-    expect(sql).toContain("NOBYPASSRLS");
-  });
+  /**
+   * Los cuatro roles del cluster se crean, y ninguno es superusuario.
+   *
+   * **Se leen de los cuatro `crear-roles.sql` de los sistemas** (`E`). Hasta el 2026-09-06
+   * se leian del `10-crear-roles.sql` del monolito, que era el que los creaba; con el fuera,
+   * quien los crea es `06-roles-de-los-sistemas.sh` aplicando el archivo de cada sistema, y
+   * los cuatro los declaran con `IF NOT EXISTS`. Se exige de **cada uno**: bastaría con que
+   * uno los creara, y por eso mismo comprobar uno solo dejaria que los otros tres se
+   * quedaran sin `NOSUPERUSER` sin que nada lo dijera.
+   */
+  it.each(["rentas", "catastro", "normativa", "caja"])(
+    "«%s» crea los cuatro roles del cluster, y ninguno es superusuario",
+    (sistema) => {
+      const configuracion = buscar(ms, "ConfigMap", "postgres-roles-de-los-sistemas") as {
+        data: Record<string, string>;
+      };
+      const sql = datosDe(configuracion, `${sistema}.sql`);
+      for (const rol of ["kamayuk_owner", "kamayuk_app", "kamayuk_readonly", "rol_carga_parametros"]) {
+        expect(sql, `«${sistema}» no crea el rol ${rol}`).toContain(rol);
+      }
+      expect(sql).toContain("NOSUPERUSER");
+      expect(sql).toContain("NOBYPASSRLS");
+    },
+  );
 
   it("una replica sobre volumen, con estrategia Recreate", () => {
     const motor = buscar(ms, "Deployment", "postgres") as {
@@ -336,11 +358,11 @@ describe("#149 · la demostracion: la auditoria se pone roja", () => {
 // #150 — Migracion e implantacion como Jobs
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("#150 · kamayuk_owner no entra en el Deployment", () => {
+describe("#150 · kamayuk_owner no entra en ningun proceso expuesto", () => {
   const ms = manifiestosDe(AMBIENTE);
   const secretoDeOwner = secretos(AMBIENTE).owner;
 
-  it("el Secret de owner se monta en los dos Jobs, en el motor y en el CronJob de respaldo, y en nada mas", () => {
+  it("el Secret de owner se monta en el motor y en el CronJob de respaldo, y en nada mas", () => {
     const donde = new Set(
       contenedoresDeTodo(ms)
         .filter(({ c }) => secretosDe(c).includes(secretoDeOwner))
@@ -354,116 +376,52 @@ describe("#150 · kamayuk_owner no entra en el Deployment", () => {
     // como `V8__respaldo.sql` declara que lo hace «el proceso de despliegue». Lo que
     // la regla persigue es que no acabe en un proceso expuesto en HTTP, y ninguno de
     // los dos abre un puerto.
+    //
+    // **Y desde `E` son dos y no cuatro.** Los otros dos eran los `Job` de arranque del
+    // monolito; los de los cuatro sistemas viven en el namespace de su sistema y los mide
+    // `despliegue-de-los-sistemas.test.ts`, que es donde su descriptor los compone.
     expect([...donde].sort()).toEqual([
       "CronJob/kamayuk-prod-respaldo",
       "Deployment/kamayuk-prod-postgres",
-      `Job/kamayuk-prod-implantacion-${invariantesDe(AMBIENTE).application.bootstrapVersion.slice(0, 12)}`,
-      `Job/kamayuk-prod-migracion-${invariantesDe(AMBIENTE).application.bootstrapVersion.slice(0, 12)}`,
     ]);
-  });
-
-  it("la aplicacion se conecta como kamayuk_app, y solo como kamayuk_app", () => {
-    for (const { c } of contenedoresDeTodo(ms)) {
-      const usuario = variablesDe(c).get("KAMAYUK_DB_USUARIO");
-      if (usuario !== undefined) expect(usuario).toBe("kamayuk_app");
-    }
-  });
-
-  it("la aplicacion espera a la implantacion antes de atender", () => {
-    const aplicacion = buscar(ms, "Deployment", "aplicacion") as {
-      spec: { template: { spec: { initContainers?: Contenedor[] } } };
-    };
-    const espera = aplicacion.spec.template.spec.initContainers ?? [];
-    expect(espera.map((c) => c.name)).toContain("espera-implantacion");
-    expect(espera[0]?.args?.join(" ")).toContain("municipalidad");
-  });
-
-  it("la implantacion espera a que el esquema este aplicado", () => {
-    const implantacion = buscar(ms, "Job", "implantacion") as {
-      spec: { template: { spec: { initContainers?: Contenedor[] } } };
-    };
-    const espera = implantacion.spec.template.spec.initContainers ?? [];
-    expect(espera.map((c) => c.name)).toContain("espera-migracion");
-    expect(espera[0]?.args?.join(" ")).toContain("flyway_schema_history");
-  });
-
-  it("el alta lleva la marca de demostracion que el stack decidio", () => {
-    // Solo los ambientes que DESPLIEGAN el monolito (C-19): desde que `stg` lo apago no
-    // compone ningun Job de implantacion, y buscarlo alli seria exigir un objeto que ese
-    // ambiente declara a proposito que no tiene. El filtro sale de la configuracion y no
-    // de una lista, para que el dia que `stg` vuelva a desplegarlo entre solo.
-    const conMonolito = ENVIRONMENTS.filter(
-      (a) => invariantesDe(a).application.deployMonolith,
-    );
-    expect(conMonolito.length, "ningun ambiente despliega el monolito: no hay alta que medir").toBeGreaterThan(0);
-    for (const ambiente of conMonolito) {
-      const implantacion = buscar(manifiestosDe(ambiente), "Job", "implantacion") as {
-        spec: { template: { spec: { containers: Contenedor[] } } };
-      };
-      const contenedor = implantacion.spec.template.spec.containers[0];
-      expect(variablesDe(contenedor as Contenedor).get("KAMAYUK_IMPLANTACION_ESDEMOSTRACION")).toBe(
-        String(invariantesDe(ambiente).application.isDemonstration),
-      );
-    }
-  });
-
-  it("el nombre de los Jobs lleva la version: una version nueva es un Job nuevo", () => {
-    const version = invariantesDe(AMBIENTE).application.bootstrapVersion;
-    const sufijo = version.slice(0, 12);
-    expect(buscar(ms, "Job", "migracion").metadata.name).toContain(sufijo);
-    expect(buscar(ms, "Job", "implantacion").metadata.name).toContain(sufijo);
   });
 });
 
 describe("#150 · la demostracion: la auditoria se pone roja", () => {
-  it("cambiando en el Deployment el usuario de base por kamayuk_owner", () => {
-    const ms = manifiestosDe(AMBIENTE);
-    const aplicacion = buscar(ms, "Deployment", "aplicacion") as {
-      spec: { template: { spec: { containers: Contenedor[] } } };
-    };
-    const env = aplicacion.spec.template.spec.containers[0]?.env ?? [];
+  it("cambiando en un Deployment web el usuario de base por kamayuk_owner", () => {
+    const ms = manifiestosDelAmbiente(invariantesDe(AMBIENTE));
+    const env = webDeUnSistema(ms).spec.template.spec.containers[0]?.env ?? [];
     const usuario = env.find((e) => e.name === "KAMAYUK_DB_USUARIO");
     if (usuario) usuario.value = "kamayuk_owner";
 
-    expect(auditar(ms)).toContainEqual(expect.stringContaining("se conecta a la base como"));
+    expect(auditarTodo(ms)).toContainEqual(expect.stringContaining("se conecta a la base como"));
   });
 
-  it("dandole al Deployment el Secret de kamayuk_owner", () => {
-    const ms = manifiestosDe(AMBIENTE);
-    const aplicacion = buscar(ms, "Deployment", "aplicacion") as {
-      spec: { template: { spec: { containers: Contenedor[] } } };
-    };
-    aplicacion.spec.template.spec.containers[0]?.env?.push({
+  it("dandole a un Deployment web el Secret de kamayuk_owner", () => {
+    const ms = manifiestosDelAmbiente(invariantesDe(AMBIENTE));
+    webDeUnSistema(ms).spec.template.spec.containers[0]?.env?.push({
       name: "KAMAYUK_DB_OWNER_CLAVE",
       valueFrom: { secretKeyRef: { name: secretos(AMBIENTE).owner, key: "clave-owner" } },
     });
 
-    expect(auditar(ms)).toContainEqual(expect.stringContaining("el Secret de kamayuk_owner"));
+    expect(auditarTodo(ms)).toContainEqual(expect.stringContaining("el Secret de kamayuk_owner"));
   });
 
-  it("quitando la espera: la aplicacion arrancaria sobre una base vacia", () => {
-    const ms = manifiestosDe(AMBIENTE);
-    const aplicacion = buscar(ms, "Deployment", "aplicacion") as {
-      spec: { template: { spec: { initContainers?: Contenedor[] } } };
-    };
-    aplicacion.spec.template.spec.initContainers = [];
-
-    // Esta no la ve la auditoria generica —no es una convencion de INF-01 §4, es el
-    // orden de arranque de #150—, asi que la comprueba la prueba, y su version rota
-    // demuestra que la comprobacion sirve.
-    expect(esperaAntesDeAtender(ms)).toBe(false);
-  });
+  /**
+   * **La tercera mutacion de #150 se retira, y hay que decir por que** (`E`).
+   *
+   * Media que el `Deployment` del monolito llevara un `initContainer` `espera-implantacion`:
+   * sin el, la aplicacion podia empezar a atender sobre una base sin municipalidad. Ese
+   * `Deployment` se fue, y los cuatro que lo sustituyen **no tienen ninguno** —medido sobre
+   * `yarn manifiestos`: `initContainers` vacio en los cuatro `*-web`—.
+   *
+   * No se reescribe contra ellos porque seria exigir algo que su descriptor no compone, y ese
+   * descriptor vive en otro repositorio. **Queda como hueco declarado en `E`**: hoy, los
+   * cuatro `web` pueden arrancar antes de que su `Job` de implantacion termine, y el sintoma
+   * seria una peticion contestada sobre un padron sin municipalidad — que es exactamente lo
+   * que #150 existia para impedir.
+   */
 });
-
-/** ¿Espera la aplicacion a la implantacion antes de atender peticiones? */
-function esperaAntesDeAtender(ms: Manifiesto[]): boolean {
-  const aplicacion = buscar(ms, "Deployment", "aplicacion") as {
-    spec: { template: { spec: { initContainers?: Contenedor[] } } };
-  };
-  return (aplicacion.spec.template.spec.initContainers ?? []).some(
-    (c) => c.name === "espera-implantacion",
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // #151 — Keycloak
@@ -528,15 +486,21 @@ describe("#151 · identidad", () => {
       `https://${dominio}${RUTA_DE_IDENTIDAD}`,
     );
 
-    const aplicacion = buscar(ms, "Deployment", "aplicacion") as {
-      spec: { template: { spec: { containers: Contenedor[] } } };
-    };
-    const variables = variablesDe(aplicacion.spec.template.spec.containers[0] as Contenedor);
+    // Quien valida el token son los cuatro `web` de ADR-0031 (`E`): el `Deployment` del
+    // monolito, que era quien lo hacia, se fue. Se mide sobre uno de ellos, compuesto por su
+    // descriptor, que es donde de verdad se decide.
+    const variables = variablesDe(
+      webDeUnSistema(manifiestosDelAmbiente(invariantesDe(AMBIENTE))).spec.template.spec
+        .containers[0] as Contenedor,
+    );
     expect(variables.get("KAMAYUK_OIDC_EMISOR")).toBe(
       `https://${dominio}${RUTA_DE_IDENTIDAD}/realms/sgtm`,
     );
-    // El JWKS no sale al ingreso para volver a entrar.
-    expect(variables.get("KAMAYUK_OIDC_JWKS")).toContain("http://kamayuk-prod-identidad:8080");
+    // El JWKS no sale al ingreso para volver a entrar. Y lleva el namespace dentro, porque
+    // desde ADR-0031 el que pregunta vive en OTRO (C-14, punto 3).
+    expect(variables.get("KAMAYUK_OIDC_JWKS")).toContain(
+      "http://kamayuk-prod-identidad.kamayuk-prod:8080",
+    );
   });
 
   it("el realm que se aplica conserva el mapeador de municipalidad_id", () => {
@@ -1232,27 +1196,44 @@ describe("#415 · enrolamiento del ciudadano", () => {
     );
   });
 
-  it("la tabla de formas de documento es la del enumerado del dominio", () => {
-    // No se copia: se contrasta. Un tipo nuevo en `TipoDocumento` sin declararlo aqui
-    // pone esto rojo, y al reves. Precedente: #192 con `UnidadDePlazo`.
-    const java = readFileSync(
-      join(
-        raizDelRepositorio(),
-        "backend/sgtm-dominio-compartido/src/main/java/pe/gob/sgtm/dominio/TipoDocumento.java",
-      ),
-      "utf8",
-    );
-    const delEnumerado: Record<string, [number, number, boolean]> = {};
-    for (const linea of java.split("\n")) {
-      const m = /^\s{4}([A-Z]+)\((\d+),\s*(\d+),\s*(true|false)\)/.exec(linea);
-      if (m !== null) {
-        delEnumerado[m[1] as string] = [Number(m[2]), Number(m[3]), m[4] === "true"];
+  /**
+   * La tabla de formas de documento es la del enumerado del dominio, **en los cuatro**.
+   *
+   * No se copia: se contrasta. Un tipo nuevo en `TipoDocumento` sin declararlo aqui pone
+   * esto rojo, y al reves. Precedente: #192 con `UnidadDePlazo`.
+   *
+   * Hasta `E` el contraste era **uno**: `backend/sgtm-dominio-compartido`, el unico Java
+   * que este repositorio llevaba, del monolito. Se fue con el, y su enumerado esta hoy en
+   * los cuatro clones —`kamayuk/<sistema>/dominio/TipoDocumento.java`—. Se leen **los
+   * cuatro** y no uno: elegir uno dejaria que los otros tres divergieran sin que nada lo
+   * dijera, y la cuenta que valida el documento del ciudadano es la misma para todos.
+   */
+  it.each(["rentas", "catastro", "normativa", "caja"])(
+    "la tabla de formas de documento es la del enumerado del dominio de «%s»",
+    (sistema) => {
+      const java = readFileSync(
+        join(
+          clonDe(sistemaLlamado(sistema)),
+          "backend",
+          `kamayuk-${sistema}-dominio-compartido`,
+          "src/main/java/kamayuk",
+          sistema,
+          "dominio/TipoDocumento.java",
+        ),
+        "utf8",
+      );
+      const delEnumerado: Record<string, [number, number, boolean]> = {};
+      for (const linea of java.split("\n")) {
+        const m = /^\s{4}([A-Z]+)\((\d+),\s*(\d+),\s*(true|false)\)/.exec(linea);
+        if (m !== null) {
+          delEnumerado[m[1] as string] = [Number(m[2]), Number(m[3]), m[4] === "true"];
+        }
       }
-    }
 
-    expect(Object.keys(delEnumerado).length).toBeGreaterThan(0);
-    expect(delEnumerado).toEqual(TIPOS_DE_DOCUMENTO);
-  });
+      expect(Object.keys(delEnumerado).length).toBeGreaterThan(0);
+      expect(delEnumerado).toEqual(TIPOS_DE_DOCUMENTO);
+    },
+  );
 
   it("y el guion, que valida lo mismo en modo compose, dice esa misma tabla", () => {
     // La imagen de Keycloak no trae con que analizar JSON, asi que la validacion existe
@@ -1333,7 +1314,7 @@ describe("#151 · la demostracion", () => {
   });
 
   it("con el nombre interno como emisor, el `iss` deja de cuadrar", () => {
-    const ms = manifiestosDe(AMBIENTE);
+    const ms = manifiestosDelAmbiente(invariantesDe(AMBIENTE));
     const identidad = buscar(ms, "Deployment", "identidad") as {
       spec: { template: { spec: { containers: Contenedor[] } } };
     };
@@ -1347,10 +1328,18 @@ describe("#151 · la demostracion", () => {
   });
 });
 
-/** ¿Emite Keycloak con el mismo nombre publico que la aplicacion valida? */
+/**
+ * ¿Emite Keycloak con el mismo nombre publico que validan los sistemas?
+ *
+ * El emisor lo declara el descriptor de cada sistema y el `KC_HOSTNAME` lo declara la
+ * plataforma, asi que este contraste cruza los CINCO espacios de nombres: si se hiciera solo
+ * sobre la plataforma no quedaria nadie que validara, y la comprobacion no podria fallar.
+ */
 function emisorCoherente(ms: Manifiesto[]): boolean {
   const hostname = valorDe(ms, "Deployment", "identidad", "KC_HOSTNAME");
-  const emisor = valorDe(ms, "Deployment", "aplicacion", "KAMAYUK_OIDC_EMISOR");
+  const emisor = variablesDe(
+    webDeUnSistema(ms).spec.template.spec.containers[0] as Contenedor,
+  ).get("KAMAYUK_OIDC_EMISOR");
   return hostname !== undefined && emisor !== undefined && emisor.startsWith(hostname);
 }
 
@@ -1379,7 +1368,18 @@ function clientesDe(carga: string): ClienteLeido[] {
 // #152 — La aplicacion y la interfaz
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("#152 · la aplicacion y la interfaz", () => {
+/**
+ * `#152` — sondas y limites, ahora **de la plataforma**.
+ *
+ * Este bloque medía el `Deployment` del monolito y su interfaz; los dos se fueron con `E`.
+ * Lo que se conserva son las cuatro comprobaciones que valen para TODO contenedor —limites
+ * declarados, `timeoutSeconds` en cada sonda, `pg_isready` por TCP y la `startupProbe` de la
+ * JVM—, que ahora se miden sobre lo que queda: motor, identidad, correo, respaldo y
+ * observabilidad. Las que hablaban de `maxSurge`, del perfil `batch`, de «un artefacto, dos
+ * perfiles» y del `proxy_pass` de nginx no se reescriben contra los cuatro sistemas: eso lo
+ * mide `despliegue-de-los-sistemas.test.ts`, contra su propio descriptor.
+ */
+describe("#152 · sondas y limites de la plataforma", () => {
   const ms = manifiestosDe(AMBIENTE);
 
   it("ningun contenedor sin limites de recursos declarados", () => {
@@ -1424,92 +1424,86 @@ describe("#152 · la aplicacion y la interfaz", () => {
     }
   });
 
-  it("la JVM tiene su `startupProbe`, para que la sonda de vida no la mate arrancando", () => {
-    const aplicacion = buscar(ms, "Deployment", "aplicacion") as {
-      spec: { template: { spec: { containers: Contenedor[] } } };
-    };
-    const contenedor = aplicacion.spec.template.spec.containers[0] as Contenedor;
-    expect(contenedor.startupProbe).toBeDefined();
-    expect(contenedor.startupProbe?.httpGet?.path).toBe("/actuator/health");
+  /**
+   * La JVM tiene su `startupProbe`, para que la sonda de vida no la mate arrancando.
+   *
+   * Se mide sobre los `web` de los cuatro sistemas (`E`): la unica JVM de la plataforma era
+   * la del monolito, y se fue con el. Se exige de **los cuatro** y no de uno, por lo mismo
+   * que la tabla de tipos de documento: comprobar uno dejaria que los otros tres perdieran su
+   * sonda de arranque sin que nada lo dijera, y el sintoma —el kubelet matando un pod que
+   * todavia arranca— es un `CrashLoopBackOff` que no se parece a su causa.
+   */
+  it("los cuatro `web` tienen su `startupProbe` de JVM", () => {
+    const todos = manifiestosDelAmbiente(invariantesDe(AMBIENTE)).filter(
+      (m) => m.kind === "Deployment" && m.metadata.name.endsWith("-web"),
+    );
+    expect(todos.length, "ningun Deployment web: la prueba no mide nada").toBe(4);
+    for (const web of todos) {
+      const contenedor = (web as unknown as { spec: { template: { spec: { containers: Contenedor[] } } } })
+        .spec.template.spec.containers[0] as Contenedor;
+      expect(contenedor.startupProbe, web.metadata.name).toBeDefined();
+      expect(contenedor.startupProbe?.httpGet?.path, web.metadata.name).toBe("/actuator/health");
+    }
   });
 
-  it("el rollout de la aplicacion no pide un pod de mas: `maxSurge: 0`", () => {
-    // El default de Kubernetes levanta un segundo pod de la JVM antes de matar el
-    // viejo. En `prod` —un nodo, una replica— no cabe: se queda `Pending` con
-    // `Insufficient cpu` y a los diez minutos el `pulumi up` falla por
-    // `ProgressDeadlineExceeded`. Pasó de verdad el 2026-08-27.
-    const aplicacion = buscar(ms, "Deployment", "aplicacion") as {
-      spec: { strategy: { type: string; rollingUpdate?: { maxSurge?: number | string } } };
-    };
-    expect(aplicacion.spec.strategy.type).toBe("RollingUpdate");
-    expect(aplicacion.spec.strategy.rollingUpdate?.maxSurge).toBe(0);
-  });
-
-  it("el perfil batch corre sin abrir puerto ninguno", () => {
-    const lote = buscar(ms, "CronJob", "lote") as {
-      spec: { jobTemplate: { spec: { template: { spec: { containers: Contenedor[] } } } } };
-    };
-    const contenedor = lote.spec.jobTemplate.spec.template.spec.containers[0] as Contenedor;
-    expect(variablesDe(contenedor).get("SPRING_PROFILES_ACTIVE")).toBe("batch");
-    expect(contenedor.ports ?? []).toEqual([]);
-  });
-
-  it("un artefacto, dos perfiles: la misma imagen en web y en batch", () => {
-    const web = (
-      buscar(ms, "Deployment", "aplicacion") as {
-        spec: { template: { spec: { containers: Contenedor[] } } };
-      }
-    ).spec.template.spec.containers[0]?.image;
-    const lote = (
-      buscar(ms, "CronJob", "lote") as {
-        spec: { jobTemplate: { spec: { template: { spec: { containers: Contenedor[] } } } } };
-      }
-    ).spec.jobTemplate.spec.template.spec.containers[0]?.image;
-    expect(lote).toBe(web);
-  });
-
-  it("la interfaz reenvia /api/v1 al servicio de la aplicacion del ambiente", () => {
-    const configuracion = nginxDelCluster(AMBIENTE);
-    expect(configuracion).toContain("proxy_pass http://kamayuk-prod-aplicacion:8080;");
-    // Y no queda ni un rastro del nombre del compose, que en el clúster no resuelve.
-    expect(configuracion).not.toContain("http://aplicacion:8080");
-  });
 });
 
+/**
+ * Las tres mutaciones de `#152`, **sobre los cuatro sistemas** (`E`).
+ *
+ * Median el `Deployment` del monolito y su interfaz. Las tres reglas que ejercitan siguen
+ * vivas —`perfil web sin KAMAYUK_OIDC_EMISOR`, `sin limits de recursos`, `perfil batch con
+ * puertos declarados`— y su unico sujeto posible hoy son los cuatro `Deployment` de ADR-0031,
+ * que son los que declaran `SPRING_PROFILES_ACTIVE`. Sin reescribirlas, las tres reglas se
+ * quedarian sin ninguna muestra que las viole: una regla que no puede fallar no protege nada.
+ *
+ * Por eso mutan `manifiestosDelAmbiente` —los CINCO espacios de nombres— y no
+ * `construirManifiestos`, que desde `E` no compone ni un contenedor con perfil de Spring.
+ */
 describe("#152 · la demostracion: la auditoria se pone roja", () => {
-  it("quitando `KAMAYUK_OIDC_EMISOR` del Deployment", () => {
-    const ms = manifiestosDe(AMBIENTE);
-    const aplicacion = buscar(ms, "Deployment", "aplicacion") as {
-      spec: { template: { spec: { containers: Contenedor[] } } };
-    };
-    const contenedor = aplicacion.spec.template.spec.containers[0];
-    if (contenedor) contenedor.env = (contenedor.env ?? []).filter((e) => e.name !== "KAMAYUK_OIDC_EMISOR");
+  const delAmbiente = (): Manifiesto[] => manifiestosDelAmbiente(invariantesDe(AMBIENTE));
 
-    expect(auditar(ms)).toContainEqual(expect.stringContaining("KAMAYUK_OIDC_EMISOR"));
+  /** El primer contenedor del `Deployment` web de un sistema cualquiera de los cuatro. */
+  function unWebDeUnSistema(ms: Manifiesto[]): Contenedor {
+    for (const { c } of contenedoresDeTodo(ms)) {
+      if (variablesDe(c).get("SPRING_PROFILES_ACTIVE") === "web") return c;
+    }
+    throw new Error(
+      "Ningun contenedor declara `SPRING_PROFILES_ACTIVE: web`. Las tres reglas de #152 se " +
+        "aplican al perfil de Spring, asi que sin uno no hay nada que mutar y las tres " +
+        "pasarian en verde sin haber mirado nada.",
+    );
+  }
+
+  it("quitando `KAMAYUK_OIDC_EMISOR` del Deployment web de un sistema", () => {
+    const ms = delAmbiente();
+    const contenedor = unWebDeUnSistema(ms);
+    contenedor.env = (contenedor.env ?? []).filter((e) => e.name !== "KAMAYUK_OIDC_EMISOR");
+
+    expect(auditarTodo(ms)).toContainEqual(expect.stringContaining("KAMAYUK_OIDC_EMISOR"));
   });
 
   it("dejando un contenedor sin limites", () => {
-    const ms = manifiestosDe(AMBIENTE);
-    const interfaz = buscar(ms, "Deployment", "interfaz") as {
-      spec: { template: { spec: { containers: Contenedor[] } } };
-    };
-    const contenedor = interfaz.spec.template.spec.containers[0];
-    if (contenedor) {
-      (contenedor as { resources: unknown }).resources = { requests: { cpu: "1", memory: "1Gi" } };
-    }
+    const ms = delAmbiente();
+    const contenedor = unWebDeUnSistema(ms);
+    (contenedor as { resources: unknown }).resources = { requests: { cpu: "1", memory: "1Gi" } };
 
-    expect(auditar(ms)).toContainEqual(expect.stringContaining("sin limits de recursos"));
+    expect(auditarTodo(ms)).toContainEqual(expect.stringContaining("sin limits de recursos"));
   });
 
   it("abriendo un puerto en el perfil batch", () => {
-    const ms = manifiestosDe(AMBIENTE);
-    const lote = buscar(ms, "CronJob", "lote") as {
-      spec: { jobTemplate: { spec: { template: { spec: { containers: Contenedor[] } } } } };
-    };
-    const contenedor = lote.spec.jobTemplate.spec.template.spec.containers[0];
-    if (contenedor) contenedor.ports = [{ containerPort: 8080 }];
+    const ms = delAmbiente();
+    const batch = contenedoresDeTodo(ms).find(
+      ({ c }) => variablesDe(c).get("SPRING_PROFILES_ACTIVE") === "batch",
+    );
+    expect(
+      batch,
+      "Ningun contenedor declara `SPRING_PROFILES_ACTIVE: batch`: la regla del perfil batch " +
+        "se quedaria sin muestra que la viole.",
+    ).toBeDefined();
+    (batch as { c: Contenedor }).c.ports = [{ containerPort: 8080 }];
 
-    expect(auditar(ms)).toContainEqual(expect.stringContaining("con puertos declarados"));
+    expect(auditarTodo(ms)).toContainEqual(expect.stringContaining("con puertos declarados"));
   });
 });
 
@@ -1522,7 +1516,10 @@ describe("#153 · el ingreso", () => {
 
   it("toda ruta va por HTTPS, con certificado emitido", () => {
     const rutas = ms.filter((m) => m.kind === "IngressRoute");
-    expect(rutas.length).toBe(3);
+    // **Una desde `E`**, y eran tres: la interfaz del monolito en `/`, su API en `/api/v1` y
+    // la identidad. Las dos primeras se fueron con el; ninguno de los cuatro sistemas publica
+    // todavia por el ingreso. La cifra va escrita para que publicar la primera sea deliberado.
+    expect(rutas.length).toBe(1);
     for (const r of rutas) {
       const spec = (r as { spec: { entryPoints: string[]; tls?: { certResolver: string } } }).spec;
       expect(spec.entryPoints).toEqual(["websecure"]);
@@ -1636,7 +1633,8 @@ describe("#153 · la demostracion", () => {
 
   it("atendiendo tambien en `web`, la auditoria se pone roja", () => {
     const ms = manifiestosDe(AMBIENTE);
-    const interfaz = buscar(ms, "IngressRoute", "interfaz") as { spec: { entryPoints: string[] } };
+    // Sobre la ruta de identidad, que desde `E` es la unica que este stack publica.
+    const interfaz = buscar(ms, "IngressRoute", "identidad") as { spec: { entryPoints: string[] } };
     interfaz.spec.entryPoints = ["web", "websecure"];
 
     expect(auditar(ms)).toContainEqual(expect.stringContaining("80 redirige, no coexiste"));
@@ -1773,17 +1771,25 @@ describe("#155 · la demostracion: la auditoria se pone roja", () => {
     expect(auditar(ms)).toContainEqual(expect.stringContaining("texto plano"));
   });
 
-  it("dandole al CronJob de lote el Secret de kamayuk_owner, la auditoria lo sigue rechazando", () => {
-    const ms = manifiestosDe(AMBIENTE);
-    const contenedor = contenedorDelCronJob(ms, "lote");
-    (contenedor.env ??= []).push({
+  /**
+   * La excepcion de #155 es del CronJob **de respaldo**, no de «cualquier CronJob», y sigue
+   * medida — con otro sujeto (`E`).
+   *
+   * Se medía sobre el `CronJob` de `lote` del monolito, que llevaba su misma imagen y por eso
+   * era el contraste perfecto. Se fue con el, y **hoy no queda ningun otro `CronJob`** en la
+   * plataforma ni en los cuatro sistemas: el de respaldo es el unico. Asi que el contraste se
+   * hace donde todavia hay dos casos que separar —un `Deployment` cualquiera frente al
+   * `CronJob` de respaldo—, que es lo que la regla dice: la excepcion es por NOMBRE, no por
+   * clase de objeto.
+   */
+  it("la excepcion de kamayuk_owner es del CronJob de respaldo y de nadie mas", () => {
+    const ms = manifiestosDelAmbiente(invariantesDe(AMBIENTE));
+    webDeUnSistema(ms).spec.template.spec.containers[0]?.env?.push({
       name: "KAMAYUK_DB_OWNER_CLAVE",
       valueFrom: { secretKeyRef: { name: secretos(AMBIENTE).owner, key: "clave-owner" } },
     });
 
-    // La excepcion de #155 es del CronJob de respaldo, no de «cualquier CronJob»: el
-    // de lote —la MISMA imagen que la aplicacion— sigue sin poder llevar esta clave.
-    expect(auditar(ms)).toContainEqual(expect.stringContaining("el Secret de kamayuk_owner"));
+    expect(auditarTodo(ms)).toContainEqual(expect.stringContaining("el Secret de kamayuk_owner"));
   });
 });
 
@@ -1797,7 +1803,6 @@ function manifiestosDeObservabilidadDePrueba(alertWebhookUrl: string | undefined
     environment: AMBIENTE,
     namespace: namespaceName(AMBIENTE),
     recursos: recursosDe(invariantesDe(AMBIENTE).recursos.perfil),
-    conMonolito: invariantesDe(AMBIENTE).application.deployMonolith,
     alertWebhookUrl,
   });
 }
@@ -1824,13 +1829,26 @@ describe("#156 · observabilidad", () => {
     expect(secretosDe(exportador)).not.toContain(secretos(AMBIENTE).motor);
   });
 
-  it("Prometheus scrapea la aplicacion, el motor, el nodo, kube-state-metrics y Traefik", () => {
+  /**
+   * Prometheus raspa el motor, el nodo, kube-state-metrics y Traefik.
+   *
+   * **Ya no raspa ninguna aplicacion** (`E`): el `job_name: aplicacion` apuntaba al monolito y
+   * se fue con el; los cuatro sistemas no entran en su sitio porque viven en otro namespace y
+   * este Prometheus raspa por nombre corto. Queda como hueco declarado en `E`, y la prueba de
+   * abajo —«no raspa Service que no existen», en `perfil-del-ambiente.test.ts`— es lo que
+   * impide que alguien los anada mal y deje cuatro objetivos `down` para siempre.
+   */
+  it("Prometheus scrapea el motor, el nodo, kube-state-metrics y Traefik", () => {
     const configuracion = buscar(ms, "ConfigMap", "observabilidad-prometheus") as {
       data: Record<string, string>;
     };
     const prometheusYml = configuracion.data["prometheus.yml"] ?? "";
+    expect(
+      prometheusYml,
+      "vuelve a haber un objetivo de aplicacion: hay que decidir COMO se raspan los cuatro " +
+        "sistemas (viven en otro namespace), no reponer el del monolito",
+    ).not.toContain("/actuator/prometheus");
     for (const objetivo of [
-      "/actuator/prometheus",
       "kamayuk-prod-postgres:9187",
       "kamayuk-prod-observabilidad-node-exporter:9100",
       "kamayuk-prod-observabilidad-kube-state-metrics:8080",
@@ -1973,14 +1991,22 @@ describe("#157 · endurecimiento", () => {
     expect(base.spec.egress ?? []).toEqual([]);
   });
 
-  it("la interfaz no esta entre quienes pueden alcanzar PostgreSQL", () => {
-    // La prueba estructural: quien figura en la politica que ADMITE trafico hacia
-    // el motor. La prueba de verdad —que conectar falla— exige un clúster con el
-    // `NetworkPolicy` aplicado y es responsabilidad de
-    // `red/verificar-politicas.sh`, no de esta suite sin clúster.
+  /**
+   * Quien puede alcanzar PostgreSQL, y quien no.
+   *
+   * Se medía nombrando la interfaz del monolito —«la interfaz no esta ahi»—, y esa interfaz se
+   * fue (`E`). Lo que sustituye a esa afirmacion es mas fuerte y no envejece: la lista de pods
+   * que la politica admite se escribe **entera**, asi que anadir uno la pone roja. Hasta `E`
+   * eran ocho; hoy son dos, y los cuatro sistemas entran por `namespaceSelector` (C-14).
+   */
+  it("solo la identidad, la observabilidad y el respaldo alcanzan PostgreSQL por nombre de pod", () => {
     const postgres = politicaDe(ms, "permitir-ingreso-postgres");
-    const nombreDeInterfaz = buscar(ms, "Service", "kamayuk-prod-interfaz").metadata.name;
-    expect(origenesDe(postgres).pods).not.toContain(nombreDeInterfaz);
+    expect(origenesDe(postgres).pods.sort()).toEqual([
+      "kamayuk-prod-identidad",
+      // Prometheus, por el `postgres-exporter` que corre como sidecar del propio motor.
+      "kamayuk-prod-observabilidad-prometheus",
+      "kamayuk-prod-respaldo",
+    ]);
   });
 
   it("Prometheus tiene entrada, y es solo de Grafana", () => {
@@ -2006,11 +2032,16 @@ describe("#157 · endurecimiento", () => {
     expect((reglaConAlertmanager?.ports ?? []).map((p) => p.port)).toEqual([9093]);
   });
 
-  it("la aplicacion no tiene ningun bloque de internet en su lista de salida", () => {
-    const salida = politicaDe(ms, "permitir-salida-aplicacion");
-    const destinos = salida.spec.egress?.flatMap((r) => r.to ?? []) ?? [];
-    expect(destinos.some((d) => d.ipBlock !== undefined)).toBe(false);
-  });
+  /**
+   * Ninguna politica de la plataforma abre internet salvo las tres que lo dicen.
+   *
+   * Se medía sobre `permitir-salida-aplicacion`, que era del monolito. La afirmacion que la
+   * sustituye ya estaba escrita justo debajo —«las excepciones de salida amplia son de un
+   * solo puerto cada una, y de nadie mas»— y es la misma en mas fuerte, asi que esta se
+   * retira en vez de reescribirse contra un sujeto que no le corresponde: la salida de los
+   * cuatro sistemas la declara SU descriptor, en SU namespace, y la mide
+   * `despliegue-de-los-sistemas.test.ts`.
+   */
 
   it("las excepciones de salida amplia son de un solo puerto cada una, y de nadie mas", () => {
     const conInternet = politicasDeRed(ms).filter((p) =>
@@ -2252,11 +2283,13 @@ describe("#157 · la demostracion: la auditoria se pone roja", () => {
     expect(auditar(ms)).toContainEqual(expect.stringContaining("securityContext"));
   });
 
-  it("quitando el drop de capacidades de la interfaz, la auditoria lo detecta", () => {
+  it("quitando el drop de capacidades de Grafana, la auditoria lo detecta", () => {
+    // Se rompia la interfaz del monolito, que se fue con el (`E`). El sujeto da igual —la
+    // regla es de TODO contenedor—; lo que no da igual es que quede uno que la ejercite.
     const ms = manifiestosDe(AMBIENTE);
-    const interfaz = contenedorDe(ms, "Deployment", "interfaz", "interfaz");
+    const grafana = contenedorDe(ms, "Deployment", "observabilidad-grafana", "grafana");
     // @ts-expect-error -- se rompe a proposito: `capabilities` es obligatorio en el tipo.
-    delete interfaz.securityContext.capabilities;
+    delete grafana.securityContext.capabilities;
 
     expect(auditar(ms)).toContainEqual(expect.stringContaining("securityContext"));
   });
@@ -2440,11 +2473,21 @@ describe("#558 · la restauracion verificada queda escrita", () => {
     return guion.slice(desde, hasta);
   };
 
+  /**
+   * El esquema contra el que se contrasta, que desde `E` **no esta en este repositorio**.
+   *
+   * Era `V78__restauracion_verificada.sql` del monolito. La tabla `respaldo` vive hoy en las
+   * cuatro bases —los cuatro baselines la heredaron de `V1..V78`— y el `CronJob` escribe en
+   * la que declara {@link BASE_DEL_REGISTRO_DE_RESPALDO}: se contrasta contra **esa**, que es
+   * la unica cuyo esquema decide si el `UPDATE` del simulacro encuentra sus columnas.
+   */
   const migracion = () =>
     readFileSync(
       join(
-        raizDelRepositorio(),
-        "backend/sgtm-esquema/src/main/resources/db/migration/V78__restauracion_verificada.sql",
+        clonDe(sistemaLlamado(BASE_DEL_REGISTRO_DE_RESPALDO)),
+        "backend",
+        `kamayuk-${BASE_DEL_REGISTRO_DE_RESPALDO}-esquema`,
+        "src/main/resources/db/migration/V1__baseline.sql",
       ),
       "utf8",
     );
@@ -2457,17 +2500,20 @@ describe("#558 · la restauracion verificada queda escrita", () => {
     expect(sentencia()).toContain("ultima_restauracion_verificada_por");
   });
 
-  it("y las dos columnas son las que declara V78: no se copian, se contrastan", () => {
+  it("y las dos columnas son las que declara su esquema: no se copian, se contrastan", () => {
     // Un renombrado en la migracion sin tocar el guion deja el UPDATE apuntando a una
     // columna que ya no existe, y eso solo se veria ejecutando el simulacro contra `stg`
     // -que no corre en CI-. Precedente: #192 con `UnidadDePlazo`.
     for (const columna of ["ultima_restauracion_verificada", "ultima_restauracion_verificada_por"]) {
-      expect(migracion()).toContain(`ADD COLUMN ${columna}`);
+      // `ADD COLUMN` era la forma de `V78`; en el baseline la columna nace con la tabla, asi
+      // que lo que se busca es la declaracion. Lo que se contrasta no cambia: que el nombre
+      // que el guion escribe exista en el esquema donde escribe.
+      expect(migracion()).toContain(columna);
       expect(sentencia()).toContain(columna);
     }
   });
 
-  it("marca solo una copia EXITOSA: la base rechaza cualquier otra (V78)", () => {
+  it("marca solo una copia EXITOSA: la base rechaza cualquier otra", () => {
     // `respaldo_verificacion_exitosa_ck` rechaza con 23514 marcar una FALLIDA o una
     // EN_CURSO, asi que sin este `WHERE` la sentencia puede morir DESPUES de un simulacro
     // correcto y dejar el ensayo sin constancia.
@@ -2501,6 +2547,35 @@ function valoresDelIngreso(ms: Manifiesto[]): string {
 }
 
 function auditar(ms: Manifiesto[]): string[] {
+  return auditarManifiestos(ms, {
+    secretoDeOwner: secretos(AMBIENTE).owner,
+    namespacesDelAmbiente: namespacesDelAmbiente(AMBIENTE),
+    namespace: namespaceName(AMBIENTE),
+  });
+}
+
+/**
+ * Lo mismo para los CINCO espacios de nombres.
+ *
+ * Se audita **solo el contenedor**, no el namespace: `auditarManifiestos` comprueba ademas
+ * que todo objeto viva en el namespace que se le pasa, y los de los cuatro sistemas viven en
+ * el suyo (ADR-0031) — por eso `emitir.ts` los audita cada uno contra el suyo. Aqui lo que se
+ * mide son las reglas de contenedor, asi que se filtran las quejas de namespace.
+ */
+/** El primer `Deployment` web de un sistema, en los manifiestos de los cinco espacios. */
+function webDeUnSistema(ms: Manifiesto[]): { spec: { template: { spec: { containers: Contenedor[] } } } } {
+  const web = ms.find((m) => m.kind === "Deployment" && m.metadata.name.endsWith("-web"));
+  if (web === undefined) {
+    throw new Error(
+      "No hay ningun Deployment `*-web`. Desde `E` los unicos que atienden HTTP son los " +
+        "cuatro de ADR-0031: sin uno, estas mutaciones no tendrian sujeto y pasarian en " +
+        "verde sin haber cambiado nada.",
+    );
+  }
+  return web as unknown as { spec: { template: { spec: { containers: Contenedor[] } } } };
+}
+
+function auditarTodo(ms: Manifiesto[]): string[] {
   return auditarManifiestos(ms, {
     secretoDeOwner: secretos(AMBIENTE).owner,
     namespacesDelAmbiente: namespacesDelAmbiente(AMBIENTE),

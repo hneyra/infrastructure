@@ -19,7 +19,7 @@ import {
   servicioDeIdentidad,
   SISTEMAS_DEL_PRODUCTO,
 } from "../componentes/convenciones";
-import { sufijoDeVersion } from "../componentes/Migracion";
+import { sufijoDeVersion } from "../componentes/convenciones";
 import { commonLabels, namespaceName, type Environment } from "../config";
 import type { EntornoDelDescriptor } from "./tipos";
 

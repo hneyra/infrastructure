@@ -369,13 +369,18 @@ export const walArchiveTimeoutSeconds = settings.backup.walArchiveTimeoutSeconds
 export const isDemonstration = settings.application.isDemonstration;
 
 /**
- * La versión con la que se crearon los despliegues.
+ * La version con la que se crearon los despliegues, **una por sistema** (`E`).
  *
- * **No es la que corre**: la que corre la pone el flujo de liberación y se lee del
- * clúster con `kubectl get deployment -o jsonpath='{...image}'`, que es lo que demuestra
+ * Era una sola linea —`applicationBootstrapVersion`, la del monolito— y con el monolito
+ * fuera no queda ningun `sha` de `sgtm` en este stack. Cada valor es un `sha` del
+ * repositorio que construyo esa imagen, que es lo unico que permite contestar «que esta
+ * corriendo» y volver de ahi al codigo.
+ *
+ * **No es la que corre**: la que corre la pone el flujo de liberacion y se lee del
+ * cluster con `kubectl get deployment -o jsonpath='{...image}'`, que es lo que demuestra
  * el criterio 1 de #148. Se publica para poder comparar las dos.
  */
-export const bootstrapVersion = settings.application.bootstrapVersion;
+export const versionesDeLosSistemas = settings.sistemas.versiones;
 
 /** Los recursos aplicados, para que `pulumi stack` los enseñe agrupados. */
 export const recursosDelSistema = recursos.urn;

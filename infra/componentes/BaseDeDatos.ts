@@ -1,6 +1,6 @@
 import { commonLabels, resourceName, type Environment } from "../config";
 import {
-  BASE_DEL_PADRON,
+  BASE_DE_MANTENIMIENTO,
   SISTEMAS_DEL_PRODUCTO,
   CLAVES,
   type TablaDeRecursos,
@@ -25,7 +25,6 @@ import {
   baseDeKeycloakSh,
   crearBasesSh,
   crearRolesDeSistema,
-  crearRolesSql,
   libExtensionesSh,
   rolDeMonitoreoSh,
   rolDeRespaldoSh,
@@ -144,11 +143,17 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
       // NADA creaba las cuatro bases del producto ni sus roles en el cluster —`baseDeDatos()`
       // de los cuatro descriptores existia y solo se usaba para auditar—, asi que los cuatro
       // `Deployment` apuntaban a `jdbc:postgresql://postgres:5432/<sistema>` y esa base no
-      // existia. El `05` va antes que el `10` a proposito: el del monolito corre contra la base
-      // por omision, y estos crean las suyas.
+      // existia.
+      //
+      // **Ya no hay `10-crear-roles.sql`** (`E`). Era el del monolito, y hacia tres cosas: crear
+      // los cuatro roles del cluster, concederles `USAGE`/`CREATE` sobre el `public` de la base
+      // por omision, e instalar cuatro extensiones ahi. Las dos ultimas eran de una base que
+      // ya no usa nadie; la primera la hace `06`, porque el `crear-roles.sql` de CADA sistema
+      // crea los mismos roles con `IF NOT EXISTS` y `06` corre antes que el `10` corria. Que
+      // los roles siguen apareciendo no se razona: lo ejecuta `verificar-el-motor.sh
+      // --con-aislamiento`, que levanta el motor con EXACTAMENTE estos guiones.
       "05-crear-bases.sh": crearBasesSh(),
       "06-roles-de-los-sistemas.sh": rolesDeLosSistemasSh(),
-      "10-crear-roles.sql": crearRolesSql(),
       "20-asignar-claves.sh": asignarClavesSh(),
       "30-base-de-keycloak.sh": baseDeKeycloakSh(),
       "40-rol-de-respaldo.sh": rolDeRespaldoSh(),
@@ -284,7 +289,7 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
               }),
               ports: [{ name: "postgres", containerPort: 5432 }],
               env: [
-                { name: "POSTGRES_DB", value: BASE_DEL_PADRON },
+                { name: "POSTGRES_DB", value: BASE_DE_MANTENIMIENTO },
                 { name: "POSTGRES_USER", value: "postgres" },
                 {
                   name: "POSTGRES_PASSWORD",
@@ -348,15 +353,15 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
               // destapo en la marcha blanca del PR #487. Una sonda tiene que
               // comprobar lo que sus dependientes necesitan.
               startupProbe: sondaExec(
-                ["pg_isready", "--host=127.0.0.1", "--username=postgres", `--dbname=${BASE_DEL_PADRON}`],
+                ["pg_isready", "--host=127.0.0.1", "--username=postgres", `--dbname=${BASE_DE_MANTENIMIENTO}`],
                 { periodSeconds: 5, failureThreshold: 60 },
               ),
               readinessProbe: sondaExec(
-                ["pg_isready", "--host=127.0.0.1", "--username=postgres", `--dbname=${BASE_DEL_PADRON}`],
+                ["pg_isready", "--host=127.0.0.1", "--username=postgres", `--dbname=${BASE_DE_MANTENIMIENTO}`],
                 { periodSeconds: 10, failureThreshold: 3 },
               ),
               livenessProbe: sondaExec(
-                ["pg_isready", "--host=127.0.0.1", "--username=postgres", `--dbname=${BASE_DEL_PADRON}`],
+                ["pg_isready", "--host=127.0.0.1", "--username=postgres", `--dbname=${BASE_DE_MANTENIMIENTO}`],
                 { periodSeconds: 20, failureThreshold: 5 },
               ),
             },

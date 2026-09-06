@@ -1,7 +1,7 @@
 import { commonLabels, resourceName, type Environment } from "../config";
 import { DIRECTORIO_DE_DATOS } from "./BaseDeDatos";
 import {
-  BASE_DEL_PADRON,
+  BASE_DEL_REGISTRO_DE_RESPALDO,
   CLAVES,
   type TablaDeRecursos,
   contenedorDeDescargaDeWalg,
@@ -121,7 +121,7 @@ export function manifiestosDeRespaldo(args: RespaldoArgs): Manifiesto[] {
     // interpola; las tres consultas de este guion pasan por ahi en vez de
     // `--command`.
     'respaldoId=$(PGUSER=kamayuk_owner PGPASSWORD="$CLAVE_OWNER" psql --host="$PGHOST" ' +
-      `--dbname=${BASE_DEL_PADRON} --quiet --tuples-only --no-align -v destino="$DESTINO" <<'SQL'`,
+      `--dbname=${BASE_DEL_REGISTRO_DE_RESPALDO} --quiet --tuples-only --no-align -v destino="$DESTINO" <<'SQL'`,
     "INSERT INTO respaldo (inicio, resultado, destino) VALUES (now(), 'EN_CURSO', :'destino') RETURNING id;",
     "SQL",
     ")",
@@ -136,7 +136,7 @@ export function manifiestosDeRespaldo(args: RespaldoArgs): Manifiesto[] {
     "#    que si necesita una conexion real -a diferencia de wal-push/wal-fetch, que",
     "#    solo hablan con el almacenamiento de objetos-, y sin PGDATABASE libpq usa",
     "#    el nombre del usuario como base y falla porque esa base no existe. NO es",
-    `#    ${BASE_DEL_PADRON}: kamayuk_respaldo no tiene CONNECT ahi a proposito`,
+    `#    las cuatro bases del producto: kamayuk_respaldo no tiene CONNECT en ninguna`,
     "#    (40-rol-de-respaldo.sh) -pg_backup_start/stop son del cluster entero, no",
     "#    de una base, y postgres alcanza- (confirmado contra un cluster real, issue #158).",
     `if PGUSER=kamayuk_respaldo PGDATABASE=postgres PGPASSWORD="$CLAVE_RESPALDO" "${WALG_BINARIO}" backup-push "$PGDATA_RESPALDO" ` +
@@ -144,14 +144,14 @@ export function manifiestosDeRespaldo(args: RespaldoArgs): Manifiesto[] {
     `    PGUSER=kamayuk_respaldo PGPASSWORD="$CLAVE_RESPALDO" "${WALG_BINARIO}" delete retain "$RETENCION" ` +
       "--confirm >> /tmp/walg.log 2>&1 || true",
     '    PGUSER=kamayuk_owner PGPASSWORD="$CLAVE_OWNER" psql --host="$PGHOST" ' +
-      `--dbname=${BASE_DEL_PADRON} --quiet -v id="$respaldoId" <<'SQL'`,
+      `--dbname=${BASE_DEL_REGISTRO_DE_RESPALDO} --quiet -v id="$respaldoId" <<'SQL'`,
     "UPDATE respaldo SET fin = now(), resultado = 'EXITOSO' WHERE id = :id;",
     "SQL",
     '    echo "Respaldo #$respaldoId EXITOSO."',
     "else",
     "    detalle=$(tail -c 480 /tmp/walg.log | tr '\\n' ' ' | tr -d \"'\")",
     '    PGUSER=kamayuk_owner PGPASSWORD="$CLAVE_OWNER" psql --host="$PGHOST" ' +
-      `--dbname=${BASE_DEL_PADRON} --quiet -v id="$respaldoId" -v detalle="$detalle" <<'SQL'`,
+      `--dbname=${BASE_DEL_REGISTRO_DE_RESPALDO} --quiet -v id="$respaldoId" -v detalle="$detalle" <<'SQL'`,
     "UPDATE respaldo SET fin = now(), resultado = 'FALLIDO', detalle = :'detalle' WHERE id = :id;",
     "SQL",
     '    echo "FALLO: el respaldo #$respaldoId no se completo. Detalle: $detalle" >&2',

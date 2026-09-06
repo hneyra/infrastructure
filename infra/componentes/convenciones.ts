@@ -434,8 +434,65 @@ export function seguridadSinRoot(extra: Partial<SecurityContext> = {}): Security
 // Nombres de servicio y de base
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** La base del padron. El nombre es el mismo que en el compose. */
-export const BASE_DEL_PADRON = "sgtm";
+/**
+ * La base de **mantenimiento** del motor: la que el `entrypoint` crea al inicializar el
+ * volumen y contra la que sondea `pg_isready`.
+ *
+ * Hasta `E` esto era `BASE_DEL_PADRON = "sgtm"`, la base del monolito, y era cierto: ahi
+ * vivia el padron. Ya no. El padron vive en las **cuatro** bases de
+ * {@link SISTEMAS_DEL_PRODUCTO}, que crea `05-crear-bases.sh` a partir de los
+ * `crear-roles.sql` de los cuatro clones; la base `sgtm` quedo sin una sola tabla del
+ * producto —medido contra `stg` el 2026-09-06: solo `spatial_ref_sys`, que la trae PostGIS—.
+ *
+ * `postgres` y no un nombre propio, por dos motivos medidos:
+ *
+ *   - **existe siempre**, en un cluster recien inicializado y en los dos que ya corren. La
+ *     sonda de vivacidad del motor la usa en cada latido: apuntarla a una base que no exista
+ *     en un cluster YA creado dejaria al motor declarandose enfermo y reiniciandose para
+ *     siempre, y el `entrypoint` no crea bases sobre un volumen que no esta vacio;
+ *   - y **no es de nadie**, que es lo que se quiere de una base de mantenimiento. Elegir la
+ *     de uno de los cuatro sistemas ataria la sonda del motor a que ese sistema exista.
+ */
+export const BASE_DE_MANTENIMIENTO = "postgres";
+
+/**
+ * Un sufijo corto y estable para el nombre de un `Job`, valido como nombre de recurso.
+ *
+ * Vivia en `componentes/Migracion.ts`, que se fue con el monolito (`E`); su unico llamador
+ * hoy es `descriptor/entorno.ts`, que nombra los `Job` de migracion e implantacion de los
+ * cuatro sistemas. **Lo que hace no es cosmetica**: la version va EN EL NOMBRE del Job, asi
+ * que declarar una version nueva no modifica un Job — crea otro, y ese es el unico
+ * mecanismo por el que una migracion llega a un ambiente en marcha (#675).
+ */
+export function sufijoDeVersion(version: string): string {
+  const limpio = version.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return limpio.slice(0, 12) || "sinversion";
+}
+
+/**
+ * La base donde el `CronJob` de respaldo escribe su fila de `respaldo` (RF-126, #155, #558).
+ *
+ * **Es una eleccion, y hay que hacerla en algun sitio.** Una copia es del CLUSTER —#558 lo
+ * dejo escrito y por eso `respaldo` no lleva `municipalidad_id`—, pero desde el corte la
+ * plataforma no tiene ninguna base propia: la `sgtm` del monolito quedo sin esquema y las
+ * cuatro que hay son de los cuatro sistemas. Escribir en las cuatro daria cuatro filas para
+ * una sola copia; no escribir en ninguna deja la copia sin registro, que es justo lo que
+ * RF-126 existe para impedir.
+ *
+ * **Y el defecto ya estaba vivo cuando esto se escribio.** Hasta el 2026-09-06 el guion
+ * apuntaba a la base del monolito, donde `respaldo` **no existe** —medido contra `stg`:
+ * `to_regclass('public.respaldo')` da vacio en `sgtm` y la tabla en las cuatro—. El primer
+ * paso del guion es registrar el inicio y `exit 1` si no puede, asi que el respaldo diario
+ * de `stg` habria fallado entero en su primera corrida, y el sintoma —«no se pudo registrar
+ * el inicio»— no se parece a su causa.
+ *
+ * `rentas` y no otra: es la unica de las cuatro cuyo `crear-roles.sql` concede `CONNECT` a
+ * los cinco roles del cluster, o sea la que menos supuestos hace sobre quien escribe; y es
+ * la base mas grande, la que un operador abre primero cuando quiere saber si hay copia. La
+ * eleccion se sujeta con una guarda que lee el baseline de ESE clon y exige que declare la
+ * tabla: el dia que ese esquema deje de tenerla, se pone rojo aqui y no a las 06:00.
+ */
+export const BASE_DEL_REGISTRO_DE_RESPALDO = "rentas";
 
 /**
  * La base de Keycloak. **Separada**, no un esquema mas de la del padron.
@@ -468,29 +525,15 @@ export function servicioDeIdentidad(environment: Environment): string {
   return resourceName(environment, "identidad");
 }
 
-export function servicioDeAplicacion(environment: Environment): string {
-  return resourceName(environment, "aplicacion");
-}
-
-export function servicioDeInterfaz(environment: Environment): string {
-  return resourceName(environment, "interfaz");
-}
-
 /** El puerto en que escucha el motor. Un solo sitio, para que no se teclee cinco veces. */
 export const PUERTO_DEL_MOTOR = 5432;
-
-/** URL JDBC de la base del padron, dentro del clúster. */
-export function urlDelPadron(environment: Environment): string {
-  return `jdbc:postgresql://${servicioDeBaseDeDatos(environment)}:${PUERTO_DEL_MOTOR}/${BASE_DEL_PADRON}`;
-}
 
 /**
  * El anfitrion del motor visto **desde otro namespace**: `host:puerto`.
  *
- * `urlDelPadron` compone el suyo con el nombre corto del servicio, y puede: el monolito vive en
- * el MISMO namespace que el motor. Los cuatro sistemas no —desde ADR-0031 cada uno tiene el
- * suyo—, y un nombre corto no resuelve al cruzar: la busqueda de `postgres` a secas termina en
- * `NXDOMAIN`, no en el motor de al lado.
+ * Un nombre corto solo resuelve dentro del mismo namespace, y desde ADR-0031 cada sistema
+ * tiene el suyo: la busqueda de `postgres` a secas termina en `NXDOMAIN`, no en el motor de al
+ * lado. Por eso los cuatro reciben `host:puerto` con el namespace dentro.
  *
  * Es la misma correccion que C-14 le hizo al JWKS y por el mismo motivo, un componente mas abajo.
  */
