@@ -74,6 +74,17 @@ describe("#742/C-2 — la extension que una migracion usa esta declarada, en los
       // `catastro` ya declara `postgis` en su `crear-roles.sql`, asi que la dependencia esta
       // cubierta: lo que faltaba era el censo.
       "catastro|V6__identidad_sncp_y_frente.sql|postgis",
+      // Y las cuatro de la etapa 1 del territorio, que entran juntas con `catastro#15`.
+      // Las cinco tablas nuevas con geometria son `geography(...)`, y `zonificacion`
+      // ademas se protege con un `EXCLUDE USING gist` que compara la municipalidad y el
+      // plan con «=» — de ahi que `V7` pida DOS extensiones y no una. Ninguna es una
+      // dependencia nueva del esquema: `catastro` ya declaraba las dos en su
+      // `crear-roles.sql` desde su baseline, y lo que crece es el censo.
+      "catastro|V7__urbano.sql|postgis",
+      "catastro|V7__urbano.sql|btree_gist",
+      "catastro|V8__grd.sql|postgis",
+      "catastro|V9__fiscalizacion.sql|postgis",
+      "catastro|V10__buzon_del_territorio.sql|postgis",
       // `normativa` no depende de ninguna, y `caja` tampoco: las dos ausencias son el
       // dato, no un archivo que no se pudo leer. Lo garantizan las dos pruebas de abajo.
     ]);
@@ -135,7 +146,9 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
     expect(cuantas).toEqual({
       "infrastructure (copia del esquema del monolito)": 68,
       sgtm: 68,
-      // catastro 6 desde T-0: `V6` trae el CUC del SNCP y `frente_predio` (ADR-0034/ADR-0036).
+      // catastro 10 desde la etapa 1 del territorio: `V6` trajo el CUC del SNCP y
+      // `frente_predio` (T-0, ADR-0034/ADR-0036), y `V7`..`V10` la zonificacion, la gestion
+      // del riesgo, la fiscalizacion catastral y el buzon del territorio.
       // rentas 13 desde C-12, que retiro `contribuyente_nombre_trgm_ix` —inalcanzable bajo RLS—.
       // Cuando esto se ponga rojo lo que hay que hacer NO es actualizar el numero: es mirar que
       // migracion entro y comprobar que declaro las extensiones que usa. Se comprobo para `V13`:
@@ -144,7 +157,7 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
       // mantiene verde el `gin_trgm_ops` que `V1` sigue nombrando, o sea por un motivo que dejo
       // de ser cierto—.
       rentas: 13,
-      catastro: 6,
+      catastro: 10,
       normativa: 1,
       caja: 2,
     });
