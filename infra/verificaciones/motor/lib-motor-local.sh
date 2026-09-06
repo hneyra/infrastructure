@@ -224,12 +224,24 @@ motor_detener() {
     motor_esperar_puerto_libre "$PUERTO" || true
 }
 
-# Por omision, la base de MANTENIMIENTO y no la del monolito (`E`). Era `sgtm`, y con
-# `POSTGRES_DB=postgres` esa base ya no se crea: toda consulta que no dijera su base moria
-# con «FATAL: database "sgtm" does not exist». Lo que se pregunta desde aqui es del CLUSTER
-# —roles, privilegios de base, catalogos—, asi que `postgres` es ademas la base correcta.
+# La base del PADRON por omision, y no la de mantenimiento (`E`).
+#
+# Era `sgtm` —el padron del monolito—, y con `POSTGRES_DB=postgres` esa base dejo de crearse:
+# toda consulta que no dijera la suya moria con «FATAL: database "sgtm" does not exist».
+#
+# EL PRIMER ARREGLO FUE PONER `postgres` AQUI, Y ESTABA MAL. De los 36 sitios que llaman a
+# esto, **35 no pasan base**: los que preguntan por el cluster —roles, privilegios, catalogos—
+# funcionan desde cualquiera, pero los que LEEN LO QUE ACABAN DE ESCRIBIR no. Con `postgres`
+# por omision, `verificar-el-motor.sh` escribia `si_sobrevive` en el padron y la leia en
+# mantenimiento, y `simulacro-de-restauracion.sh` hacia lo mismo con `simulacro_deuda`: las dos
+# fallaron con «relation … does not exist», que es la misma frase por la misma causa.
+#
+# La traduccion fiel de lo que habia es el PADRON, no mantenimiento. Quien necesite el cluster
+# lo pide explicitamente, que es lo que ya hacen las consultas de `has_database_privilege`.
+BASE_DEL_PADRON=${BASE_DEL_PADRON:-rentas}
+
 motor_como_superusuario() {
-    PGPASSWORD="$CLAVE_SUPER" psql --username=postgres --dbname="${2:-postgres}" \
+    PGPASSWORD="$CLAVE_SUPER" psql --username=postgres --dbname="${2:-$BASE_DEL_PADRON}" \
         --tuples-only --no-align --command "$1"
 }
 
