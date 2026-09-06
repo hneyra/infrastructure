@@ -76,6 +76,9 @@ export const EJEMPLOS_QUE_NO_SIEMBRAN: readonly string[] = [
   // CENEPRED/ANA: fuente externa del modulo `grd`. El cargador la necesita para poder
   // demostrarse; la municipalidad de demostracion no tiene carta de peligro cargada.
   "catastro/riesgo.csv",
+  // El plan de zonificacion del modulo `urbano`: lo aprueba una ordenanza, y la municipalidad
+  // de demostracion no tiene ninguna. Mismo motivo, distinto acto de tercero.
+  "catastro/zonificacion.csv",
 ];
 
 /** Un paso del manifiesto, tal como esta escrito en `pasos.tsv`. */
