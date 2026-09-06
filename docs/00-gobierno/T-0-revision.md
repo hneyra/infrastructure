@@ -542,8 +542,43 @@ mitad del SNCP, o se implementa §1 en esta fase.
    Son las que alguien leerá mañana antes de tocar las barreras.
 10. Lo demás, por severidad.
 
-> **Ya hecho en esta rama**, con su verificación: el censo C-2 (§2.1, `680/680`) y el byte NUL de
-> `RevisorDeEsquema` (§3.5, `BUILD SUCCESSFUL` en la librería y en `catastro --rerun-tasks`).
+### Estado: qué de esto ya está hecho
+
+| # | Qué | Estado |
+|---|---|---|
+| §2.1 | El censo C-2 | **Hecho.** `yarn verificar` 680/680, exit 0 |
+| §3.5 | El byte NUL de `RevisorDeEsquema` | **Hecho.** `file` → UTF-8, `rg` lo ve, build verde |
+| §3.1 | El camelCase de `nombraGeometria` | **Hecho.** Mutación: 1 en rojo, «3 times» donde hay 4 puertas |
+| §3.2 | `nombreDelParametro` lanza | **Hecho.** Mutación: 1 en rojo |
+| §3.3 | El marco **comparado** y con dos ejes | **Hecho.** Mutación: 2 en rojo, los dos contrastes nuevos |
+| Docs | 18→20 reglas, 40→46 muestras, `rentas` 130→176, `CLAUDE.md:18` 366→680 | **Hecho**, medido del disco |
+| §2.2 | El bloqueante de `V6` | **Parche preparado y medido**, sin empujar: es de `catastro` |
+
+Las tres mutaciones de §3 se aplicaron **cada una sola** y se restauraron **por copia comparada con
+`cmp`**; los cuatro backends quedan en `BUILD SUCCESSFUL`.
+
+**El parche de `V6`** vive en
+[`T-0-parche-V6-catastro.patch`](T-0-parche-V6-catastro.patch) y esta sesión no lo puede empujar
+—sólo tiene lectura en `catastro`—. Reproducido de forma independiente contra **PostgreSQL 16.13**,
+30 000 predios por municipalidad, rol `NOSUPERUSER NOBYPASSRLS`, `FORCE ROW LEVEL SECURITY`:
+
+```
+(A) la forma de V6, (cuc)::text     Bitmap Heap Scan · el prefijo en el FILTER
+                                    30 000 filas descartadas · 677 bloques
+                                    y el indice usado es predio_pkey, el de la POLITICA
+(B) el arreglo, sobre la columna    Index Scan using predio_cuc_fix_ix
+                                    las TRES condiciones en el INDEX COND · 3 bloques
+```
+
+La premisa del PR está **comprobada** —`CREATE INDEX … (cuc text_pattern_ops)` sobre un dominio
+`character(12)` muere con «operator class "text_pattern_ops" does not accept data type»— pero la
+conclusión no se sigue: lo que obliga a la expresión es haber elegido `character` y no `character
+varying`, que es *binary-coercible* a `text`. El `CHECK` del dominio se comporta igual con los dos
+tipos, comprobado con las tres entradas de borde.
+
+**Lo que sigue faltando en `V6`, y no lo cubre el parche:** las dos pruebas de plan gemelas de
+`BusquedaDelCatalogoVialTest`. Hoy **ninguna prueba toca el CUC** —la fixture no siembra una sola
+fila con `cuc`—, así que el arreglo no se puede demostrar desde dentro del repositorio.
 
 Y una recomendación de método, porque es la que habría evitado §2.1 y la mitad de §3:
 
