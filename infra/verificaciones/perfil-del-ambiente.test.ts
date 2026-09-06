@@ -272,11 +272,24 @@ describe("C-19 · el perfil de recursos de un ambiente no alcanza al otro", () =
    * *Mutación:* que `recursosDe` ignore el perfil y devuelva siempre el `minimo`. → rojo
    * aquí con las dos cifras, y `stg` sigue en verde: es el defecto que C-19 existe para
    * impedir, y sólo se ve por este lado.
+   *
+   * ## Y subieron, con nombre y apellido (#16)
+   *
+   * De `1940m / 6304Mi` permanentes a **`1990m / 6368Mi`**, y del pico `2610m / 9696Mi` a
+   * **`2660m / 9760Mi`**: exactamente **50m y 64Mi**, que es lo que pide el contenedor de nginx
+   * de la interfaz de ventanilla de `caja` —un QUINTO `Deployment` en `prod`—.
+   *
+   * Esto es lo que el párrafo de arriba manda hacer: no se «arregla la prueba», se declara que
+   * la demanda de producción cambió y se mide contra el nodo. Medido: `prod` pasa de faltarle
+   * **810m** de CPU a faltarle **860m**, y de **3 968Mi** a **4 032Mi**. **No cabía antes y no
+   * cabe ahora**, así que la interfaz no cambia la decisión pendiente —es D-25—, pero la empeora
+   * en la cantidad exacta que cuesta, y esa cantidad queda escrita aquí y no en la cabeza de
+   * nadie.
    */
-  it("prod pide exactamente lo que pedía antes de C-19", () => {
+  it("prod pide exactamente lo medido, y lo que subió tiene nombre", () => {
     const demanda = demandaDelStack(manifiestosDe("prod"));
-    expect(demanda.permanente).toEqual({ cpuEnMili: 1940, memoriaEnMi: 6304 });
-    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 2610, memoriaEnMi: 9696 });
+    expect(demanda.permanente).toEqual({ cpuEnMili: 1990, memoriaEnMi: 6368 });
+    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 2660, memoriaEnMi: 9760 });
   });
 
   /** Y `prod` declara el perfil dimensionado, que es la tabla base. */

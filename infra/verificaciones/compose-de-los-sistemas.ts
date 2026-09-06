@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { load } from "js-yaml";
 import { raizDelRepositorio } from "../componentes/fuentes";
+import { correElBackend } from "./procesos-de-un-sistema";
 import { podsDe, type Contenedor, type Manifiesto } from "../componentes/tipos";
 import type { DescriptorDeSistema, EntornoDelDescriptor } from "../descriptor/tipos";
 
@@ -139,16 +140,35 @@ function procesoDelContenedor(
   };
 }
 
-/** El unico contenedor principal de un manifiesto de un solo pod. */
-function principalDe(ms: Manifiesto[], que: string): Contenedor {
+/**
+ * El contenedor que corre **el jar** entre los manifiestos de un proceso del descriptor.
+ *
+ * Antes era «el unico contenedor», y el propio error decia lo que habia que decidir el dia que
+ * dejara de haber uno: «si un sistema pasa a tener dos, hay que decidir con que servicio se
+ * compara cada uno en vez de dejar que la comparacion elija». Ese dia llego con la interfaz de
+ * ventanilla de `caja` (#16), y la decision es esta: **se compara el del jar**.
+ *
+ * No es una preferencia. Lo que esta comprobacion contrasta son las VARIABLES que el descriptor
+ * le da a un proceso frente a las que su compose le da al mismo proceso, y la interfaz no recibe
+ * ninguna —es nginx sirviendo archivos estaticos, «sin un solo `secretKeyRef`», lo dice su
+ * propio descriptor—. Emparejarla con un servicio del compose compararia dos conjuntos vacios y
+ * saldria verde sin medir nada.
+ *
+ * **Y sigue lanzando si hay dos del jar**, que es lo que la hacia util: dos backends en un mismo
+ * proceso si son una ambiguedad que nadie ha decidido.
+ */
+function principalDe(ms: Manifiesto[], que: string, sistema: string): Contenedor {
   const pods = ms.flatMap((m) => podsDe(m));
-  const contenedores = pods.flatMap((p) => p.pod.containers);
+  const contenedores = pods
+    .flatMap((p) => p.pod.containers)
+    .filter((c) => correElBackend(sistema, c));
   if (contenedores.length !== 1) {
     throw new Error(
-      `«${que}» no tiene exactamente un contenedor principal (tiene ${contenedores.length}). ` +
-        "Esta comprobacion empareja UN proceso del descriptor con UN servicio del compose; si " +
-        "un sistema pasa a tener dos, hay que decidir con que servicio se compara cada uno en " +
-        "vez de dejar que la comparacion elija.",
+      `«${que}» no tiene exactamente un contenedor que corra el jar (tiene ` +
+        `${contenedores.length}). Esta comprobacion empareja UN proceso del descriptor con UN ` +
+        "servicio del compose, y lo que contrasta son sus variables; si un sistema pasa a tener " +
+        "dos procesos de Spring en el mismo, hay que decidir con que servicio se compara cada " +
+        "uno en vez de dejar que la comparacion elija.",
     );
   }
   return contenedores[0] as Contenedor;
@@ -170,19 +190,19 @@ export function loQueElDescriptorDice(
         sistema,
         "web",
         "aplicacion",
-        principalDe(descriptor.despliegue(e), `${sistema}: despliegue`),
+        principalDe(descriptor.despliegue(e), `${sistema}: despliegue`, sistema),
       ),
       migrador: procesoDelContenedor(
         sistema,
         "migrador",
         "migrador",
-        principalDe(descriptor.migracion(e), `${sistema}: migracion`),
+        principalDe(descriptor.migracion(e), `${sistema}: migracion`, sistema),
       ),
       implantacion: procesoDelContenedor(
         sistema,
         "implantacion",
         "aplicacion",
-        principalDe(descriptor.implantacion(e), `${sistema}: implantacion`),
+        principalDe(descriptor.implantacion(e), `${sistema}: implantacion`, sistema),
       ),
     },
   };

@@ -149,10 +149,10 @@ config:
   # (ADR-0011 §5, `ignoreChanges`), pero **no es inerte**: el `Job` de migracion de ese sistema
   # lleva la version en el nombre, asi que un valor nuevo no modifica un Job — crea otro, y ese
   # Job aplica las migraciones de esa version.
-  kamayuk:versionDeRentas: ddcaf7828a3130d7bc655e13b603ae20ac00cdfc
-  kamayuk:versionDeCatastro: da06fdc895239ac77f8b45bceac8493eeb9ebe65
-  kamayuk:versionDeNormativa: 38b7ddc0aaf229cd6cd81a3a21e628f658c76370
-  kamayuk:versionDeCaja: 90919433a0253769c37039c24b50d9334e89aa35
+  kamayuk:versionDeRentas: 96b1488a1121f8eb433c2ec5644d59da91e60c86
+  kamayuk:versionDeCatastro: 9296c5ba1b3e132b77776d0ea084783990db1cb4
+  kamayuk:versionDeNormativa: b364c22b0fa667b31af47061dd827980391ffb46
+  kamayuk:versionDeCaja: 5db1db30f464aa2ce4cd3511c39317513d4e0f96
   kamayuk:webReplicas: "1"
   # La municipalidad de ensayo. El ubigeo es el de Catacaos, igual que en prod (D-01,
   # 2026-08-24), porque stg restaura los respaldos de prod anonimizados (INF-03 §2 y

@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 import { construirManifiestos } from "../componentes";
 import { SISTEMAS_DEL_PRODUCTO } from "../componentes/convenciones";
 import { raizDelRepositorio } from "../componentes/fuentes";
-import { contenedoresDe, podsDe, type Manifiesto, type Sonda } from "../componentes/tipos";
+import { contenedoresDe, podsDe, type Contenedor, type Manifiesto, type Sonda } from "../componentes/tipos";
+import { correElBackend } from "./procesos-de-un-sistema";
 import { manifiestosDeLosSistemas } from "../herramientas/emitir-manifiestos";
 import { fuenteDeLaCadena, rutasPublicas } from "./sondas-contra-la-cadena";
 import { invariantesDe } from "./stacks";
@@ -35,14 +36,28 @@ const MUESTRAS = join(
 
 const muestra = (nombre: string) => readFileSync(join(MUESTRAS, nombre), "utf8");
 
-/** Las sondas HTTP de todo contenedor de un sistema, con el pod donde viven. */
-function sondasDe(sistema: string): { donde: string; cual: string; ruta: string }[] {
+/**
+ * Las sondas HTTP de todo contenedor de un sistema, con el pod donde viven **y si ese
+ * contenedor corre el jar**.
+ *
+ * Ese ultimo dato es lo que #16 obliga a tener: la interfaz de `caja` es nginx, y su sonda no
+ * la atiende `SeguridadWeb` sino su propio `location`. Ver `procesos-de-un-sistema.ts`.
+ */
+function sondasDe(
+  sistema: string,
+): { donde: string; cual: string; ruta: string; backend: boolean; c: Contenedor }[] {
   const plataforma = construirManifiestos(invariantesDe(AMBIENTE));
   const suyos: Manifiesto[] = manifiestosDeLosSistemas(invariantesDe(AMBIENTE), plataforma).filter(
     (m) => m.metadata.namespace === `kamayuk-${sistema}-${AMBIENTE}`,
   );
 
-  const encontradas: { donde: string; cual: string; ruta: string }[] = [];
+  const encontradas: {
+    donde: string;
+    cual: string;
+    ruta: string;
+    backend: boolean;
+    c: Contenedor;
+  }[] = [];
   for (const m of suyos) {
     for (const { contexto, pod } of podsDe(m)) {
       for (const c of contenedoresDe(pod)) {
@@ -54,7 +69,13 @@ function sondasDe(sistema: string): { donde: string; cual: string; ruta: string 
         for (const [cual, sonda] of sondas) {
           const ruta = sonda?.httpGet?.path;
           if (ruta !== undefined) {
-            encontradas.push({ donde: `${contexto}, contenedor «${c.name}»`, cual, ruta });
+            encontradas.push({
+              donde: `${contexto}, contenedor «${c.name}»`,
+              cual,
+              ruta,
+              backend: correElBackend(sistema, c),
+              c,
+            });
           }
         }
       }
@@ -66,7 +87,9 @@ function sondasDe(sistema: string): { donde: string; cual: string; ruta: string 
 describe("C-17 §2 · toda sonda pide una ruta que la cadena de seguridad atiende sin token", () => {
   it.each(SISTEMAS_DEL_PRODUCTO)("«%s»", (sistema) => {
     const publicas = rutasPublicas(fuenteDeLaCadena(sistema), `${sistema}/SeguridadWeb.java`);
-    const sondas = sondasDe(sistema);
+    // Solo los que corren el jar: `SeguridadWeb` es SU cadena, y medir con ella un
+    // contenedor de nginx acusa al repositorio equivocado (#16).
+    const sondas = sondasDe(sistema).filter((s) => s.backend);
 
     expect(
       sondas.length,
@@ -101,7 +124,14 @@ describe("C-17 §2 · toda sonda pide una ruta que la cadena de seguridad atiend
    * que mate el proceso cuando la base no conteste, y matarlo no devuelve la base.
    */
   it.each(SISTEMAS_DEL_PRODUCTO)("«%s» distingue vida de preparacion", (sistema) => {
-    const porSonda = new Map(sondasDe(sistema).map((s) => [s.cual, s.ruta]));
+    // Tambien solo los del jar, y aqui importa mas que arriba: `new Map` se queda con la
+    // ULTIMA, asi que con la interfaz dentro «readinessProbe» valdria «/» y esta prueba
+    // mediria la sonda de nginx creyendo que mide la del backend.
+    const porSonda = new Map(
+      sondasDe(sistema)
+        .filter((s) => s.backend)
+        .map((s) => [s.cual, s.ruta]),
+    );
     expect(porSonda.get("livenessProbe")).toBe("/actuator/health/liveness");
     expect(porSonda.get("readinessProbe")).toBe("/actuator/health/readiness");
     // El ARRANQUE si mira la base entera, y es lo que hace que un pod no se declare arrancado
@@ -140,5 +170,75 @@ describe("la lectura de la cadena muerde, y no muerde de mas", () => {
 
   it("y una cadena sin ningun `permitAll()` tampoco pasa por buena", () => {
     expect(() => rutasPublicas("class Vacia {}", "muestra")).toThrow(/requestMatchers/);
+  });
+});
+
+/**
+ * Y **la otra mitad**: la sonda de un contenedor que NO corre el jar, contra lo que de verdad la
+ * atiende.
+ *
+ * Sin esto, el arreglo de #16 seria el defecto de C-15/C-16 con otro nombre: separar los
+ * contenedores por su imagen deja a la interfaz fuera de la cadena de Spring —correcto— y
+ * **fuera de toda comprobacion** —que no lo es—. Una sonda que pide una ruta que nginx no sirve
+ * mata el pod igual que una que `SeguridadWeb` no abre; lo unico que cambia es quien contesta.
+ *
+ * Lo que la atiende viaja en el mismo manifiesto: el `ConfigMap` de nginx que ese pod monta. Se
+ * lee de ahi y no del clon, porque lo que se despliega es el `ConfigMap`.
+ */
+describe("#16 · la sonda de un contenedor que no es el backend, contra su nginx", () => {
+  /** Los `location` que declara cualquier `ConfigMap` de nginx del sistema. */
+  function locationsDe(sistema: string): string[] {
+    const plataforma = construirManifiestos(invariantesDe(AMBIENTE));
+    return manifiestosDeLosSistemas(invariantesDe(AMBIENTE), plataforma)
+      .filter(
+        (m) =>
+          m.kind === "ConfigMap" && m.metadata.namespace === `kamayuk-${sistema}-${AMBIENTE}`,
+      )
+      .flatMap((m) => Object.values((m as { data?: Record<string, string> }).data ?? {}))
+      .flatMap((texto) => texto.split("\n"))
+      .map((linea) => linea.trim())
+      .filter((linea) => linea.startsWith("location "))
+      .map((linea) => linea.slice("location ".length).replace(/[{\s].*$/, ""));
+  }
+
+  it.each(SISTEMAS_DEL_PRODUCTO)("«%s»", (sistema) => {
+    const otras = sondasDe(sistema).filter((s) => !s.backend);
+    if (otras.length === 0) return;
+
+    const locations = locationsDe(sistema);
+    expect(
+      locations,
+      `«${sistema}» corre un contenedor que no es su backend y ningun ConfigMap suyo declara un ` +
+        "`location`: entonces nadie sabe quien atiende su sonda",
+    ).not.toEqual([]);
+
+    for (const s of otras) {
+      // `location /` es el prefijo que cubre cualquier ruta; los demas tienen que casar exacto.
+      const cubierta = locations.includes("/") || locations.includes(s.ruta);
+      expect(
+        cubierta,
+        `  · ${s.donde}: ${s.cual} pide «${s.ruta}», y el nginx de «${sistema}» solo declara ` +
+          `${locations.map((l) => `«${l}»`).join(", ")}.\n` +
+          "    Es el mismo fallo que una ruta cerrada en `SeguridadWeb`, con otro servidor\n" +
+          "    contestando: el kubelet mata el pod y la aplicacion esta sana.",
+      ).toBe(true);
+    }
+  });
+
+  /**
+   * Y el censo, para que esto no pase en verde por lista vacia.
+   *
+   * Hoy hay **exactamente un** contenedor asi en los cuatro sistemas: la interfaz de ventanilla
+   * de `caja` (#16). El dia que `rentas` estrene la suya, esta cifra sube y hay que mirarla; el
+   * dia que la de `caja` desaparezca sin querer, se pone roja aqui en vez de dejar el `if` de
+   * arriba saliendo por la puerta de atras en los cuatro.
+   */
+  it("hoy hay exactamente uno, y es la interfaz de «caja»", () => {
+    const censo = SISTEMAS_DEL_PRODUCTO.flatMap((sistema) =>
+      sondasDe(sistema)
+        .filter((s) => !s.backend)
+        .map((s) => `${sistema}: ${s.c.image.split(":")[0]?.split("/").pop() ?? ""}`),
+    );
+    expect([...new Set(censo)]).toEqual(["caja: kamayuk-caja-interfaz"]);
   });
 });

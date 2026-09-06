@@ -114,13 +114,39 @@ jobs:
    * hasta el 2026-09-05: ninguno de los cinco repositorios tenia un flujo que publicara nada.
    */
   it.each(["rentas", "catastro", "normativa", "caja"])(
-    "«%s» tiene un flujo que publica sus dos imagenes",
+    "«%s» publica EXACTAMENTE las imagenes que su descriptor declara",
     (sistema) => {
       const suyos = publicadores().hallados.filter((p) => p.clon === sistema);
-      expect(suyos.flatMap((p) => p.imagenes).sort()).toEqual([
-        `kamayuk-${sistema}`,
-        `kamayuk-${sistema}-migrador`,
-      ]);
+      // Las dos fuentes reales, comparadas: lo que el flujo EMPUJA y lo que el descriptor PIDE.
+      // Era un par escrito aqui —`kamayuk-<sistema>` y `-migrador`—, y eso aguantaba solo
+      // mientras cada sistema publicara dos; la interfaz de ventanilla de `caja` (#16) es una
+      // tercera, y con la lista escrita a mano el rojo acusaba al clon de tener una imagen de
+      // mas cuando lo que pasaba es que esta guarda no la conocia.
+      //
+      // Las dos direcciones NO pesan igual, y C-2 ya decidio esto para las extensiones:
+      //
+      //   - una imagen que el descriptor PIDE y nadie publica es ROJO. Es el
+      //     `ImagePullBackOff` con el `up` en verde que D-23 existe para impedir, y el dano es
+      //     inmediato;
+      //   - una imagen que se PUBLICA y ningun descriptor despliega es **censo con su motivo**,
+      //     no rojo. Hoy hay una, `kamayuk-catastro-interfaz`: su flujo la construye y su
+      //     descriptor todavia no la usa, que es como se estrena una interfaz —`caja` paso por
+      //     ahi—. Un rojo aqui naceria disparado el primer dia del trabajo de otro repositorio,
+      //     y una comprobacion que grita el primer dia se silencia (#437, y C-2 con las cuatro
+      //     extensiones de `normativa`).
+      const declaradas =
+        SISTEMAS.find((s) => s.descriptor.sistema === sistema)?.descriptor.imagenes ?? [];
+      expect(declaradas, `«${sistema}» no declara ninguna imagen`).not.toEqual([]);
+      const publicadas = suyos.flatMap((p) => p.imagenes);
+      const sinPublicador = declaradas
+        .map((i) => `kamayuk-${i}`)
+        .filter((i) => !publicadas.includes(i));
+      expect(
+        sinPublicador,
+        `el descriptor de «${sistema}» pide ${sinPublicador.join(", ")} y su flujo no la empuja: ` +
+          "el manifiesto es valido, `pulumi up` sale en verde y el pod se queda en " +
+          "ImagePullBackOff",
+      ).toEqual([]);
     },
   );
 });
@@ -180,7 +206,7 @@ describe("quien puede traerse una imagen privada", () => {
   /**
    * Y la otra mitad, que es el hueco: los cuatro sistemas viven en el suyo desde ADR-0031, y ni
    * el `Secret` ni el parche llegan alli. Hoy funciona porque sus paquetes son publicos; hacerlos
-   * privados —que es lo que deberian ser— deja sus catorce cargas en `ImagePullBackOff`.
+   * privados —que es lo que deberian ser— deja sus QUINCE cargas en `ImagePullBackOff`.
    *
    * Esta prueba NO fosiliza el estado: exige que, mientras ningun pod de un sistema declare
    * credencial propia, el manifiesto no contenga ninguna — de modo que quien la anada tenga que
@@ -188,8 +214,11 @@ describe("quien puede traerse una imagen privada", () => {
    */
   it.each(ENVIRONMENTS)("y a ninguno de los cuatro sistemas, en «%s»", (ambiente) => {
     const sin = podsSinCredencial(ambiente);
-    // Las CATORCE cargas de los cuatro sistemas: cuatro Deployment, ocho Job y dos CronJob.
-    expect(sin).toHaveLength(14);
+    // Las QUINCE cargas de los cuatro sistemas: CINCO Deployment, ocho Job y dos CronJob. Eran
+    // catorce hasta que `caja` estreno su interfaz de ventanilla (#16), que es el quinto
+    // Deployment — y su imagen es tan privada-o-publica como las otras, asi que el hueco crece
+    // con ella en vez de quedarse quieto.
+    expect(sin).toHaveLength(15);
     expect([...new Set(sin.map((p) => p.espacio))].sort()).toEqual([
       `kamayuk-caja-${ambiente}`,
       `kamayuk-catastro-${ambiente}`,
@@ -199,5 +228,32 @@ describe("quien puede traerse una imagen privada", () => {
     // Y ninguna es de la plataforma: los tres del monolito heredan la credencial del
     // `ServiceAccount` `default`, que es lo que la prueba de arriba ata a `index.ts`.
     expect(sin.filter((p) => p.espacio === `kamayuk-${ambiente}`)).toEqual([]);
+  });
+});
+
+/**
+ * Y la otra direccion, **como censo y no como rojo** (C-2, y #437).
+ *
+ * Una imagen que se publica y ningun descriptor despliega no rompe nada hoy: envejece. Pero que
+ * no rompa no quiere decir que no haya que verla —es una imagen que alguien construye en cada
+ * merge, con su coste y su superficie— asi que se cuenta, con su nombre, y cambiarla obliga a
+ * tocar esta linea y decir por que.
+ */
+describe("lo que se publica y nadie despliega, contado", () => {
+  it("hoy es una, la interfaz que «catastro» esta estrenando", () => {
+    const huerfanas = publicadores()
+      .hallados.filter((p) => SISTEMAS.some((s) => s.descriptor.sistema === p.clon))
+      .flatMap((p) => {
+        const declaradas =
+          SISTEMAS.find((s) => s.descriptor.sistema === p.clon)?.descriptor.imagenes ?? [];
+        const pedidas = declaradas.map((i) => `kamayuk-${i}`);
+        return p.imagenes.filter((i) => !pedidas.includes(i));
+      })
+      .sort();
+    // `kamayuk-catastro-web`, y el nombre no es un detalle: `caja` llama «interfaz» a lo mismo
+    // que `catastro` llama «web». Dos nombres para la misma cosa a los dos lados de la frontera,
+    // y quien los lee desde aqui —esta guarda, `procesos-de-un-sistema.ts`— no puede apoyarse en
+    // ninguno de los dos: por eso la pregunta es «¿corre el jar?» y no «¿se llama interfaz?».
+    expect([...new Set(huerfanas)]).toEqual(["kamayuk-catastro-web"]);
   });
 });

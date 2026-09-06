@@ -10,6 +10,7 @@ import { ENVIRONMENTS, type Environment } from "../config";
 import { entornoDelAmbiente, manifiestosDeLosSistemas } from "../herramientas/emitir-manifiestos";
 import { SISTEMAS } from "../descriptor/sistemas";
 import { prefijoDeLaImplantacion, variableDe } from "./prefijo-de-la-implantacion";
+import { correElBackend } from "./procesos-de-un-sistema";
 import { invariantesDe } from "./stacks";
 
 /**
@@ -183,9 +184,29 @@ describe("C-14 §1 · cada sistema publica DOS imagenes, y el migrador corre la 
     ).toBe(destino);
   });
 
-  it.each(SISTEMAS_DEL_PRODUCTO)("«%s» declara las dos imagenes, y solo esas", (sistema) => {
+  it.each(SISTEMAS_DEL_PRODUCTO)("«%s» declara las dos del jar, y lo demas tiene su Dockerfile", (sistema) => {
     const descriptor = SISTEMAS.find((s) => s.descriptor.sistema === sistema)?.descriptor;
-    expect(descriptor?.imagenes).toEqual([sistema, `${sistema}-migrador`]);
+    const imagenes = descriptor?.imagenes ?? [];
+
+    // Las dos del jar son obligatorias y por el motivo de C-14 §1: son el mismo arbol de
+    // fuentes separado porque las credenciales no lo son.
+    expect(imagenes).toEqual(expect.arrayContaining([sistema, `${sistema}-migrador`]));
+
+    // Y lo que no es el jar lleva el nombre de SU sistema. Antes esto era `toEqual([dos])`, que
+    // decia dos cosas a la vez —«estan las dos» y «no hay ninguna mas»— y con la interfaz de
+    // ventanilla de `caja` (#16) la segunda dejo de ser verdad.
+    //
+    // QUIEN construye cada extra no se comprueba aqui sino en `imagenes-publicadas.test.ts`,
+    // contra el flujo de publicacion de su clon, que es la fuente que de verdad lo dice: la
+    // interfaz sale de `frontend/Dockerfile` con el objetivo `AS interfaz`, no de un
+    // `<sufijo>/Dockerfile`, y adivinar la ruta seria un tercer sitio con la misma verdad.
+    for (const imagen of imagenes.filter((i) => i !== sistema && i !== `${sistema}-migrador`)) {
+      expect(
+        imagen.startsWith(`${sistema}-`),
+        `«${sistema}» declara la imagen «${imagen}», que no lleva su nombre delante: una imagen ` +
+          "de otro sistema desplegada en este namespace cruzaria la frontera de ADR-0031",
+      ).toBe(true);
+    }
   });
 
   /**
@@ -570,6 +591,11 @@ describe("C-17 §5 · ningun `Deployment` de un sistema corre un perfil que term
     for (const m of delSistema(AMBIENTE, sistema)) {
       if (m.kind !== "Deployment") continue;
       for (const c of m.spec.template.spec.containers) {
+        // Solo los que corren el jar (#16). La interfaz de `caja` es nginx y no tiene ningun
+        // perfil de Spring: leer su `SPRING_PROFILES_ACTIVE` da `undefined`, y tomar ese
+        // `undefined` por «un perfil que termina» denuncia un CrashLoopBackOff sobre un proceso
+        // que no puede tenerlo. Ver `procesos-de-un-sistema.ts`.
+        if (!correElBackend(sistema, c)) continue;
         if (valorDe(c, "SPRING_PROFILES_ACTIVE") !== "web") {
           enBatch.push(`${m.metadata.name}/${c.name} → ${valorDe(c, "SPRING_PROFILES_ACTIVE")}`);
         }
