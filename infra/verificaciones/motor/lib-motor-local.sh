@@ -23,7 +23,7 @@
 LIB_MOTOR_AQUI=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LIB_MOTOR_INFRA=$(cd "$LIB_MOTOR_AQUI/../.." && pwd)
 
-CONTENEDOR=sgtm-motor-verificacion-$$
+CONTENEDOR=kamayuk-motor-verificacion-$$
 MODO=""
 
 export PGHOST=127.0.0.1
@@ -160,12 +160,19 @@ motor_arrancar_localmente() {
     # y aqui son estas variables. El guion NO se toca — es el mismo archivo que se
     # montaria en k3s, y esa es media prueba.
     export PGPASSWORD="$CLAVE_SUPER"
-    psql --quiet --username=postgres --command 'CREATE DATABASE sgtm' postgres >/dev/null
+    # NO se crea ninguna base aqui desde `E`. Se creaba `sgtm` —la del monolito— para que el
+    # `10-crear-roles.sql` cayera dentro; ese archivo se fue con el monolito y las cuatro del
+    # producto las crea `05-crear-bases.sh`, que es uno de los guiones del bucle de abajo. La
+    # base de mantenimiento `postgres` la trae `initdb`.
 
     for guion in "$TRABAJO"/inicializacion/*; do
         echo "  · $(basename "$guion")"
         case "$guion" in
-            *.sql) psql --quiet -v ON_ERROR_STOP=1 --username=postgres --file="$guion" sgtm \
+            # Sigue habiendo rama para `.sql` aunque hoy no quede ninguno: la inicializacion
+            # es un `ConfigMap` y el dia que vuelva a entrar uno tiene que ejecutarse, no
+            # saltarse en silencio. Va contra la base de mantenimiento, que es la que el
+            # `entrypoint` usa cuando un `.sql` no dice otra cosa.
+            *.sql) psql --quiet -v ON_ERROR_STOP=1 --username=postgres --file="$guion" postgres \
                        >/dev/null ;;
             # `KAMAYUK_DIR_KAMAYUK` existe justo para esto: los dos guiones de C-14 leen de
             # `/etc/kamayuk` dentro del contenedor y de aqui cuando se corren fuera.
@@ -217,8 +224,12 @@ motor_detener() {
     motor_esperar_puerto_libre "$PUERTO" || true
 }
 
+# Por omision, la base de MANTENIMIENTO y no la del monolito (`E`). Era `sgtm`, y con
+# `POSTGRES_DB=postgres` esa base ya no se crea: toda consulta que no dijera su base moria
+# con «FATAL: database "sgtm" does not exist». Lo que se pregunta desde aqui es del CLUSTER
+# —roles, privilegios de base, catalogos—, asi que `postgres` es ademas la base correcta.
 motor_como_superusuario() {
-    PGPASSWORD="$CLAVE_SUPER" psql --username=postgres --dbname="${2:-sgtm}" \
+    PGPASSWORD="$CLAVE_SUPER" psql --username=postgres --dbname="${2:-postgres}" \
         --tuples-only --no-align --command "$1"
 }
 
