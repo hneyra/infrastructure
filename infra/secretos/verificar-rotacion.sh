@@ -55,6 +55,15 @@ case "$ROL" in
     *) echo "FALLO: --rol admite kamayuk_app o rol_carga_parametros; llego «$ROL»." >&2; exit 2 ;;
 esac
 
+# Y la base contra la que se comprueba la credencial, que DEPENDE DEL ROL (`E`). Era `sgtm`
+# para los dos, y eso decia lo contrario de la verdad en `rol_carga_parametros`, cuya unica
+# base es `normativa` (C-7 §6): abrir sesion contra una base donde el rol no tiene nada
+# pasaba en verde sin haber comprobado la credencial.
+case "$ROL" in
+    rol_carga_parametros) BASE_DEL_ROL=normativa ;;
+    *)                    BASE_DEL_ROL=rentas ;;
+esac
+
 echo
 echo "· Abriendo una conexion como $ROL, con la clave actual"
 # `psql` interactivo mantenido con un `coproc`: es la unica forma de decir "esta sesion
@@ -62,7 +71,7 @@ echo "· Abriendo una conexion como $ROL, con la clave actual"
 # cada `psql -c` abra una conexion NUEVA —que es exactamente lo que este guion no quiere
 # medir en el paso 3—.
 coproc SESION_ABIERTA (
-    PGPASSWORD="$CLAVE_INICIAL" psql --username="$ROL" --dbname=sgtm --quiet --no-psqlrc \
+    PGPASSWORD="$CLAVE_INICIAL" psql --username="$ROL" --dbname="$BASE_DEL_ROL" --quiet --no-psqlrc \
         --set=ON_ERROR_STOP=1 --pset=pager=off --tuples-only --no-align
 )
 sesion_pid=$SESION_ABIERTA_PID
@@ -84,7 +93,7 @@ echo "· Rotando la clave de $ROL (ALTER ROLE, como haria rotar-clave.sh)"
 # no en una sola orden de `-c`—. Es el mismo patron que ya usa `20-asignar-claves.sh`, y
 # la razon por la que la clave con comilla simple es parte de la prueba: si alguien
 # "simplificara" esto a `--command`, se rompe aqui mismo, con este mismo error.
-PGPASSWORD="$CLAVE_SUPER" psql --username=postgres --dbname=sgtm --quiet \
+PGPASSWORD="$CLAVE_SUPER" psql --username=postgres --dbname="$BASE_DEL_ROL" --quiet \
     -v nueva="$CLAVE_NUEVA" -v rol="$ROL" <<'SQL' >/dev/null
 ALTER ROLE :"rol" PASSWORD :'nueva';
 SQL
@@ -109,7 +118,7 @@ echo "  sigue respondiendo: rotar la clave NO cerro la sesion que ya estaba abie
 wait "$sesion_pid" 2>/dev/null || true
 
 echo "· Una conexion NUEVA con la clave vieja"
-if PGPASSWORD="$CLAVE_INICIAL" psql --username="$ROL" --dbname=sgtm --quiet \
+if PGPASSWORD="$CLAVE_INICIAL" psql --username="$ROL" --dbname="$BASE_DEL_ROL" --quiet \
         --command 'SELECT 1' >/dev/null 2>&1; then
     echo "FALLO: una conexion nueva con la clave VIEJA todavia funciona despues de rotar. La rotacion no tuvo efecto." >&2
     exit 1
@@ -117,7 +126,7 @@ fi
 echo "  falla, como tiene que fallar"
 
 echo "· Una conexion NUEVA con la clave nueva"
-PGPASSWORD="$CLAVE_NUEVA" psql --username="$ROL" --dbname=sgtm --quiet --command 'SELECT 1' \
+PGPASSWORD="$CLAVE_NUEVA" psql --username="$ROL" --dbname="$BASE_DEL_ROL" --quiet --command 'SELECT 1' \
     >/dev/null 2>&1 \
     || { echo "FALLO: una conexion nueva con la clave NUEVA no funciona. La rotacion dejo el rol en un estado peor que antes." >&2; exit 1; }
 echo "  funciona"
