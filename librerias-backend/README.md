@@ -11,12 +11,13 @@ en la etapa P3 del corte, y lo que hay aquí es lo **genérico**: lo que vale ig
 
 | Qué | Clase |
 |---|---|
-| Las 18 reglas de ArchUnit de ARQ-04 §2 | `ReglasDeArquitectura` |
-| El escáner de fuentes: `SET SESSION`, `DELETE`/`UPDATE` sobre tabla protegida, literal numérico tributario, política de redondeo, área compuesta a mano | `RevisorDeCodigoFuente` |
+| Las 20 reglas de ArchUnit de ARQ-04 §2 | `ReglasDeArquitectura` |
+| El escáner de fuentes: `SET SESSION`, `DELETE`/`UPDATE` sobre tabla protegida, literal numérico tributario, política de redondeo, área compuesta a mano, **el operador espacial sin marco y la búsqueda por prefijo con `LIKE`** (ADR-0034) | `RevisorDeCodigoFuente` |
+| **El revisor de esquema**: toda tabla de tenant con geometría lleva sus cuatro columnas de marco y su índice (ADR-0034). Lee el texto de las migraciones, no el catálogo | `RevisorDeEsquema` |
 | El escáner de aserciones que no pueden fallar (#724) | `RevisorDeAserciones` |
 | **La regla nueva del corte**: ningún SQL cruza la frontera de sistema | `FronteraDeSistema` |
 | Las clases base de prueba, una por barrera | `…TestBase` |
-| **Las 40 clases de muestra**, que son lo que hace que las reglas puedan fallar | `muestras/` |
+| **Las 46 clases de muestra**, que son lo que hace que las reglas puedan fallar | `muestras/` |
 
 ### Cómo se consume
 

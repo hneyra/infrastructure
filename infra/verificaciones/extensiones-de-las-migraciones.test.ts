@@ -69,6 +69,11 @@ describe("#742/C-2 — la extension que una migracion usa esta declarada, en los
       "catastro|V1__baseline.sql|btree_gist",
       // C-4: lo mismo en `catastro`, con su V4.
       "catastro|V4__nombre_normalizado_sin_search_path.sql|unaccent",
+      // `V6` (T-0/ADR-0034): `frente_predio.geometria` es `geography(LineString,4326)` y sus
+      // cuatro columnas de marco se derivan con `st_xmin`/`st_ymin`/`st_xmax`/`st_ymax`.
+      // `catastro` ya declara `postgis` en su `crear-roles.sql`, asi que la dependencia esta
+      // cubierta: lo que faltaba era el censo.
+      "catastro|V6__identidad_sncp_y_frente.sql|postgis",
       // `normativa` no depende de ninguna, y `caja` tampoco: las dos ausencias son el
       // dato, no un archivo que no se pudo leer. Lo garantizan las dos pruebas de abajo.
     ]);
@@ -130,7 +135,7 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
     expect(cuantas).toEqual({
       "infrastructure (copia del esquema del monolito)": 68,
       sgtm: 68,
-      // catastro 5 desde C-8: el buzon de salida del emisor y la cola de muertos del ingestor.
+      // catastro 6 desde T-0: `V6` trae el CUC del SNCP y `frente_predio` (ADR-0034/ADR-0036).
       // rentas 13 desde C-12, que retiro `contribuyente_nombre_trgm_ix` —inalcanzable bajo RLS—.
       // Cuando esto se ponga rojo lo que hay que hacer NO es actualizar el numero: es mirar que
       // migracion entro y comprobar que declaro las extensiones que usa. Se comprobo para `V13`:
@@ -139,7 +144,7 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
       // mantiene verde el `gin_trgm_ops` que `V1` sigue nombrando, o sea por un motivo que dejo
       // de ser cierto—.
       rentas: 13,
-      catastro: 5,
+      catastro: 6,
       normativa: 1,
       caja: 2,
     });

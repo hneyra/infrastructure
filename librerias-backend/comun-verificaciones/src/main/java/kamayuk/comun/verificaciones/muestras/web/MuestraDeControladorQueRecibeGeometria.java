@@ -52,14 +52,41 @@ public class MuestraDeControladorQueRecibeGeometria {
     }
 
     /**
+     * La <b>cuarta</b> puerta, y la unica que solo se puede ver leyendo el NOMBRE del parametro.
+     *
+     * <p>Las otras tres llegan por el tipo, por el valor de la anotacion o por un componente del
+     * {@code record}, y {@code motivoDe} las evalua en ese orden, asi que ninguna llega a {@code
+     * nombreDelParametro}. Esta si: el tipo es {@code String}, la anotacion no declara nombre
+     * —Spring lo toma del bytecode, que es como se escribe de verdad— y no hay {@code record} que
+     * mirar. Sin ella, hacer que {@code nombreDelParametro} devuelva siempre {@code null} dejaba la
+     * regla en VERDE en los cuatro backends.
+     *
+     * <p>Y el nombre es {@code wktDelLote} y no {@code wkt} a proposito: es el estilo camelCase que
+     * CLAUDE.md exige en la API, y con el {@code toLowerCase} antes del corte de palabras este caso
+     * pasaba en verde.
+     */
+    @PostMapping("/api/v1/muestra/plano/lote-sin-nombrar")
+    public void corregirSinNombrarElParametro(@RequestParam(required = false) String wktDelLote) {
+        // La puerta mas facil de escribir y la que menos se ve al leer la anotacion.
+    }
+
+    /**
      * El contraste: pedir una tesela por su marco. La regla NO debe quejarse de este.
      *
      * <p>Es la forma que ADR-0034 obliga a usar, asi que marcarla seria prohibir la unica manera
      * correcta de hacer la consulta que el visor necesita.
+     *
+     * <p>El marco viaja como {@code String} y no como {@code double}, que es como nacio: la regla 1
+     * prohibe la coma flotante en TODO {@code kamayuk.*} —{@code MarcoGeografico} lo dice con esas
+     * palabras, «sin excepcion por tipo de magnitud»— y el controlador real recibe el marco como
+     * texto. Escrito con {@code double} no ponia nada rojo, porque el paquete de muestras solo lo
+     * mira {@code ReglasDeArquitecturaMuerdenTest}, donde una violacion es lo que se espera; y ese
+     * es justo el problema: era un segundo violador no declarado de la regla 1, asi que borrar
+     * {@code MuestraQueViolaLasReglas} habria seguido dando verde.
      */
     @GetMapping("/api/v1/muestra/plano/lotes")
     public PlanoDeMuestra lotes(
-            @RequestParam("bbox") String bbox, @RequestParam("marcoOeste") double marcoOeste) {
+            @RequestParam("bbox") String bbox, @RequestParam("marcoOeste") String marcoOeste) {
         return new PlanoDeMuestra(List.of());
     }
 

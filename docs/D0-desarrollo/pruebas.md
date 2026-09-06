@@ -94,7 +94,7 @@ KAMAYUK_CONFIG_K3S=$TMP/config.yaml bash vps/reservar-recursos-del-nodo.sh --sol
 
 ## 3. Las barreras, medidas desde el consumidor
 
-`librerias-backend` no tiene consumidor propio: las 18 reglas y sus 40 muestras sólo demuestran
+`librerias-backend` no tiene consumidor propio: las 20 reglas y sus 46 muestras sólo demuestran
 que muerden cuando un backend las ejecuta. Para medirlo de verdad:
 
 ```bash
