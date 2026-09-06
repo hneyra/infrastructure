@@ -56,11 +56,11 @@ Vive en `infrastructure/librerias-backend/comun-verificaciones`, paquete
 
 | Qué | Forma en que viaja |
 |---|---|
-| `ReglasDeArquitectura` (18 reglas de ArchUnit) | Clase, parametrizada por paquete raíz |
+| `ReglasDeArquitectura` (20 reglas de ArchUnit) | Clase, parametrizada por paquete raíz |
 | `RevisorDeCodigoFuente` (escáner de fuentes: `SET SESSION`, `DELETE`/`UPDATE` sobre tabla protegida, literal tributario, redondeo, área) | Clase, parametrizada por las **listas de tablas** |
 | `RevisorDeAserciones` (#724) | Clase |
 | `ArquitecturaTest`, `ProhibicionesEnElCodigoFuenteTest`, `AsercionesQueNoPuedenFallarTest`, `ReglasDeArquitecturaMuerdenTest` | Clases base abstractas; cada repositorio deriva la suya |
-| **Las 40 clases de muestra** más 12 tipos sustituto que necesitan para compilar | `src/main/java/…/muestras/`, y **también empaquetadas como recurso** (§5) |
+| **Las 46 clases de muestra** más los tipos sustituto que necesitan para compilar | `src/main/java/…/muestras/`, y **también empaquetadas como recurso** (§5) |
 
 **Lo que NO viajó, y por qué:** `PanelSinRecorrerElLibroTest` (es de indicadores),
 `ContratoDeApiTest`, `FormasDeLaApiTest`, `RespuestasDeLaApiTest`, `FormaSegunJacksonTest`,
@@ -155,7 +155,8 @@ Dos guardas impiden que la lista se pudra:
 ## 4. Qué reglas siguen mordiendo, y cuáles se quedaron sin muestra
 
 `ReglasDeArquitecturaMuerdenTest` corre en los cinco repositorios y aplica **las 18** reglas a las
-muestras. En `sgtm`: 19 pruebas verdes (18 reglas + «las muestras existen»).
+muestras. Hoy: 22 pruebas verdes (20 reglas + «las muestras existen» + la de la geometria
+que solo se ve por el nombre del parametro).
 
 **Demostrado que la cadena entera muerde**, y desde la librería:
 
