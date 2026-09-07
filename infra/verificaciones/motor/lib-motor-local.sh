@@ -224,7 +224,12 @@ motor_detener() {
     motor_esperar_puerto_libre "$PUERTO" || true
 }
 
-# La base del PADRON por omision, y no la de mantenimiento (`E`).
+# Las bases del cluster, de su unico sitio (#15). Antes esto era
+# `BASE_DEL_PADRON=${BASE_DEL_PADRON:-rentas}`, una de las cinco copias del mismo valor.
+# shellcheck source=infra/bases.sh
+. "$LIB_MOTOR_INFRA/bases.sh"
+
+# La omision de `motor_como_superusuario` es el PADRON, y no la de mantenimiento (`E`).
 #
 # Era `sgtm` —el padron del monolito—, y con `POSTGRES_DB=postgres` esa base dejo de crearse:
 # toda consulta que no dijera la suya moria con «FATAL: database "sgtm" does not exist».
@@ -238,7 +243,8 @@ motor_detener() {
 #
 # La traduccion fiel de lo que habia es el PADRON, no mantenimiento. Quien necesite el cluster
 # lo pide explicitamente, que es lo que ya hacen las consultas de `has_database_privilege`.
-BASE_DEL_PADRON=${BASE_DEL_PADRON:-rentas}
+# Lo sujeta `bases-de-los-guiones.test.ts`, que se pone rojo si esta omision deja de ser el
+# padron — sin Docker y sin cluster, que es donde este defecto no se veia.
 
 motor_como_superusuario() {
     PGPASSWORD="$CLAVE_SUPER" psql --username=postgres --dbname="${2:-$BASE_DEL_PADRON}" \

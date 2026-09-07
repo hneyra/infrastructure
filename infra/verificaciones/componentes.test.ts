@@ -6,7 +6,7 @@ import { auditarManifiestos } from "../auditoria";
 import { construirManifiestos } from "../componentes";
 import { manifiestosDelAmbiente } from "../herramientas/emitir-manifiestos";
 import { clonDe, sistemaLlamado } from "./deriva-de-migraciones";
-import { BASE_DEL_REGISTRO_DE_RESPALDO } from "../componentes/convenciones";
+import { BASE_DEL_PADRON } from "../componentes/convenciones";
 import {
   manifiestosDeIdentidad,
   documentosDelRealm,
@@ -2478,15 +2478,15 @@ describe("#558 · la restauracion verificada queda escrita", () => {
    *
    * Era `V78__restauracion_verificada.sql` del monolito. La tabla `respaldo` vive hoy en las
    * cuatro bases —los cuatro baselines la heredaron de `V1..V78`— y el `CronJob` escribe en
-   * la que declara {@link BASE_DEL_REGISTRO_DE_RESPALDO}: se contrasta contra **esa**, que es
+   * la que declara {@link BASE_DEL_PADRON}: se contrasta contra **esa**, que es
    * la unica cuyo esquema decide si el `UPDATE` del simulacro encuentra sus columnas.
    */
   const migracion = () =>
     readFileSync(
       join(
-        clonDe(sistemaLlamado(BASE_DEL_REGISTRO_DE_RESPALDO)),
+        clonDe(sistemaLlamado(BASE_DEL_PADRON)),
         "backend",
-        `kamayuk-${BASE_DEL_REGISTRO_DE_RESPALDO}-esquema`,
+        `kamayuk-${BASE_DEL_PADRON}-esquema`,
         "src/main/resources/db/migration/V1__baseline.sql",
       ),
       "utf8",

@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-
-# La base donde vive el padron, desde `E`. Era `sgtm`, la del monolito, que hoy no tiene ni
-# una tabla del producto. `rentas` es la unica cuyo `crear-roles.sql` concede CONNECT a los
-# cinco roles del cluster, o sea la que menos supuestos hace sobre quien se conecta.
-BASE_DEL_PADRON=rentas
 # El modo `--contra-cluster` de simulacro-de-restauracion.sh (issue #158).
 #
 # No se corre solo: `simulacro-de-restauracion.sh` lo source-ea despues de validar
 # `--ambiente stg` y con `set -euo pipefail` ya activo. Asume `INFRA` fijada (la raiz
 # de `infra/`) y un `KUBECONFIG` que ya alcanza el cluster -el mismo tunel SSH que usa
 # el resto de `infra/`, este guion no lo abre-.
+#
+# Y asume `BASE_DEL_PADRON`, que su llamador trae de `infra/bases.sh` (#15). Aqui estaba
+# escrita a mano, una de las cinco copias del mismo valor: olvidar una no ponia nada rojo,
+# dejaba este guion restaurando y comprobando contra una base distinta de la que el resto usa.
 #
 # La diferencia con el modo local, en una frase: aqui no se levanta nada — se apaga,
 # se restaura y se vuelve a encender el `Deployment` de verdad, con su propio volumen.

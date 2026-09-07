@@ -87,20 +87,23 @@ done
 [ "$(comoSuperusuario "SELECT rolcanlogin FROM pg_roles WHERE rolname='kamayuk_readonly'")" = "f" ] \
     || { echo "FALLO: kamayuk_readonly puede conectarse, y todavia no lo usa nadie" >&2; exit 1; }
 
-# ── La base donde vive el padron, desde `E` ──────────────────────────────────
+# ── Las dos bases contra las que se mide ─────────────────────────────────────
 #
-# Era `sgtm`, la del monolito, escrita ocho veces en este guion. Con el monolito
-# fuera esa base no tiene ni una tabla del producto, y medir contra ella habria
-# dejado estas comprobaciones **pasando en verde sin medir nada**: «kamayuk_app no
-# puede crear tablas» es cierto en una base donde no tiene ningun privilegio.
+# `BASE_DEL_PADRON` y `BASE_DE_PARAMETROS` las trae `bases.sh`, que ya cargo
+# `lib-motor-local.sh` mas arriba. **Aqui no se declara ninguna, y ese es el arreglo**
+# (#15): hasta entonces este guion escribia `BASE_DEL_PADRON=rentas` DESPUES de cargar
+# la biblioteca, o sea pisando el valor que la biblioteca deja fijado. Hoy coincidian,
+# asi que no cambiaba nada; el dia que dejaran de coincidir, este guion mediria contra
+# una base y la biblioteca contra otra sin que nada lo dijera.
 #
-# `rentas` y no otra, por lo mismo que el registro del respaldo: es la unica cuyo
-# `crear-roles.sql` concede CONNECT a los cinco roles del cluster, o sea la que
-# menos supuestos hace sobre quien se conecta.
-BASE_DEL_PADRON=rentas
-# Menos `rol_carga_parametros`, cuya UNICA base es `normativa` (C-7 §6). Medirlo
-# contra otra diria lo contrario de la verdad.
-BASE_DE_LA_CARGA=normativa
+# Que la del padron sea `rentas` y no otra importa: era `sgtm`, escrita ocho veces en
+# este guion, y con el monolito fuera esa base no tiene ni una tabla del producto —o
+# sea que estas comprobaciones habrian **pasado en verde sin medir nada**: «kamayuk_app
+# no puede crear tablas» es cierto en una base donde no tiene ningun privilegio—.
+#
+# Y `rol_carga_parametros` se mide contra la SUYA, que es `normativa` y solo `normativa`
+# (C-7 §6). Medirlo contra otra diria lo contrario de la verdad.
+BASE_DE_LA_CARGA=$BASE_DE_PARAMETROS
 
 # ── 4. Con las credenciales de la aplicacion, no hay DDL ─────────────────────
 echo "· La aplicacion no puede ejecutar DDL"

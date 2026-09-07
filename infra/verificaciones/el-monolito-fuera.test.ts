@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { inventarioDeSecretos } from "../componentes/secretos";
 import {
-  BASE_DEL_REGISTRO_DE_RESPALDO,
+  BASE_DEL_PADRON,
   BASE_DE_MANTENIMIENTO,
   SISTEMAS_DEL_PRODUCTO,
 } from "../componentes/convenciones";
@@ -123,7 +123,7 @@ describe("E · la base del monolito no gobierna nada", () => {
   /**
    * **El registro del respaldo escribe donde `respaldo` existe.**
    *
-   * Es la guarda que `BASE_DEL_REGISTRO_DE_RESPALDO` promete en su javadoc, y no es teorica:
+   * Es la guarda que `BASE_DEL_PADRON` promete en su javadoc, y no es teorica:
    * hasta `E` el `CronJob` apuntaba a la base del monolito, donde esa tabla **no existe**, y
    * su primer paso es registrar el inicio con `exit 1` si no puede — o sea que el respaldo
    * diario de `stg` habria fallado entero en su primera corrida, con un mensaje —«no se pudo
@@ -133,21 +133,21 @@ describe("E · la base del monolito no gobierna nada", () => {
    * dia que ese esquema deje de declarar la tabla, esto se pone rojo aqui y no a las 06:00.
    */
   it("el registro del respaldo va a una base cuyo esquema declara `respaldo`", () => {
-    expect(SISTEMAS_DEL_PRODUCTO as readonly string[]).toContain(BASE_DEL_REGISTRO_DE_RESPALDO);
+    expect(SISTEMAS_DEL_PRODUCTO as readonly string[]).toContain(BASE_DEL_PADRON);
 
-    const sistema = sistemaLlamado(BASE_DEL_REGISTRO_DE_RESPALDO);
+    const sistema = sistemaLlamado(BASE_DEL_PADRON);
     const baseline = readFileSync(
       join(
         clonDe(sistema),
         "backend",
-        `kamayuk-${BASE_DEL_REGISTRO_DE_RESPALDO}-esquema`,
+        `kamayuk-${BASE_DEL_PADRON}-esquema`,
         "src/main/resources/db/migration/V1__baseline.sql",
       ),
       "utf8",
     );
     expect(
       baseline,
-      `el esquema de «${BASE_DEL_REGISTRO_DE_RESPALDO}» ya no declara la tabla \`respaldo\`, y ` +
+      `el esquema de «${BASE_DEL_PADRON}» ya no declara la tabla \`respaldo\`, y ` +
         "el CronJob escribe ahi: su primer paso es registrar el inicio, y sin tabla sale con " +
         "exit 1 — el respaldo no se toma",
     ).toContain("CREATE TABLE respaldo");

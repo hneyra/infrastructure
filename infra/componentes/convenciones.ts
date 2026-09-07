@@ -438,8 +438,9 @@ export function seguridadSinRoot(extra: Partial<SecurityContext> = {}): Security
  * La base de **mantenimiento** del motor: la que el `entrypoint` crea al inicializar el
  * volumen y contra la que sondea `pg_isready`.
  *
- * Hasta `E` esto era `BASE_DEL_PADRON = "sgtm"`, la base del monolito, y era cierto: ahi
- * vivia el padron. Ya no. El padron vive en las **cuatro** bases de
+ * Hasta `E` la sonda apuntaba a `sgtm`, la base del monolito, y era cierto que ahi vivia
+ * el padron. Ya no —hoy el padron es {@link BASE_DEL_PADRON}—, y ademas una base de
+ * mantenimiento no puede ser la de nadie. El producto vive en las **cuatro** bases de
  * {@link SISTEMAS_DEL_PRODUCTO}, que crea `05-crear-bases.sh` a partir de los
  * `crear-roles.sql` de los cuatro clones; la base `sgtm` quedo sin una sola tabla del
  * producto —medido contra `stg` el 2026-09-06: solo `spatial_ref_sys`, que la trae PostGIS—.
@@ -470,29 +471,53 @@ export function sufijoDeVersion(version: string): string {
 }
 
 /**
- * La base donde el `CronJob` de respaldo escribe su fila de `respaldo` (RF-126, #155, #558).
+ * **La base del padron: el unico sitio de este repositorio donde se elige.**
  *
- * **Es una eleccion, y hay que hacerla en algun sitio.** Una copia es del CLUSTER —#558 lo
- * dejo escrito y por eso `respaldo` no lleva `municipalidad_id`—, pero desde el corte la
- * plataforma no tiene ninguna base propia: la `sgtm` del monolito quedo sin esquema y las
- * cuatro que hay son de los cuatro sistemas. Escribir en las cuatro daria cuatro filas para
- * una sola copia; no escribir en ninguna deja la copia sin registro, que es justo lo que
- * RF-126 existe para impedir.
+ * Hasta `E` el padron vivia en la base `sgtm`, la del monolito. Ya no: esa base existe en
+ * los dos ambientes y **no tiene ni una tabla del producto** —medido contra `stg` el
+ * 2026-09-06: `pg_tables` devuelve UNA fila, `spatial_ref_sys`, que la trae PostGIS—. Su
+ * sustituta es `rentas`, y esa eleccion se usa hoy para tres cosas que son la misma:
  *
- * **Y el defecto ya estaba vivo cuando esto se escribio.** Hasta el 2026-09-06 el guion
- * apuntaba a la base del monolito, donde `respaldo` **no existe** —medido contra `stg`:
- * `to_regclass('public.respaldo')` da vacio en `sgtm` y la tabla en las cuatro—. El primer
- * paso del guion es registrar el inicio y `exit 1` si no puede, asi que el respaldo diario
- * de `stg` habria fallado entero en su primera corrida, y el sintoma —«no se pudo registrar
- * el inicio»— no se parece a su causa.
+ *   - donde el `CronJob` de respaldo escribe su fila de `respaldo` (RF-126, #155, #558);
+ *   - contra que base miden el motor `verificar-el-motor.sh` y los dos simulacros;
+ *   - que base declara el inventario de secretos para los roles que alcanzan las cuatro.
  *
- * `rentas` y no otra: es la unica de las cuatro cuyo `crear-roles.sql` concede `CONNECT` a
- * los cinco roles del cluster, o sea la que menos supuestos hace sobre quien escribe; y es
- * la base mas grande, la que un operador abre primero cuando quiere saber si hay copia. La
- * eleccion se sujeta con una guarda que lee el baseline de ESE clon y exige que declare la
- * tabla: el dia que ese esquema deje de tenerla, se pone rojo aqui y no a las 06:00.
+ * **`rentas` y no otra**, con el mismo argumento en los tres casos: es la unica de las
+ * cuatro cuyo `crear-roles.sql` concede `CONNECT` a los cinco roles del cluster —o sea la
+ * que menos supuestos hace sobre quien se conecta—, es la base mas grande, y es la que un
+ * operador abre primero cuando quiere saber si hay copia. La eleccion se sujeta con una
+ * guarda que lee el baseline de ESE clon y exige que declare la tabla `respaldo`: el dia
+ * que ese esquema deje de tenerla, se pone rojo aqui y no a las 06:00.
+ *
+ * **Y el defecto ya estaba vivo cuando esto se escribio.** Hasta el 2026-09-06 el guion del
+ * respaldo apuntaba a la base del monolito, donde `respaldo` **no existe**. El primer paso
+ * del guion es registrar el inicio y `exit 1` si no puede, asi que el respaldo diario de
+ * `stg` habria fallado entero en su primera corrida, y el sintoma —«no se pudo registrar el
+ * inicio»— no se parece a su causa.
+ *
+ * **Se llamaba `BASE_DEL_PADRON` y era una de cinco copias** (#15). Las otras
+ * cuatro estaban en shell, con el valor escrito a mano, y olvidar una no ponia nada rojo:
+ * dejaba un guion hablando con una base distinta de la que el resto usa. Hoy el lado shell
+ * lo declara UNA vez —`infra/bases.sh`— y `bases-de-los-guiones.test.ts` pone de acuerdo a
+ * los dos lados **ejecutando** ese archivo y comparandolo con esta constante.
+ *
+ * Si algun dia el registro del respaldo tuviera que ir a otra base que el padron, eso es
+ * partir esta decision en dos y hay que escribirlo: hoy son una, con un solo argumento.
  */
-export const BASE_DEL_REGISTRO_DE_RESPALDO = "rentas";
+export const BASE_DEL_PADRON = "rentas";
+
+/**
+ * La base de los **valores normativos**, y la unica que `rol_carga_parametros` alcanza.
+ *
+ * `normativa` y solo `normativa`: es la unica de las cuatro que le concede `CONNECT`
+ * (C-7 §6, `quien-se-conecta-a-cada-base.test.ts`). Decir `rentas` aqui —el repliegue que
+ * `asignar-claves.sh` tenia antes de `E`— seria decir lo contrario de la verdad.
+ *
+ * Vive junto a {@link BASE_DEL_PADRON} por lo mismo: la escriben cuatro guiones de shell
+ * (`publicar-parametros.sh`, `publicar-cuadros.sh`, `verificar-rotacion.sh`,
+ * `rotar-clave.sh`) y el inventario de secretos, y nada las comparaba.
+ */
+export const BASE_DE_PARAMETROS = "normativa";
 
 /**
  * La base de Keycloak. **Separada**, no un esquema mas de la del padron.
