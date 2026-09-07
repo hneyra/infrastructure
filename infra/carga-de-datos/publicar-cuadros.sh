@@ -55,6 +55,12 @@
 # Requiere: kubectl con el tunel al API del ambiente ya abierto.
 set -euo pipefail
 
+# De donde sale la imagen y en que espacio de nombres corre el Job: una sola fuente para los tres
+# guiones de este directorio (#10, #11). Hasta entonces las dos cosas estaban escritas a mano aqui
+# y apuntaban al Deployment del monolito, que ya no despliega ningun ambiente.
+# shellcheck source=lib-destino-del-job.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib-destino-del-job.sh"
+
 # Los parametros tributarios viven en `normativa` desde el corte (ADR-0031), no en la base del
 # monolito, que es lo que decia esta linea hasta `E`.
 BASE_DE_PARAMETROS=normativa
@@ -83,8 +89,22 @@ REGION_S3=${REGION_S3:-us-east-1}
     exit 2
 }
 [ -f "$ARCHIVO" ] || { echo "No existe el archivo: $ARCHIVO" >&2; exit 2; }
-NAMESPACE=${NAMESPACE:-kamayuk-$AMBIENTE}
-SECRETO="kamayuk-${AMBIENTE}-postgres-carga"
+# DOS espacios de nombres y no uno (#10, #11).
+#
+# `--namespace` sigue queriendo decir «donde corre el Job», y su omision deja de ser
+# `kamayuk-<ambiente>` —el de la plataforma, donde vivia el monolito— para ser el del sistema al
+# que pertenece este proceso. Ahi esta el Deployment del que sale la imagen, ahi esta el egreso
+# que llega al 5432, y ahi tiene que estar el `Secret` que el Job monta: un `secretKeyRef` se
+# resuelve en el espacio de nombres del pod y en ningun otro.
+#
+# El de la PLATAFORMA sigue haciendo falta para una sola cosa: el `kubectl exec` contra el motor,
+# que vive alli y no se mueve.
+SISTEMA=$SISTEMA_DE_LOS_PARAMETROS
+NAMESPACE=${NAMESPACE:-$(namespace_del_sistema "$SISTEMA" "$AMBIENTE")}
+NAMESPACE_PLATAFORMA=$(namespace_de_la_plataforma "$AMBIENTE")
+# El ESPEJO que vive donde el Job corre, no el de la plataforma (#10, #11).
+SECRETO=$(secreto_del_sistema "$SISTEMA" "$AMBIENTE" carga)
+SECRETO_DE_ORIGEN="kamayuk-${AMBIENTE}-postgres-carga"
 
 # El derivado se comprueba contra el corpus ANTES de montarlo. Cuesta un segundo y es la diferencia
 # entre publicar la norma y publicar lo que alguien escribio en un CSV.
@@ -97,21 +117,7 @@ else
     echo "AVISO: sin node, el derivado se monta sin comprobar contra el corpus." >&2
 fi
 
-kubectl -n "$NAMESPACE" get secret "$SECRETO" >/dev/null 2>&1 || {
-    cat >&2 <<EOF
-No existe el secreto $SECRETO en $NAMESPACE, y sin el este Job no tiene con que conectarse.
-
-rol_carga_parametros tiene LOGIN desde la inicializacion del motor (issue #387); lo que falta en
-este namespace es el secreto con su clave. Corre, contra este ambiente:
-
-  secretos/bootstrap-secretos.sh --ambiente $AMBIENTE
-
-Lo que NO hay que hacer es montar este Job con la credencial de la aplicacion: kamayuk_app solo
-tiene SELECT sobre parametro_tributario, y darle el INSERT que le falta pondria la publicacion
-de valores normativos al alcance del proceso que atiende peticiones.
-EOF
-    exit 1
-}
+exigir_secreto "$NAMESPACE" "$SECRETO" "$SECRETO_DE_ORIGEN" "$SISTEMA" || exit 1
 
 # Y que la credencial SIRVA, no solo que el secreto exista (issue #435).
 #
@@ -120,9 +126,9 @@ EOF
 # `20-asignar-claves.sh` solo corre al inicializar el motor y ese cluster se habia creado antes del
 # issue #387. El Job arranco, no pudo conectarse, y el proceso lo reporto como «22 filas
 # rechazadas: revise que las dos firmas sean distintas». Ninguna linea decia la verdad.
-CLAVE_CARGA=$(kubectl -n "$NAMESPACE" get secret "$SECRETO" -o jsonpath='{.data.clave-carga}' \
+CLAVE_CARGA=$(kubectl -n "$NAMESPACE" get secret "$SECRETO" -o jsonpath='{.data.clave}' \
     | base64 --decode)
-if ! kubectl -n "$NAMESPACE" exec "deployment/kamayuk-${AMBIENTE}-postgres" -c postgres -- \
+if ! kubectl -n "$NAMESPACE_PLATAFORMA" exec "deployment/kamayuk-${AMBIENTE}-postgres" -c postgres -- \
         env PGPASSWORD="$CLAVE_CARGA" psql --host=127.0.0.1 --username=rol_carga_parametros \
         --dbname="$BASE_DE_PARAMETROS" --quiet --command 'SELECT 1' >/dev/null 2>&1; then
     cat >&2 <<EOF
@@ -144,12 +150,7 @@ echo "Credencial de rol_carga_parametros comprobada contra el motor."
 SUFIJO=$(date +%s)
 RECURSO="kamayuk-${AMBIENTE}-publicacion-cuadros-${SUFIJO}"
 
-IMAGEN=$(kubectl -n "$NAMESPACE" get deployment "kamayuk-${AMBIENTE}-aplicacion" \
-    -o jsonpath='{.spec.template.spec.containers[0].image}')
-[ -n "$IMAGEN" ] || {
-    echo "No se pudo leer la imagen de kamayuk-${AMBIENTE}-aplicacion en $NAMESPACE" >&2
-    exit 1
-}
+IMAGEN=$(imagen_del_backend "$SISTEMA" "$AMBIENTE")
 echo "Imagen desplegada: $IMAGEN"
 
 # EL ARCHIVO DE FILAS, MONTADO DONDE PublicarCuadros LO SABE ENCONTRAR (issue #388).
@@ -391,12 +392,13 @@ spec:
       labels:
         proyecto: sgtm
         ambiente: $AMBIENTE
-        componente: publicacion-cuadros
-        # Ver el mismo comentario en cargar-arancel-vial.sh: "lote" es la etiqueta que
-        # NetworkPolicy "permitir-ingreso-postgres" deja pasar al puerto 5432 para un
-        # Job de un solo uso; con otra etiqueta el pod arranca y la conexion cae con
-        # "Connection refused".
-        app: lote
+        # La etiqueta que DECIDE es «componente», y es la del sistema: es el
+        # `podSelector` de la politica `kamayuk-<sistema>-egreso`, que es la que deja
+        # salir al 5432 desde este espacio de nombres. La que estaba escrita aqui,
+        # «app: lote», no la nombra ninguna politica —se busco en los manifiestos de los
+        # dos ambientes y no aparece ni una vez—: era cierta antes de ADR-0031, cuando
+        # el Job corria en el espacio de nombres de la plataforma (#10).
+$(etiquetas_del_job "$SISTEMA" publicacion-cuadros)
     spec:
       restartPolicy: Never
       priorityClassName: kamayuk-${AMBIENTE}-prioridad-lote
@@ -418,7 +420,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: $SECRETO
-                  key: clave-carga
+                  key: clave
             - name: KAMAYUK_PUBLICACIONCUADROS_ARCHIVO
               value: /datos/publicacion/cuadros.csv
             - name: KAMAYUK_PUBLICACIONCUADROS_USUARIODELPROCESO
