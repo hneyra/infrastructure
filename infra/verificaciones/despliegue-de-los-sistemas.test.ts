@@ -554,8 +554,21 @@ describe("C-14 · el egreso declarado ES el que se aplica", () => {
  *
  * Las dos cifras se MIDEN, no se razonan: se pone el techo a 0, se lee el «but was» y se
  * escribe. Es el mismo trato que `OPERACIONES_CON_FILTRO_QUE_NADIE_LEE` en `rentas`.
+ *
+ * ## Remedido en #21, y las dos mitades se movieron por motivos distintos
+ *
+ * | | pico de los cuatro | por que |
+ * |---|---|---|
+ * | C-14, lo que estaba escrito | 950m / 4864Mi | — |
+ * | medido antes de #21 | 950m / **4480Mi** | la CPU seguia exacta; **la memoria se habia aflojado 384Mi** y nadie la remidio |
+ * | medido con #21 AC-4 | **1000m** / **4736Mi** | el `CronJob` del ingestor de `rentas` deja de nacer suspendido: **+50m / +256Mi** |
+ *
+ * O sea que **el techo de memoria llevaba desde C-14 dejando crecer 384Mi en silencio**, que es
+ * justo lo que esta guarda existe para impedir. Se reescribe con la cifra medida y no con la
+ * vieja mas lo que suba #21: un techo que no es la medida no es un techo, es un margen que
+ * nadie decidio.
  */
-const TECHO_DE_LOS_SISTEMAS = { cpuEnMili: 950, memoriaEnMi: 4864 };
+const TECHO_DE_LOS_SISTEMAS = { cpuEnMili: 1000, memoriaEnMi: 4736 };
 
 describe("C-14 · lo que los cuatro sistemas anaden al nodo", () => {
   it.each(ENVIRONMENTS)("en «%s» no crece en silencio", (ambiente) => {

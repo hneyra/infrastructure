@@ -255,60 +255,43 @@ describe("C-19 · el perfil de recursos de un ambiente no alcanza al otro", () =
    * en la cantidad exacta que cuesta, y esa cantidad queda escrita aquí y no en la cabeza de
    * nadie.
    *
-   * ## Y volvieron a subir, por lo mismo y en otro repositorio (`rentas` I-44)
+   * ## Y volvieron a subir, y esta vez el pico y sólo el pico (#21)
    *
-   * De `1390m / 5216Mi` permanentes a **`1440m / 5280Mi`**, y del pico `1860m / 7584Mi` a
-   * **`1910m / 7648Mi`**: **50m y 64Mi** otra vez, y por la misma pieza — `rentas` estrenó su
-   * `Deployment/kamayuk-rentas-interfaz`, que es el SEXTO de los cuatro sistemas.
+   * Lo que #21 mueve es **el pico y sólo el pico**: **+50m y +256Mi**, que es lo que pide el
+   * contenedor del `CronJob` del ingestor de `rentas` y que un `CronJob` suspendido no pedía
+   * porque no crea ningún pod. Lo **permanente no se mueve ni un milicore** por este issue.
    *
-   * Lo que esto enseña no es la cifra sino **de dónde llegó**: este repositorio no tuvo ni un
-   * commit ese día. La demanda de `prod` cambió porque un hermano integró una interfaz, y lo
-   * único que lo dijo fue esta prueba —al día siguiente, cuando alguien volvió a correr el
-   * flujo—. Es el hueco que `E` dejó declarado: un filtro `paths` sólo nombra rutas de su
-   * repositorio, así que un merge en `rentas` no dispara este flujo y `main` puede quedarse rojo
-   * sin un commit propio.
-   *
-   * Medido contra el nodo, que es lo que el párrafo de arriba exige: `prod` pasa de faltarle
-   * **60m** de CPU a faltarle **110m**, y de **1 856Mi** a **1 920Mi**. Sigue sin caber, sigue
-   * siendo D-25, y la brecha (#1) no se toca: `capacidad.test.ts` exige desde C-16 que quien la
-   * declara siga sin caber, y sigue.
-   *
-   * ## Y volvieron a subir otra vez, y ahora el pico y SOLO el pico (#21)
-   *
-   * Lo **permanente no se mueve**: `1440m / 5280Mi` antes y despues. El **pico** pasa de
-   * `1910m / 7648Mi` a **`1960m / 7904Mi`** — exactamente **50m y 256Mi**, que es lo que pide
-   * el contenedor del `CronJob` del ingestor de `rentas`, y que un `CronJob` suspendido no
-   * pedia porque no crea ningun pod.
-   *
-   * **Es un cambio de demanda y no un ajuste de prueba**, y hubo que medirlo en TRES estados y
-   * no en dos, porque `rentas` I-44 aterrizo mientras este trabajo estaba en curso y mueve las
-   * mismas cifras:
+   * **Es un cambio de demanda y no un ajuste de prueba**, y hubo que medirlo en TRES estados
+   * y no en dos, porque `rentas`#50 (I-44, la interfaz `rentas-web`) aterrizó en su `main`
+   * mientras este trabajo estaba en curso y **también** mueve estas cifras:
    *
    * | estado de `rentas` | permanente | pico |
    * |---|---|---|
    * | antes de I-44, ingestor suspendido | 1390m / 5216Mi | 1860m / 7584Mi |
-   * | con I-44 (`Deployment/kamayuk-rentas-interfaz`) | **1440m / 5280Mi** | 1910m / 7648Mi |
+   * | con I-44 (`Deployment/kamayuk-rentas-interfaz`, 50m/64Mi) | **1440m / 5280Mi** | 1910m / 7648Mi |
    * | y con #21 AC-4 (el ingestor despierta) | 1440m / 5280Mi | **1960m / 7904Mi** |
    *
-   * **Y que el CPU del pico coincida en `1910m` en la fila de en medio con lo que este trabajo
-   * habia medido antes del rebase es CASUALIDAD** — la memoria no coincide, 7 648Mi contra los
-   * 7 840Mi que se midieron sobre la linea base vieja—, y por eso las dos cifras se leen del
-   * stack y no se deduce una de la otra.
+   * O sea: I-44 suma **50m/64Mi a las dos**, y #21 suma **50m/256Mi al pico**. Que el CPU del
+   * pico coincida en `1910m` en la fila de en medio con el que este PR midió antes del rebase
+   * es **casualidad** —la memoria no coincide, 7648Mi contra 7840Mi—, y por eso las dos cifras
+   * se leen del stack y no se deducen una de otra.
    *
-   * **`stg` no cambia de veredicto y `prod` tampoco**: `stg` sigue cabiendo y `prod` seguia sin
-   * caber antes y sigue sin caber ahora, asi que la brecha declarada (#1) no se toca y
-   * `capacidad.test.ts` la sigue exigiendo. Lo que empeora es **cuanto** falta, y eso es D-25.
+   * **`stg` no cambia de veredicto y `prod` tampoco**: `stg` sigue cabiendo —su namespace de
+   * `rentas` pasa de `200m / 1024Mi` a `250m / 1280Mi` en el pico, con margen de sobra— y
+   * `prod` seguía sin caber antes y sigue sin caber ahora, así que la brecha declarada (#1)
+   * no se toca y `capacidad.test.ts` la sigue exigiendo. Lo que empeora es **cuánto** falta, y
+   * eso es D-25 y no una decisión de este issue.
    *
-   * **Y el pico es el numero correcto para contarlo, no un tecnicismo**: `capacidad.test.ts`
-   * lo dejo escrito —«lo permanente de la plataforma cabe y su pico no: por eso se mide el
-   * pico»—, y un `CronJob` que corre a las 02:00 pide su pod **mientras los demas estan en
-   * pie**. Contarlo en lo permanente diria que ese contenedor esta siempre, que es falso; no
-   * contarlo en ninguna parte es lo que hacia el `suspend`, y ese es el defecto.
+   * **Y el pico es el número correcto para contarlo, no un tecnicismo**: `capacidad.test.ts`
+   * lo dejó escrito —«lo permanente de la plataforma cabe y su pico no: por eso se mide el
+   * pico»—, y un `CronJob` que corre a las 02:00 pide su pod **mientras los demás están en
+   * pie**. Contarlo en lo permanente diría que ese contenedor está siempre, que es falso;
+   * no contarlo en ninguna parte es lo que hacía el `suspend`, y ése es el defecto.
    *
-   * *Mutacion:* devolver el `suspend: true` a `rentas/infrastructure/src/descriptor.ts`.
-   * → esta prueba vuelve a VERDE con las cifras de la fila de en medio, y quien se pone roja es
-   * la guarda de `despliegue-de-los-sistemas.test.ts`. Las dos mitades se sostienen: una dice
-   * **que** corre y la otra **cuanto cuesta** que corra.
+   * *Mutación:* devolver el `suspend: true` a `rentas/infrastructure/src/descriptor.ts`.
+   * → esta prueba vuelve a VERDE con las cifras de arriba, y quien se pone roja es la guarda
+   * de `despliegue-de-los-sistemas.test.ts`. Las dos mitades se sostienen: una dice **que**
+   * corre y la otra **cuánto cuesta** que corra.
    */
   it("prod pide exactamente lo medido en `E`, mas el ingestor que #21 despierta", () => {
     const demanda = demandaDelStack(manifiestosDe("prod"));
