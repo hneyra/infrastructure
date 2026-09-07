@@ -1224,7 +1224,7 @@ jobs:
         if: steps.credenciales.outputs.hay == 'si'
         run: |
           if kubectl -n kamayuk-stg get deployment kamayuk-stg-postgres >/dev/null 2>&1; then
-            infrastructure/despliegue/crear-extensiones.sh --ambiente stg
+            infrastructure/despliegue/crear-extensiones.sh --ambiente stg --todos
           else
             echo "Todavia no hay motor en kamayuk-stg: el volumen nace vacio y las crea"
             echo "crear-roles.sql desde /docker-entrypoint-initdb.d, que es el camino"
@@ -1428,7 +1428,7 @@ jobs:
       - name: Las extensiones que crear-roles.sql declara, en un motor que ya existe (ADR-0021)
         run: |
           if kubectl -n kamayuk-prod get deployment kamayuk-prod-postgres >/dev/null 2>&1; then
-            infrastructure/despliegue/crear-extensiones.sh --ambiente prod
+            infrastructure/despliegue/crear-extensiones.sh --ambiente prod --todos
           else
             echo "Todavia no hay motor en kamayuk-prod: el volumen nace vacio y las crea"
             echo "crear-roles.sql desde /docker-entrypoint-initdb.d."
