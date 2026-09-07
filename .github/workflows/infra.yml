@@ -1378,6 +1378,54 @@ jobs:
           echo "KUBECONFIG=$HOME/.kube/config-ci" >> "$GITHUB_ENV"
 
       # Ver el mismo paso en `aplicar-stg` (issue #252).
+      # ── La brecha de capacidad de `prod`, LEIDA DEL STACK (#25) ─────────────────
+      #
+      # `prod` no cabe en su nodo, y eso NO es una regresion: esta declarado y seguido en
+      # `kamayuk:nodeCapacityGapIssue`. Un trabajo que falla por una condicion conocida,
+      # declarada y sin fecha deja `main` en rojo permanente, y un `main` siempre rojo deja
+      # de avisar de lo siguiente que se rompa.
+      #
+      # Asi que mientras la marca este puesta este trabajo **no aplica y lo dice**, que es lo
+      # que C-19 §8.2 hizo con `verificar-el-ambiente.sh`: «no se hace» NO es «esta bien».
+      #
+      # El dia que `prod` quepa hay que retirar la marca, y no hace falta acordarse: desde
+      # C-16 `capacidad.test.ts` se pone ROJO cuando un ambiente que la declara ya cabe. Al
+      # retirarla, este trabajo vuelve a aplicar sin tocar una linea de aqui.
+      #
+      # La tuberia es la misma que usa `verificar-el-ambiente.sh` para leer una clave del
+      # stack, y una prueba la EJECUTA y la compara con lo que `config.ts` lee: una prueba
+      # que solo mirara que este flujo nombra la clave pasaria con la tuberia rota (M10 de C-19).
+      - name: '¿«prod» declara una brecha de capacidad? (#25)'
+        id: brecha
+        run: |
+          BRECHA=$(grep -E '^[[:space:]]+kamayuk:nodeCapacityGapIssue:' \
+            infrastructure/infra/Pulumi.prod.yaml | sed -E 's/.*:[[:space:]]*//' | tr -d '" ')
+          if [ -z "$BRECHA" ]; then
+            echo "declarada=no" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "declarada=si" >> "$GITHUB_OUTPUT"
+          # Comillas SIMPLES en todo lo que lleva acentos graves: entre comillas dobles el
+          # shell los toma por sustitucion de comandos y ejecutaria `yarn capacidad` —y
+          # `prod`, y `capacidad.test.ts`— en medio de un mensaje. Se midio: la primera
+          # version de este paso lo hacia.
+          echo "«prod» declara la brecha de capacidad del issue #${BRECHA}, asi que este"
+          echo 'trabajo NO APLICA. No es que este bien: es que NO SE HACE, y se dice.'
+          echo
+          echo 'Lo que falta, medido por `yarn capacidad --ambiente prod`:'
+          (cd infrastructure/infra && yarn --silent capacidad --ambiente prod || true)
+          echo
+          echo 'Las salidas son INF-01 §2 y D-25: un nodo dimensionado (8 CPU / 16 GB),'
+          echo 'menos demanda, o menos reserva del nodo. El dia que `prod` quepa, retira'
+          echo '`kamayuk:nodeCapacityGapIssue` de Pulumi.prod.yaml y este trabajo vuelve a'
+          echo 'aplicar solo: `capacidad.test.ts` se pone rojo si se te olvida.'
+
+      # SIN la condicion de la brecha, a proposito: este paso compara lo que el stack
+      # DECLARA del nodo con lo que el nodo TIENE, y es lo unico que hace fiable esa
+      # declaracion. `capacidad.test.ts` comprueba que quien declara la brecha sigue sin
+      # caber, pero lo hace contra las cifras declaradas: si esas se separan del nodo real,
+      # no lo ve nadie. Saltarlo mientras la brecha esta puesta seria dejar de mirar
+      # justamente lo que sostiene la decision de no aplicar.
       - name: Lo declarado cabe en el nodo real
         working-directory: infrastructure/infra
         run: ./vps/comprobar-lo-asignable.sh --ambiente prod
@@ -1394,6 +1442,7 @@ jobs:
       # solo este repositorio, y el paso no podia correr — no salia rojo porque va detras
       # del `if` de credenciales, que hoy no hay: roto en silencio, que es peor.
       - name: 'El stack cabe en su nodo (issue #252)'
+        if: steps.brecha.outputs.declarada != 'si'
         working-directory: infrastructure/infra
         run: yarn --silent capacidad --ambiente prod --estricto
 
@@ -1402,6 +1451,7 @@ jobs:
       # se comprueban las TRES del monolito, que salen del archivo historico y cuyo flujo si
       # filtra por `paths`: un commit suyo que no toque `backend/` no publica nada.
       - name: Las etiquetas que este manifiesto pide existen en el registro
+        if: steps.brecha.outputs.declarada != 'si'
         working-directory: infrastructure/infra
         env:
           # `REGISTRY_PULL_TOKEN`, y no el `GITHUB_TOKEN`, por un motivo medido: un `GITHUB_TOKEN`
@@ -1417,6 +1467,7 @@ jobs:
         run: yarn --silent imagenes --ambiente prod
 
       - name: Generar los secretos que falten (INF-06)
+        if: steps.brecha.outputs.declarada != 'si'
         working-directory: infrastructure/infra
         run: ./secretos/bootstrap-secretos.sh --ambiente prod
 
@@ -1426,6 +1477,7 @@ jobs:
       # `crear-roles.sql` solo corre con el volumen vacio, y el de `prod` es de antes de
       # que la extension se declarara (2026-08-30), asi que aqui no llega sola.
       - name: Las extensiones que crear-roles.sql declara, en un motor que ya existe (ADR-0021)
+        if: steps.brecha.outputs.declarada != 'si'
         run: |
           if kubectl -n kamayuk-prod get deployment kamayuk-prod-postgres >/dev/null 2>&1; then
             infrastructure/despliegue/crear-extensiones.sh --ambiente prod --todos
@@ -1435,6 +1487,7 @@ jobs:
           fi
 
       - name: Configurar los secretos de infraestructura del stack (ADR-0011 §3)
+        if: steps.brecha.outputs.declarada != 'si'
         working-directory: infrastructure/infra
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
@@ -1449,6 +1502,7 @@ jobs:
           pulumi config set --secret --stack prod registryPullToken -- "$REGISTRY_PULL_TOKEN_VALUE"
 
       - uses: pulumi/actions@v6
+        if: steps.brecha.outputs.declarada != 'si'
         with:
           command: up
           # `refresh` reconcilia el estado con el cluster ANTES de aplicar, y no es un adorno:
@@ -1489,6 +1543,7 @@ jobs:
       # mismo issue #435 encontro en `verificar-rotacion.sh`, escrito en #154 y sin
       # ejecutar desde entonces. Una verificacion que nunca se ejecuta no protege nada.
       - name: El ambiente aplicado se comprueba a si mismo (#434)
+        if: steps.brecha.outputs.declarada != 'si'
         run: infrastructure/infra/verificaciones/ambiente/verificar-el-ambiente.sh --ambiente prod
 
       - name: Qué quedó a medias, si algo falló
