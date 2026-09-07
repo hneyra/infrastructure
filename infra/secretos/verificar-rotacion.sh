@@ -59,9 +59,11 @@ esac
 # para los dos, y eso decia lo contrario de la verdad en `rol_carga_parametros`, cuya unica
 # base es `normativa` (C-7 §6): abrir sesion contra una base donde el rol no tiene nada
 # pasaba en verde sin haber comprobado la credencial.
+# Los dos valores salen de `bases.sh`, que `lib-motor-local.sh` ya cargo (#15): escritos
+# aqui eran dos de las copias que nada comparaba.
 case "$ROL" in
-    rol_carga_parametros) BASE_DEL_ROL=normativa ;;
-    *)                    BASE_DEL_ROL=rentas ;;
+    rol_carga_parametros) BASE_DEL_ROL=$BASE_DE_PARAMETROS ;;
+    *)                    BASE_DEL_ROL=$BASE_DEL_PADRON ;;
 esac
 
 echo

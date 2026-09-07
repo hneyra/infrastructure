@@ -79,6 +79,11 @@ if [ -n "$ARCHIVO" ] && [ ! -f "$ARCHIVO" ]; then
 fi
 NAMESPACE=${NAMESPACE:-kamayuk-$AMBIENTE}
 
+# Las bases del cluster, de su unico sitio (#15). Este guion no declaraba ninguna: escribia
+# `/sgtm` en la URL del Job y nada mas, que es como se le paso a `E` (#16).
+# shellcheck source=infra/bases.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/bases.sh"
+
 SUFIJO=$(date +%s)
 RECURSO="kamayuk-${AMBIENTE}-conjunto-parametros-${SUFIJO}"
 
@@ -157,7 +162,9 @@ spec:
             - name: SPRING_PROFILES_ACTIVE
               value: batch
             - name: KAMAYUK_DB_URL
-              value: jdbc:postgresql://kamayuk-${AMBIENTE}-postgres:5432/sgtm
+              # `E` retiro esta base y este Job se quedo apuntando a ella: existe en los
+              # dos ambientes y no tiene ni una tabla del producto (#16).
+              value: jdbc:postgresql://kamayuk-${AMBIENTE}-postgres:5432/${BASE_DE_PARAMETROS}
             # kamayuk_app basta: conjunto_parametros y conjunto_parametro_detalle son tablas que
             # la aplicacion escribe (V7). Publicar un valor normativo si exigiria
             # rol_carga_parametros, y este proceso no publica ninguno.
