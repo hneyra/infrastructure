@@ -87,19 +87,14 @@ done
 [ "$(comoSuperusuario "SELECT rolcanlogin FROM pg_roles WHERE rolname='kamayuk_readonly'")" = "f" ] \
     || { echo "FALLO: kamayuk_readonly puede conectarse, y todavia no lo usa nadie" >&2; exit 1; }
 
-# ── La base donde vive el padron, desde `E` ──────────────────────────────────
+# ── Las bases: el censo lo trae `infra/bases.sh` via `lib-motor-local.sh` (#15) ──
 #
-# Era `sgtm`, la del monolito, escrita ocho veces en este guion. Con el monolito
-# fuera esa base no tiene ni una tabla del producto, y medir contra ella habria
-# dejado estas comprobaciones **pasando en verde sin medir nada**: «kamayuk_app no
-# puede crear tablas» es cierto en una base donde no tiene ningun privilegio.
+# Aqui habia una copia de `BASE_DEL_PADRON=rentas`, una de cinco, y ademas iba DESPUES del
+# `source` de la lib: pisaba la omision que la lib existe justo para ofrecer. El valor
+# coincidia, asi que no rompia nada — que es lo que hace peligroso ese patron.
 #
-# `rentas` y no otra, por lo mismo que el registro del respaldo: es la unica cuyo
-# `crear-roles.sql` concede CONNECT a los cinco roles del cluster, o sea la que
-# menos supuestos hace sobre quien se conecta.
-BASE_DEL_PADRON=rentas
-# Menos `rol_carga_parametros`, cuya UNICA base es `normativa` (C-7 §6). Medirlo
-# contra otra diria lo contrario de la verdad.
+# `rol_carga_parametros` SI se declara aqui y no en el censo: su unica base es `normativa`
+# (C-7 §6), y eso no es una base del motor sino un hecho de ESTE guion.
 BASE_DE_LA_CARGA=normativa
 
 # ── 4. Con las credenciales de la aplicacion, no hay DDL ─────────────────────

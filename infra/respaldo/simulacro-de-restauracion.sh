@@ -79,10 +79,11 @@
 #   uso: respaldo/simulacro-de-restauracion.sh [--ambiente stg|prod] [--contra-cluster]
 set -euo pipefail
 
-# La base donde vive el padron, desde `E`. Era `sgtm`, la del monolito, que hoy no tiene ni
-# una tabla del producto. `rentas` es la unica cuyo `crear-roles.sql` concede CONNECT a los
-# cinco roles del cluster, o sea la que menos supuestos hace sobre quien se conecta.
-BASE_DEL_PADRON=rentas
+# El censo de bases, en un solo sitio (#15): `infra/bases.sh`. Aqui habia una copia de
+# `BASE_DEL_PADRON=rentas`, una de cinco, y nada las comparaba: cambiar la eleccion
+# obligaba a acordarse de cinco archivos y olvidar uno no ponia nada rojo.
+# shellcheck source=../bases.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/bases.sh"
 
 AMBIENTE=stg
 CONTRA_CLUSTER=no

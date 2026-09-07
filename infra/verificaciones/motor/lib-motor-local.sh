@@ -238,7 +238,10 @@ motor_detener() {
 #
 # La traduccion fiel de lo que habia es el PADRON, no mantenimiento. Quien necesite el cluster
 # lo pide explicitamente, que es lo que ya hacen las consultas de `has_database_privilege`.
-BASE_DEL_PADRON=${BASE_DEL_PADRON:-rentas}
+# El censo vive en `infra/bases.sh`, un solo sitio (#15). Antes esta linea era una de
+# CINCO copias del mismo valor, y nada las comparaba.
+# shellcheck source=../../bases.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/bases.sh"
 
 motor_como_superusuario() {
     PGPASSWORD="$CLAVE_SUPER" psql --username=postgres --dbname="${2:-$BASE_DEL_PADRON}" \
