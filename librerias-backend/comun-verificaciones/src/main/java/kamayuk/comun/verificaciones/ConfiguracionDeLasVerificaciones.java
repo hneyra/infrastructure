@@ -26,6 +26,21 @@ import java.util.Set;
  *
  * <p>El proveedor se declara en {@code src/test/resources/META-INF/services/} con el nombre
  * completo de esta interfaz.
+ *
+ * <h2>Ninguna de estas listas puede nombrar algo que no esta (#27)</h2>
+ *
+ * <p>Todas se consultan por NOMBRE, con {@code contains} o con {@code getOrDefault(…,
+ * SISTEMA_REPLICADO)}. Un nombre que no casa con nada <b>no da error</b>: no exime, no permite y no
+ * clasifica a nadie, y el conjunto sigue en verde. Medido: borrando {@code
+ * kamayuk.catastro.fiscalizacion.dominio.Tolerancia} y dejando su nombre en {@link
+ * #envoltoriosDeDecimal()}, {@code verificarArquitectura} salio {@code BUILD SUCCESSFUL}. Es inocuo
+ * hoy y por eso peor mañana: el dia que alguien cree otra clase con ese nombre queda eximida sin
+ * que nadie lo haya decidido.
+ *
+ * <p>Lo contrasta {@link SujetosDeLaConfiguracion} desde {@code ArquitecturaTestBase}, y <b>el
+ * criterio no es el mismo para las siete</b>: es que cuesta que una entrada no case. Las cinco que
+ * EXIMEN o PERMITEN tienen que cuadrar y son un rojo; las dos que DECLARAN o REPARTEN van a un
+ * censo con su motivo. Cada metodo dice cual le toca.
  */
 public interface ConfiguracionDeLasVerificaciones {
 
@@ -72,6 +87,9 @@ public interface ConfiguracionDeLasVerificaciones {
      * en el diff.
      *
      * <p>Por omision, los seis de {@code comun-dominio}.
+     *
+     * <p><b>#27: censo cerrado.</b> Exime, asi que una entrada que no nombre ningun tipo del arbol
+     * —ni de produccion ni de las muestras— es un rojo.
      */
     default Set<String> envoltoriosDeDecimal() {
         return Set.of(
@@ -146,6 +164,11 @@ public interface ConfiguracionDeLasVerificaciones {
      * <p>Por omision esta vacio, que es lo correcto para quien NO reparte por modulo: {@link
      * #sistemaDelArchivo(String)} sin sobrescribir devuelve el sistema entero y no hay ninguna
      * clave que se pueda quedar vieja.
+     *
+     * <p><b>#27: censo, no rojo.</b> Esta lista no exime: clasifica. La direccion que cuesta es la
+     * de arriba y ya esta cerrada; una clave que no casa con ningun directorio del disco no se
+     * consulta nunca, y su poda sigue siendo el otro trabajo que este javadoc declara. Se imprime
+     * en el censo de {@code ArquitecturaTestBase} para que se vea.
      */
     default Set<String> modulosDelReparto() {
         return Set.of();
@@ -171,6 +194,9 @@ public interface ConfiguracionDeLasVerificaciones {
      * de fiscalizacion. Que este vacia no deja la regla muda —sus dos muestras viajan en esta
      * libreria y la siguen poniendo roja—, y que el contexto no exista lo comprueba {@code
      * ArquitecturaTestBase} contra {@link #ambitosAusentes()}.
+     *
+     * <p><b>#27: censo cerrado.</b> Exime de la frontera de {@code fiscalizacion}, asi que una
+     * entrada que no nombre ningun tipo del arbol es un rojo.
      */
     default Set<String> tiposAjenosQueFiscalizacionSoloLee() {
         return Set.of();
@@ -182,6 +208,9 @@ public interface ConfiguracionDeLasVerificaciones {
      *
      * <p>Se nombra el metodo, no la clase: cualquier otra escritura que se agregue a la misma clase
      * vuelve a estar sujeta a la regla.
+     *
+     * <p><b>#27: censo cerrado.</b> Exime de la regla 10, y se contrasta contra la firma entera tal
+     * como la escribe {@code JavaMethod.getFullName()}, que es con la que la regla compara.
      */
     default Set<String> escriturasSinUsuarioQueObserve() {
         return Set.of();
@@ -194,6 +223,9 @@ public interface ConfiguracionDeLasVerificaciones {
      * <p>Por omision, los tres de ARQ-03 §2: el filtro del borde, el recorrido por municipalidades
      * y la propia clase del contexto. Que cueste una linea es deliberado: el diff dice quien mas
      * puede mover lo que sostiene el aislamiento entero.
+     *
+     * <p><b>#27: censo cerrado.</b> Es lo que sostiene el aislamiento entero, asi que una entrada
+     * muerta aqui autoriza mañana a la clase que nazca con ese nombre. Rojo.
      */
     default Set<String> quienesPuedenMoverElContexto() {
         return Set.of(
@@ -211,6 +243,11 @@ public interface ConfiguracionDeLasVerificaciones {
      * lo este de verdad —si aparece una clase suya, la prueba se pone roja pidiendo que se retire
      * de la lista— y que uno no declarado tenga clases. Es lo que impide que {@code
      * allowEmptyShould(true)} se convierta en una regla que no puede fallar.
+     *
+     * <p><b>#27: censo, no rojo, y con el criterio INVERTIDO.</b> La entrada afirma una AUSENCIA,
+     * asi que «no casa nada» es justo lo que declara. Lo que si es una entrada muerta es un ambito
+     * que ninguna regla acota: no lo consulta nadie. Y es autocorrectiva —el dia que una regla lo
+     * acote, el censo de arriba la mira y se pone roja sola si miente—.
      */
     default Set<String> ambitosAusentes() {
         return Set.of();
@@ -244,6 +281,10 @@ public interface ConfiguracionDeLasVerificaciones {
      * abierta, es un censo de lo que hay que cerrar.
      *
      * <p>Vacia por omision, que es lo correcto: quien no tenga ninguna no declara nada.
+     *
+     * <p><b>#27: censo cerrado.</b> Se nombra por el NOMBRE SIMPLE de la clase, que es lo que el
+     * escaner compara contra el nombre del archivo; una entrada que no nombre ninguna clase de
+     * produccion no exime a nadie y ademas hace decir de mas a la lista de trabajo pendiente.
      */
     default Set<String> busquedasDeTextoLibreConMotivo() {
         return Set.of();

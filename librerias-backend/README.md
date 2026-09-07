@@ -16,6 +16,7 @@ en la etapa P3 del corte, y lo que hay aquí es lo **genérico**: lo que vale ig
 | **El revisor de esquema**: toda tabla de tenant con geometría lleva sus cuatro columnas de marco y su índice (ADR-0034). Lee el texto de las migraciones, no el catálogo | `RevisorDeEsquema` |
 | El escáner de aserciones que no pueden fallar (#724) | `RevisorDeAserciones` |
 | **La regla nueva del corte**: ningún SQL cruza la frontera de sistema | `FronteraDeSistema` |
+| **El contraste de las listas de la configuración**: ninguna entrada nombra algo que no está en el árbol (#27) | `SujetosDeLaConfiguracion` |
 | Las clases base de prueba, una por barrera | `…TestBase` |
 | **Las 46 clases de muestra**, que son lo que hace que las reglas puedan fallar | `muestras/` |
 
@@ -48,6 +49,17 @@ inmutables** —que no son las mismas en los cuatro— y el reparto entero de ta
 
 **Si falta el proveedor, las barreras no corren en silencio: fallan diciendo qué falta.** Es la
 razón de usar `ServiceLoader` y no un parámetro de constructor.
+
+**Y ninguna de esas listas puede nombrar algo que no está (#27).** Todas se consultan por nombre,
+con `contains` o con `getOrDefault(…, SISTEMA_REPLICADO)`, así que un nombre que no casa con nada
+**no da error**: deja de eximir, de permitir o de clasificar a nadie, en verde. Lo contrasta
+`SujetosDeLaConfiguracion` desde `ArquitecturaTestBase`, y el criterio **no es el mismo para las
+siete**: es qué cuesta que una entrada no case. Las **cinco que eximen o permiten** —
+`envoltoriosDeDecimal`, `tiposAjenosQueFiscalizacionSoloLee`, `escriturasSinUsuarioQueObserve`,
+`quienesPuedenMoverElContexto` y `busquedasDeTextoLibreConMotivo`— tienen que cuadrar y son un
+**rojo**; las **dos que declaran o reparten** —`modulosDelReparto` y `ambitosAusentes`— van a un
+**censo** que se imprime con su motivo. No hay lista de excepciones a propósito: una excepción para
+«entradas muertas» sería una puerta abierta a justo el defecto.
 
 ### Y las clases base hay que derivarlas
 
