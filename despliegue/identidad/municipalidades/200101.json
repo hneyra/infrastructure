@@ -2,6 +2,13 @@
   "ubigeo": "200101",
   "municipalidadId": 1,
   "grupo": "200101 - Municipalidad Provincial de Sullana",
+  "servicios": [
+    {
+      "sistema": "rentas",
+      "llamaA": "catastro",
+      "proposito": "traer el buzon de hechos del territorio; sin esto el ingestor nace suspendido (C-8, #21)"
+    }
+  ],
   "usuarios": [
     {
       "cuenta": "jperez",
