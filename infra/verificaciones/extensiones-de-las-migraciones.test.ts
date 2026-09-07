@@ -160,7 +160,15 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
       // tiempo de consulta —lo que esta guarda NO lee, porque solo mira migraciones; hoy la
       // mantiene verde el `gin_trgm_ops` que `V1` sigue nombrando, o sea por un motivo que dejo
       // de ser cierto—.
-      rentas: 13,
+      // rentas 14 desde `V14` (`rentas`#52), y esto es lo que el parrafo de arriba manda hacer
+      // antes de tocar el numero: se leyo la migracion entera y **no usa ninguna extension**.
+      // Son cuatro `ADD COLUMN` sobre `licencia_funcionamiento`, tres sobre
+      // `determinacion_predio_detalle`, cuatro `CHECK` y siete `COMMENT ON`: ni un indice, ni
+      // una clase de operadores, ni una restriccion `EXCLUDE`, ni una funcion. Las demas
+      // pruebas de este mismo archivo —las que comparan uso contra declaracion— siguen en verde
+      // con la catorce dentro, y ese verde es la medida: si `V14` usara algo sin declarar,
+      // saldrian rojas ellas y no esta.
+      rentas: 14,
       catastro: 13,
       normativa: 1,
       caja: 2,
