@@ -165,6 +165,34 @@ cifra más. Un sello prematuro no se corrige: obliga a rehacer el ejercicio ente
 en P5B, así que sus rutas relativas ya no resuelven desde aquí: moverlos es una decisión de ese
 repositorio y está declarada como hueco en C-6.
 
+### Contra qué corren hoy, y qué falta para que puedan correr (#10, #11)
+
+Los tres componen un `Job` de un solo uso, y hasta el issue #10 le pedían la imagen a
+`deployment/kamayuk-<ambiente>-aplicacion` en `kamayuk-<ambiente>`. **Eso es la topología anterior
+al corte**: ese Deployment era el del monolito, que C-19 retiró de `stg` y `E` de `prod`, y medido
+sobre `yarn manifiestos` en los dos ambientes **no lo emite nadie**. Lo que hay es un
+`kamayuk-<sistema>-web` por sistema, en `kamayuk-<sistema>-<ambiente>` (ADR-0031).
+
+Desde #10 las tres cosas salen de `lib-destino-del-job.sh`, y son **dos espacios de nombres**:
+
+| Qué | Dónde | Por qué |
+|---|---|---|
+| El Deployment del que sale la imagen, y el `Job` | `kamayuk-<sistema>-<ambiente>` | Es donde el ambiente despliega el backend, y el único sitio con egreso al 5432: `denegar-todo` niega el del espacio de nombres de la plataforma y ninguna de sus siete políticas de salida nombra a un Job de carga |
+| El `kubectl exec` que comprueba la credencial | `kamayuk-<ambiente>` | El motor vive ahí y no se mueve |
+
+La imagen se busca **por etiquetas** (`sistema=<sistema>,perfil=web`) y no por nombre, y el guion se
+para si no casa **exactamente una**: con cero la variable quedaba vacía y con dos elegiría en
+silencio. Y la etiqueta del pod pasa a ser `componente: <sistema>`, que es el `podSelector` de
+`kamayuk-<sistema>-egreso`; la que estaba escrita, `app: lote`, **no la nombra ninguna política** —se
+buscó en los manifiestos de los dos ambientes y no aparece ni una vez—.
+
+**Lo que todavía falta, y no se puede hacer desde aquí**: un `secretKeyRef` se resuelve en el espacio
+de nombres del pod, así que el `Job` necesita el `Secret` de `rol_carga_parametros` **en
+`kamayuk-normativa-<ambiente>`**, y el inventario lo tiene sólo en el de la plataforma. Bajarlo es
+una entrada más en el `claves()` del descriptor de `normativa` —que `inventarioDelAmbiente` convierte
+en **espejo** de ese secreto, porque un rol del clúster tiene UNA contraseña— y ese archivo vive en su
+clon. Los dos guiones de publicación se paran nombrándolo en vez de lanzar un `Job` que no arranca.
+
 **Antes del paso 2, en un ambiente que ya existía**, hay además un paso operativo que no es de carga:
 `secretos/asignar-claves.sh --ambiente stg`. La credencial de `rol_carga_parametros` la asigna
 `20-asignar-claves.sh` **al inicializar el motor**, así que en un clúster creado antes de que ese rol

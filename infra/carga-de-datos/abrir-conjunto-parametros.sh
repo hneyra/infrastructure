@@ -35,6 +35,12 @@
 # Requiere: la municipalidad ya implantada, y kubectl con el tunel al API del ambiente ya abierto.
 set -euo pipefail
 
+# De donde sale la imagen y en que espacio de nombres corre el Job: una sola fuente para los tres
+# guiones de este directorio (#10, #11). Hasta entonces las dos cosas estaban escritas a mano aqui
+# y apuntaban al Deployment del monolito, que ya no despliega ningun ambiente.
+# shellcheck source=lib-destino-del-job.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib-destino-del-job.sh"
+
 AMBIENTE=""
 MUNICIPALIDAD_ID=""
 EJERCICIO=""
@@ -77,7 +83,19 @@ if [ -n "$ARCHIVO" ] && [ ! -f "$ARCHIVO" ]; then
     echo "No existe el archivo: $ARCHIVO" >&2
     exit 2
 fi
-NAMESPACE=${NAMESPACE:-kamayuk-$AMBIENTE}
+# DOS espacios de nombres y no uno (#10, #11).
+#
+# `--namespace` sigue queriendo decir «donde corre el Job», y su omision deja de ser
+# `kamayuk-<ambiente>` —el de la plataforma, donde vivia el monolito— para ser el del sistema al
+# que pertenece este proceso. Ahi esta el Deployment del que sale la imagen, ahi esta el egreso
+# que llega al 5432, y ahi tiene que estar el `Secret` que el Job monta: un `secretKeyRef` se
+# resuelve en el espacio de nombres del pod y en ningun otro.
+#
+# El de la PLATAFORMA sigue haciendo falta para una sola cosa: el `kubectl exec` contra el motor,
+# que vive alli y no se mueve.
+SISTEMA=$SISTEMA_DE_LOS_PARAMETROS
+NAMESPACE=${NAMESPACE:-$(namespace_del_sistema "$SISTEMA" "$AMBIENTE")}
+NAMESPACE_PLATAFORMA=$(namespace_de_la_plataforma "$AMBIENTE")
 
 # Las bases del cluster, de su unico sitio (#15). Este guion no declaraba ninguna: escribia
 # `/sgtm` en la URL del Job y nada mas, que es como se le paso a `E` (#16).
@@ -87,12 +105,13 @@ NAMESPACE=${NAMESPACE:-kamayuk-$AMBIENTE}
 SUFIJO=$(date +%s)
 RECURSO="kamayuk-${AMBIENTE}-conjunto-parametros-${SUFIJO}"
 
-IMAGEN=$(kubectl -n "$NAMESPACE" get deployment "kamayuk-${AMBIENTE}-aplicacion" \
-    -o jsonpath='{.spec.template.spec.containers[0].image}')
-[ -n "$IMAGEN" ] || {
-    echo "No se pudo leer la imagen de kamayuk-${AMBIENTE}-aplicacion en $NAMESPACE" >&2
-    exit 1
-}
+# El ESPEJO de kamayuk_app que vive donde el Job corre. Este proceso NO publica ningun
+# valor normativo —compone y sella, sobre tablas que la aplicacion escribe (V7)—, asi que
+# no pide rol_carga_parametros; lo que cambia con #10 es el espacio de nombres.
+SECRETO=$(secreto_del_sistema "$SISTEMA" "$AMBIENTE" app)
+exigir_secreto "$NAMESPACE" "$SECRETO" "kamayuk-${AMBIENTE}-postgres-app" "$SISTEMA" || exit 1
+
+IMAGEN=$(imagen_del_backend "$SISTEMA" "$AMBIENTE")
 echo "Imagen desplegada: $IMAGEN"
 
 # El ConfigMap solo existe si hay archivo: abrir una version no necesita ninguno.
@@ -146,12 +165,13 @@ spec:
       labels:
         proyecto: sgtm
         ambiente: $AMBIENTE
-        componente: conjunto-parametros
-        # Ver el mismo comentario en cargar-arancel-vial.sh: "lote" es la etiqueta que
-        # NetworkPolicy "permitir-ingreso-postgres" deja pasar al puerto 5432 para un
-        # Job de un solo uso; con otra etiqueta el pod arranca y la conexion cae con
-        # "Connection refused".
-        app: lote
+        # La etiqueta que DECIDE es «componente», y es la del sistema: es el
+        # `podSelector` de la politica `kamayuk-<sistema>-egreso`, que es la que deja
+        # salir al 5432 desde este espacio de nombres. La que estaba escrita aqui,
+        # «app: lote», no la nombra ninguna politica —se busco en los manifiestos de los
+        # dos ambientes y no aparece ni una vez—: era cierta antes de ADR-0031, cuando
+        # el Job corria en el espacio de nombres de la plataforma (#10).
+$(etiquetas_del_job "$SISTEMA" conjunto-parametros)
     spec:
       restartPolicy: Never
       priorityClassName: kamayuk-${AMBIENTE}-prioridad-lote
@@ -173,8 +193,8 @@ spec:
             - name: KAMAYUK_DB_CLAVE
               valueFrom:
                 secretKeyRef:
-                  name: kamayuk-${AMBIENTE}-postgres-app
-                  key: clave-app
+                  name: $SECRETO
+                  key: clave
             - name: KAMAYUK_CONJUNTOPARAMETROS_MUNICIPALIDADID
               value: "$MUNICIPALIDAD_ID"
             - name: KAMAYUK_CONJUNTOPARAMETROS_EJERCICIO
