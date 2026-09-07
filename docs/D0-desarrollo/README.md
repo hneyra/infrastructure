@@ -13,7 +13,58 @@ plataforma local.
 | [DEV-02 — Pruebas](pruebas.md) | Qué verifica qué, y qué se verifica **ejecutando** contra algo de verdad |
 | [DEV-03 — Cuando algo no arranca](solucion-de-problemas.md) | Los errores que ya costaron una tarde, con su causa |
 
-## Lo mínimo para empezar
+## 0 · Los clones hermanos, que no son opcionales
+
+Los cinco repositorios son **hermanos**, y varias cosas cuentan con ello: el `includeBuild` de los
+cuatro backends busca `../../infrastructure/librerias-backend`, y los CI hacen checkout de dos
+repositorios con `path:` para que queden así.
+
+```
+IdeaProjects/
+├── infrastructure/    este repositorio
+├── rentas/  catastro/  normativa/  caja/
+└── sgtm/              el archivo historico. NO se modifica
+```
+
+**Los cuatro, y desde el directorio padre de este repositorio:**
+
+```bash
+cd ..                 # el directorio que contiene a infrastructure/
+for r in rentas catastro normativa caja; do git clone https://github.com/hneyra/$r; done
+```
+
+`infra/descriptor/sistemas.ts` los importa por ruta relativa
+(`../../../<sistema>/infrastructure/src/descriptor`), así que **falta uno y la verificación no
+llega a empezar**. No es una prueba roja: es el archivo de pruebas entero que no carga. Medido el
+2026-09-07 sobre un espacio de trabajo sin `normativa`:
+
+```
+ FAIL  verificaciones/compose-de-los-sistemas.test.ts   [ … ]
+ FAIL  verificaciones/despliegue-de-los-sistemas.test.ts [ … ]
+Error: Cannot find module '../../../normativa/infrastructure/src/descriptor'
+       imported from '…/infra/descriptor/sistemas.ts'
+ ❯ descriptor/sistemas.ts:21:1
+
+ Test Files  2 failed (2)
+      Tests  no tests
+```
+
+**«`Tests no tests`» es lo que hay que leer**: no dice qué falta ni cómo traerlo, y el remedio no
+está en el mensaje. En CI no pasa porque
+[`.github/actions/clonar-los-hermanos`](../../.github/actions/clonar-los-hermanos/action.yml) los
+trae los cuatro —y con `historial-completo: si` en el trabajo `verificar`, porque
+`deriva-de-migraciones` cuenta migraciones en el árbol de git de dos revisiones y con un checkout
+superficial no está ninguna—. Lo que faltaba era decirlo aquí.
+
+> **Y no intentes reproducir ese fallo escondiendo un clon dentro de un espacio anidado**: no sale.
+> Medido el 2026-09-07 — con los cuatro clones en `ws/sandbox/` y este repositorio en
+> `ws/sandbox/infrastructure`, mover `ws/sandbox/normativa` fuera **no rompe el import**: se
+> resuelve contra `ws/normativa`, que sigue estando. El archivo de pruebas carga, y lo que se ve
+> es otro rojo más abajo —el de `composeDeSistema`, que sí nombra el clon y su `git clone`—, así
+> que la conclusión que se saca es la contraria de la verdadera. Para medirlo hace falta un
+> directorio padre donde ese nombre no exista a ninguna altura.
+
+## 1 · Lo mínimo para empezar
 
 ```bash
 # 1 · Prerrequisitos. Docker sólo hace falta para la plataforma
@@ -27,23 +78,14 @@ yarn verificar
 cd librerias-backend && ./gradlew build
 ```
 
-> **`yarn verificar` no está en verde hoy, y conviene saberlo antes de correrlo**: 337 verdes y
-> **7 rojas** en dos archivos, por dos defectos heredados de la mudanza desde `sgtm`. Ninguno es
-> tuyo y ninguno se arregla sin tomar una decisión. Están medidos, con su causa y su
-> reproducción, en [DEV-02 §2](pruebas.md).
-
-## Los clones hermanos
-
-Los cinco repositorios son **hermanos**, y varias cosas cuentan con ello: el `includeBuild` de los
-cuatro backends busca `../../infrastructure/librerias-backend`, y los CI hacen checkout de dos
-repositorios con `path:` para que queden así.
-
-```
-IdeaProjects/
-├── infrastructure/    este repositorio
-├── rentas/  catastro/  normativa/  caja/
-└── sgtm/              el archivo historico. NO se modifica
-```
+> **El paso 2 no corre sin el paso 0**, que es el de arriba: `yarn verificar` compone los
+> descriptores de los cuatro sistemas y los lee de sus clones hermanos. Sin ellos no se pone rojo
+> diciendo qué falta: **se cae antes de mirar nada**.
+>
+> Con los cuatro al lado da hoy **714 de 714, en verde** — medido el 2026-09-07 con los cuatro
+> clones recién traídos. El aviso que había aquí decía «no está en verde: 337 verdes y
+> 7 rojas»; esos dos defectos se cerraron en P6 y el aviso se quedó. [DEV-02 §2](pruebas.md)
+> conserva el diagnóstico, que es lo que costó entender, y ya dice que el estado cambió.
 
 ## Qué comando para qué tarea
 
