@@ -181,14 +181,62 @@ function selectorDeLaBiblioteca(carpeta: string, archivo: string): string {
         "asi que no se puede saber que le pide al cluster.",
     );
   }
-  const m = /^\s*local selector="([^"]+)"\s*$/m.exec(readFileSync(biblioteca, "utf8"));
+  const texto = readFileSync(biblioteca, "utf8");
+  const m = /^\s*local selector="([^"]+)"\s*$/m.exec(texto);
   if (m === null) {
     throw new Error(
       `«${biblioteca}» no declara ningun \`local selector="..."\`, asi que esta guarda no ` +
         "sabe que Deployment piden los guiones que delegan en ella. NO se salta.",
     );
   }
+  laBibliotecaPideLoQueDeclara(biblioteca, texto);
   return m[1]!;
+}
+
+/**
+ * Y lo que la biblioteca le PIDE al cluster es lo que su `selector` declara.
+ *
+ * Leer el `local selector="..."` y parar ahi no basta, y esto no es una precaucion: se midio.
+ * Con la declaracion intacta y las dos llamadas devueltas a
+ * `get deployment "kamayuk-${ambiente}-aplicacion"` —el Deployment del monolito, que es la
+ * mutacion que #10 AC-7 pide como minimo— la suite entera salia **770 de 770 en VERDE**: la
+ * guarda comparaba contra el manifiesto un selector que ya no usaba nadie, y los tres guiones
+ * le pedian al cluster un Deployment que ningun ambiente emite. Una variable declarada y no
+ * usada es la misma forma de defecto que una exencion que nombra un tipo que ya no existe.
+ *
+ * Se mira el texto **sin comentarios** a proposito: la cabecera de la biblioteca cita la linea
+ * vieja para explicar por que se fue, y una guarda que se dispara con la prosa que la justifica
+ * es una guarda que alguien acaba apagando borrando el comentario.
+ */
+function laBibliotecaPideLoQueDeclara(biblioteca: string, texto: string): void {
+  const lineas = texto.split("\n").map((l) => l.replace(/(^|\s)#.*$/, ""));
+  const ajenas: string[] = [];
+  let usos = 0;
+  for (const [i, linea] of lineas.entries()) {
+    if (!/get deployment/.test(linea)) continue;
+    if (/get deployment\s+-l\s+"\$selector"/.test(linea)) {
+      usos++;
+      continue;
+    }
+    // `get deployment -o name` es el listado que el mensaje de error imprime: no pide ninguno.
+    if (/get deployment\s+-o\s+name/.test(linea)) continue;
+    ajenas.push(`${biblioteca}:${i + 1} — ${linea.trim()}`);
+  }
+  if (ajenas.length > 0) {
+    throw new Error(
+      `«${biblioteca}» declara un \`selector\` y le pide al cluster otra cosa:\n` +
+        `${ajenas.join("\n")}\n\n` +
+        "El selector que esta guarda compara contra el manifiesto sale de la declaracion, asi " +
+        "que una llamada que no lo use deja la comparacion midiendo una variable muerta y los " +
+        "guiones pidiendo un Deployment que nadie emite, en verde (#10 AC-7).",
+    );
+  }
+  if (usos === 0) {
+    throw new Error(
+      `«${biblioteca}» declara un \`selector\` y no lo usa en ningun \`get deployment\`: la ` +
+        "comparacion de esta guarda se estaria haciendo sobre una variable muerta.",
+    );
+  }
 }
 
 function peticionDe(

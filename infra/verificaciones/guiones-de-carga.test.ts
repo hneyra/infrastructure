@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -93,6 +93,72 @@ describe("#10 · de que Deployment saca su imagen un guion de carga", () => {
     };
     const [desajuste] = desajustesDeLosGuiones(AMBIENTES[0]!, [inventado]);
     expect(desajuste?.problema).toMatch(/no se puede resolver/);
+  });
+});
+
+describe("#10 AC-7 · la biblioteca le pide al cluster lo que su `selector` declara", () => {
+  /**
+   * **Medido, y paso en VERDE antes de existir esta comprobacion.**
+   *
+   * Con `local selector="sistema=$sistema,perfil=web"` intacto y las DOS llamadas devueltas a
+   * `get deployment "kamayuk-${ambiente}-aplicacion"` —el Deployment del monolito, que es la
+   * mutacion que #10 AC-7 pide como minimo— la suite entera daba **770 de 770**: la guarda leia
+   * la declaracion, la comparaba contra el manifiesto y la daba por buena, mientras los tres
+   * guiones le pedian al cluster un Deployment que ningun ambiente emite. Seguir la indireccion
+   * hasta el archivo no basta si se para en la declaracion: hay que llegar a la llamada.
+   */
+  const conBiblioteca = (biblioteca: string): string => {
+    const raiz = mkdtempSync(join(tmpdir(), "biblioteca-"));
+    const carpeta = join(raiz, "infra", "carga-de-datos");
+    mkdirSync(carpeta, { recursive: true });
+    writeFileSync(
+      join(carpeta, "un-guion.sh"),
+      ["NAMESPACE=${NAMESPACE:-kamayuk-normativa-$AMBIENTE}", "imagen_del_backend", "kind: Job"].join(
+        "\n",
+      ),
+    );
+    writeFileSync(join(carpeta, "lib-destino-del-job.sh"), biblioteca);
+    return raiz;
+  };
+
+  const SANA = [
+    'local selector="sistema=$sistema,perfil=web"',
+    'nombres=$(kubectl -n "$namespace" get deployment -l "$selector" -o name)',
+  ].join("\n");
+
+  it("una llamada que no usa el selector declarado sale roja, con archivo y linea", () => {
+    const raiz = conBiblioteca(
+      [
+        'local selector="sistema=$sistema,perfil=web"',
+        'nombres=$(kubectl -n "$namespace" get deployment "kamayuk-${ambiente}-aplicacion" -o name)',
+      ].join("\n"),
+    );
+    expect(() => guionesDeCarga(raiz, "normativa", "inventado")).toThrow(
+      /le pide al cluster otra cosa[\s\S]*lib-destino-del-job\.sh:2/,
+    );
+  });
+
+  it("y un selector declarado que no usa ninguna llamada, tambien", () => {
+    const raiz = conBiblioteca(
+      ['local selector="sistema=$sistema,perfil=web"', 'echo "no le pide nada a nadie"'].join("\n"),
+    );
+    expect(() => guionesDeCarga(raiz, "normativa", "inventado")).toThrow(/variable muerta/);
+  });
+
+  it("el contraste: una biblioteca que si lo usa pasa", () => {
+    expect(guionesDeCarga(conBiblioteca(SANA), "normativa", "inventado")).toHaveLength(1);
+  });
+
+  it("y el comentario que CITA la linea vieja no la dispara", () => {
+    // La cabecera de la biblioteca de verdad cita `get deployment "kamayuk-${AMBIENTE}-aplicacion"`
+    // para explicar por que se fue. Una guarda que se dispara con la prosa que la justifica es la
+    // que alguien acaba apagando borrando el comentario (#16 con `proxy_pass`, #10 con los rotulos).
+    const raiz = conBiblioteca(
+      ['#     IMAGEN=$(kubectl get deployment "kamayuk-${AMBIENTE}-aplicacion" ...)', SANA].join(
+        "\n",
+      ),
+    );
+    expect(guionesDeCarga(raiz, "normativa", "inventado")).toHaveLength(1);
   });
 });
 
