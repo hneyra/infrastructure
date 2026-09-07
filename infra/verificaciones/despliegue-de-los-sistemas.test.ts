@@ -435,14 +435,22 @@ describe("C-14 §3 · los CronJob del emisor y del ingestor", () => {
     expect(declara(c, "KAMAYUK_CATASTRO_PUBLICACION_EJERCICIO")).toBe(false);
   });
 
-  it("`rentas` declara su ingestor entero, y nace SUSPENDIDO", () => {
+  it("`rentas` declara su ingestor entero, y CORRE (#21)", () => {
     const cron = cronDe("rentas", "kamayuk-rentas-ingestor");
     const c = cron.spec.jobTemplate.spec.template.spec.containers[0] as Contenedor;
 
-    // No hay identidad de servicio (ADR-0028 §2, C-8 hueco 3): sin credencial, `catastro`
-    // contesta 401 y el CronJob fallaria cada noche. Lo que se declara es la ventana, los
-    // limites y la configuracion; quitar el `suspend` es una linea el dia que exista.
-    expect(cron.spec.suspend).toBe(true);
+    // Hasta #21 esta linea exigia `toBe(true)`, y era el tercer caso de esta serie —tras C-17 §1
+    // y C-18 §5— en que una guarda **demandaba el defecto**: el `suspend` lo puso C-8 porque no
+    // habia identidad de servicio, y la comprobacion que lo describia lo convirtio en requisito.
+    // Con la cuenta de servicio por municipalidad (ADR-0028 §2), lo que sujeta al ingestor deja
+    // de ser un interruptor y pasa a ser una guarda que se pone roja: si la credencial de
+    // `KAMAYUK_CATASTRO_CREDENCIAL` deja de tener su cuenta declarada, `identidad-de-servicio`
+    // lo dice — y un `suspend` no dice nada, se lee igual que «esto todavia no toca».
+    expect(
+      cron.spec.suspend,
+      "el ingestor volvio a nacer suspendido: `valuacion_predio` se queda vacia y " +
+        "`CandadoDeEmision` no abre nunca, sin una sola linea que lo explique (#21 AC-4)",
+    ).not.toBe(true);
 
     // `@ConditionalOnProperty("kamayuk.rentas.ingestor.usuario")`: sin ella, el cableado del
     // ingestor no existe y el proceso `batch` arranca sin ingestar nada.
