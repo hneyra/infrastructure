@@ -39,6 +39,7 @@ etiqueta que se cuela en el estado— se detecta en la máquina de quien lo escr
 | `config.ts` | **Toda** la configuración: se lee, se le ponen valores por omisión y se valida |
 | `config.test.ts` | Un caso que viola cada invariante |
 | `index.ts` | La composición. Una sola, para los dos ambientes |
+| `bases.sh` | **El único sitio del lado shell** donde se nombran las bases del clúster (#15). No ejecuta nada: se lee con `source`. Su pareja de TypeScript son las cuatro constantes de `componentes/convenciones.ts`, y `verificaciones/bases-de-los-guiones.test.ts` las pone de acuerdo **ejecutando** este archivo |
 | `componentes/` | Los **seis** componentes de la plataforma, como **funciones puras** que devuelven manifiestos. Eran ocho: `Aplicacion.ts` y `Migracion.ts` se fueron con el monolito (`E`) |
 | `auditoria.ts` | Las convenciones de `INF-01` §4 sobre esos manifiestos. Corre en `yarn verificar` **y** en `pulumi up` |
 | `herramientas/` | `yarn manifiestos` y `yarn secretos`: lo que se desplegaría y el inventario de claves, en JSON, sin Pulumi |

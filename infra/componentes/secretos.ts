@@ -1,6 +1,9 @@
 import {
   secretos as nombresDeSecretos,
+  BASE_DEL_PADRON,
+  BASE_DE_IDENTIDAD,
   BASE_DE_MANTENIMIENTO,
+  BASE_DE_PARAMETROS,
   CLAVES,
   ROL_DE_IDENTIDAD,
   servicioDeBaseDeDatos,
@@ -162,7 +165,7 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       // concede CONNECT junto a los otros cuatro roles. Hasta `E` esto no se declaraba y
       // `asignar-claves.sh` se replegaba a la base del monolito, que existe y no tiene ni
       // una tabla del producto: la comprobacion pasaba en verde sin medir nada.
-      baseDeDatos: "rentas",
+      baseDeDatos: BASE_DEL_PADRON,
     },
     {
       rol: "kamayuk-app",
@@ -174,7 +177,7 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       periodicidad: "semestral",
       rolDePostgres: "kamayuk_app",
       // Ver la nota de `kamayuk-owner`, arriba: misma eleccion y mismo motivo.
-      baseDeDatos: "rentas",
+      baseDeDatos: BASE_DEL_PADRON,
       // Sin `requiereReinicioDe` desde `E`, y no por descuido: este campo nombra UN
       // `Deployment`, y desde ADR-0031 los consumidores son CUATRO, uno por namespace.
       // Poner uno de los cuatro diria que rotar esta clave se cierra reprogramando ese, y
@@ -201,7 +204,7 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       periodicidad: "semestral",
       rolDePostgres: ROL_DE_IDENTIDAD,
       // Su propia base, y nunca la del padron (30-base-de-keycloak.sh lo revoca).
-      baseDeDatos: "keycloak",
+      baseDeDatos: BASE_DE_IDENTIDAD,
       requiereReinicioDe: servicioDeIdentidad(environment),
     },
     {
@@ -212,8 +215,8 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       consumidor: "El CronJob de respaldo base (issue #155): solo pg_backup_start/stop",
       periodicidad: "semestral",
       rolDePostgres: "kamayuk_respaldo",
-      // `postgres`, no `sgtm`: no tiene CONNECT sobre el padron a proposito (INF-08, #155).
-      baseDeDatos: "postgres",
+      // Mantenimiento, no el padron: no tiene CONNECT sobre el a proposito (INF-08, #155).
+      baseDeDatos: BASE_DE_MANTENIMIENTO,
       // Sin Deployment que reiniciar: el CronJob crea un pod nuevo en cada corrida, y
       // ese pod lee el Secret que este en ese momento — igual que kamayuk-owner con sus
       // dos Jobs.
@@ -249,8 +252,8 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       consumidor: "postgres-exporter, el sidecar del motor (issue #156): solo pg_monitor",
       periodicidad: "semestral",
       rolDePostgres: "kamayuk_monitor",
-      // `pg_monitor` son vistas del cluster; el exportador se conecta a `postgres`.
-      baseDeDatos: "postgres",
+      // `pg_monitor` son vistas del cluster; el exportador se conecta a la de mantenimiento.
+      baseDeDatos: BASE_DE_MANTENIMIENTO,
       // El sidecar vive en el MISMO pod que postgres: reiniciar el motor lo
       // reinicia a el tambien, asi que no hace falta nombrarlo aparte.
       requiereReinicioDe: servicioDeBaseDeDatos(environment),
@@ -280,7 +283,7 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       // (C-7 §6, `quien-se-conecta-a-cada-base.test.ts`). Hasta `E` no se declaraba y la
       // comprobacion abria sesion contra la base del monolito —donde nadie le habia
       // revocado nada—, asi que decia «la credencial sirve» de una base sin tablas.
-      baseDeDatos: "normativa",
+      baseDeDatos: BASE_DE_PARAMETROS,
       // Sin requiereReinicioDe: nadie tiene un pod en marcha leyendo esto. Cada Job
       // es de un solo uso y lee el Secret fresco al crearse, igual que kamayuk-owner.
     },
@@ -299,7 +302,7 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       // La base de `rentas`, no la del monolito: lo que escribe es la copia local que
       // `rentas` lee. Sin este dato, comprobar «sirve esta credencial» conectando al padron
       // del monolito daria un rojo falso, que es el matiz que #435 tuvo que aprender.
-      baseDeDatos: "rentas",
+      baseDeDatos: BASE_DEL_PADRON,
       // HUECO DECLARADO (C-7 §6): el proceso que consume esta credencial NO EXISTE todavia.
       // ADR-0027 declara el buzon de eventos y P5C lo dejo escrito: «no hay cola, no hay
       // suscripcion, no hay reintento». La clave entra al inventario igualmente, y a
