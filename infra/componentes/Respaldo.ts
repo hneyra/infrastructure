@@ -1,7 +1,7 @@
 import { commonLabels, resourceName, type Environment } from "../config";
 import { DIRECTORIO_DE_DATOS } from "./BaseDeDatos";
 import {
-  BASE_DEL_REGISTRO_DE_RESPALDO,
+  BASE_DEL_PADRON,
   CLAVES,
   type TablaDeRecursos,
   contenedorDeDescargaDeWalg,
@@ -121,7 +121,7 @@ export function manifiestosDeRespaldo(args: RespaldoArgs): Manifiesto[] {
     // interpola; las tres consultas de este guion pasan por ahi en vez de
     // `--command`.
     'respaldoId=$(PGUSER=kamayuk_owner PGPASSWORD="$CLAVE_OWNER" psql --host="$PGHOST" ' +
-      `--dbname=${BASE_DEL_REGISTRO_DE_RESPALDO} --quiet --tuples-only --no-align -v destino="$DESTINO" <<'SQL'`,
+      `--dbname=${BASE_DEL_PADRON} --quiet --tuples-only --no-align -v destino="$DESTINO" <<'SQL'`,
     "INSERT INTO respaldo (inicio, resultado, destino) VALUES (now(), 'EN_CURSO', :'destino') RETURNING id;",
     "SQL",
     ")",
@@ -144,14 +144,14 @@ export function manifiestosDeRespaldo(args: RespaldoArgs): Manifiesto[] {
     `    PGUSER=kamayuk_respaldo PGPASSWORD="$CLAVE_RESPALDO" "${WALG_BINARIO}" delete retain "$RETENCION" ` +
       "--confirm >> /tmp/walg.log 2>&1 || true",
     '    PGUSER=kamayuk_owner PGPASSWORD="$CLAVE_OWNER" psql --host="$PGHOST" ' +
-      `--dbname=${BASE_DEL_REGISTRO_DE_RESPALDO} --quiet -v id="$respaldoId" <<'SQL'`,
+      `--dbname=${BASE_DEL_PADRON} --quiet -v id="$respaldoId" <<'SQL'`,
     "UPDATE respaldo SET fin = now(), resultado = 'EXITOSO' WHERE id = :id;",
     "SQL",
     '    echo "Respaldo #$respaldoId EXITOSO."',
     "else",
     "    detalle=$(tail -c 480 /tmp/walg.log | tr '\\n' ' ' | tr -d \"'\")",
     '    PGUSER=kamayuk_owner PGPASSWORD="$CLAVE_OWNER" psql --host="$PGHOST" ' +
-      `--dbname=${BASE_DEL_REGISTRO_DE_RESPALDO} --quiet -v id="$respaldoId" -v detalle="$detalle" <<'SQL'`,
+      `--dbname=${BASE_DEL_PADRON} --quiet -v id="$respaldoId" -v detalle="$detalle" <<'SQL'`,
     "UPDATE respaldo SET fin = now(), resultado = 'FALLIDO', detalle = :'detalle' WHERE id = :id;",
     "SQL",
     '    echo "FALLO: el respaldo #$respaldoId no se completo. Detalle: $detalle" >&2',

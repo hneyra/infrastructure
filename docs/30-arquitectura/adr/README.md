@@ -25,6 +25,7 @@ historial de por que se hizo algo vale mas que la coherencia del documento.
 | [0031](ADR-0031-infraestructura-comun-y-propia.md) | La infraestructura: un repositorio común y una carpeta por sistema | Propuesto |
 | [0032](ADR-0032-el-esquema-nace-en-baseline.md) | El esquema de cada sistema nace en un baseline; la historia se queda en `sgtm` | Propuesto |
 | [0033](ADR-0033-cinco-sistemas-el-territorio-y-la-calle.md) | Cinco sistemas: `catastro` absorbe el territorio y `seguridad` se separa | Propuesto |
+| [0038](ADR-0038-el-corte-entre-el-producto-y-el-suelo.md) | El corte entre el producto y el suelo: `kamayuk-lib` y `infrastructure` | **Aceptado** |
 
 ## El reparto: donde el enunciado y GOB-05 §4 discrepaban
 

@@ -40,12 +40,6 @@ set -euo pipefail
 
 AMBIENTE=""
 ROL=""
-
-# Ver `verificar-rotacion.sh`: la base depende del rol desde `E`.
-case "$ROL" in
-    postgres-carga) BASE_DEL_ROL=normativa ;;
-    *)              BASE_DEL_ROL=rentas ;;
-esac
 NAMESPACE=""
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -65,6 +59,23 @@ NAMESPACE=${NAMESPACE:-kamayuk-$AMBIENTE}
 
 AQUI=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 INFRA=$(cd "$AQUI/.." && pwd)
+
+# Las bases del cluster, de su unico sitio (#15).
+# shellcheck source=infra/bases.sh
+. "$INFRA/bases.sh"
+
+# Y la base contra la que se comprueba la credencial, que DEPENDE DEL ROL (`E`).
+#
+# **Esto estaba DECIDIENDOSE ANTES DE LEER `--rol`**, con `$ROL` todavia vacio: el `case`
+# vivia en la linea 45 y los argumentos se leen en la 50, asi que caia siempre por la rama
+# `*)` y `--rol postgres-carga` comprobaba la credencial contra el PADRON —donde
+# `rol_carga_parametros` no tiene CONNECT a proposito (C-7 §6)—, o sea rojo sobre una
+# credencial buena. Es el mismo defecto que #15 nombra en `verificar-el-motor.sh` por el
+# otro eje: una base decidida en el sitio equivocado respecto de lo que la decide.
+case "$ROL" in
+    postgres-carga) BASE_DEL_ROL=$BASE_DE_PARAMETROS ;;
+    *)              BASE_DEL_ROL=$BASE_DEL_PADRON ;;
+esac
 
 command -v kubectl >/dev/null 2>&1 || { echo "Falta kubectl." >&2; exit 1; }
 command -v openssl >/dev/null 2>&1 || { echo "Falta openssl." >&2; exit 1; }

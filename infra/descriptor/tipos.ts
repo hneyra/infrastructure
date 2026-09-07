@@ -239,6 +239,23 @@ export interface ClaveDeclarada {
   readonly rol?: string;
   readonly rotacion: "trimestral" | "anual" | "nunca";
   readonly proposito: string;
+  /**
+   * **Quien tiene que haber emitido este valor** para que sirva de credencial (#21).
+   *
+   * Omitido, el valor lo genera `bootstrap-secretos.sh`: una cadena aleatoria, que es lo
+   * correcto para una clave de PostgreSQL —el motor la acepta porque el `ALTER ROLE` la puso—.
+   *
+   * `"keycloak"` dice otra cosa: que el valor **no vale por si mismo**, que es la clave con la
+   * que un cliente confidencial pide un token al emisor, y que sin un cliente de servicio
+   * declarado en `despliegue/identidad/municipalidades/<ubigeo>.json` el secreto existe y **no
+   * autentica a nadie**.
+   *
+   * Hace falta porque los dos casos son **indistinguibles hasta que se despliega**: los dos son
+   * un `secretKeyRef` a una cadena de 32 bytes. Eso es exactamente lo que paso con
+   * `KAMAYUK_CATASTRO_CREDENCIAL`, que se declaro, se genero y `catastro` la rechazo con 401 —y
+   * el CronJob que la usaba nacio suspendido por ello—.
+   */
+  readonly emisor?: "keycloak";
 }
 
 /** Una regla de alerta de Prometheus, tal como entra en el `ConfigMap` de reglas. */

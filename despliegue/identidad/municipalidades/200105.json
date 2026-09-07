@@ -2,6 +2,13 @@
   "ubigeo": "200105",
   "municipalidadId": 9,
   "grupo": "200105 - Municipalidad Distrital de Catacaos",
+  "servicios": [
+    {
+      "sistema": "rentas",
+      "llamaA": "catastro",
+      "proposito": "traer el buzon de hechos del territorio; sin esto el ingestor nace suspendido (C-8, #21)"
+    }
+  ],
   "usuarios": [
     {
       "cuenta": "administrador",

@@ -52,9 +52,10 @@ set -euo pipefail
 # shellcheck source=lib-destino-del-job.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib-destino-del-job.sh"
 
-# Los parametros tributarios viven en `normativa` desde el corte (ADR-0031), no en la base del
-# monolito, que es lo que decia esta linea hasta `E`.
-BASE_DE_PARAMETROS=normativa
+# Las bases del cluster, de su unico sitio (#15). Hasta entonces esto era
+# `BASE_DE_PARAMETROS=normativa` escrito aqui, y en `publicar-cuadros.sh` otra vez.
+# shellcheck source=infra/bases.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/bases.sh"
 
 AMBIENTE=""
 ARCHIVO=""
@@ -179,7 +180,12 @@ $(etiquetas_del_job "$SISTEMA" publicacion-parametros)
             - name: SPRING_PROFILES_ACTIVE
               value: batch
             - name: KAMAYUK_DB_URL
-              value: jdbc:postgresql://kamayuk-${AMBIENTE}-postgres:5432/sgtm
+              # `E` retiro esta base y este Job se quedo apuntando a ella: existe en los
+              # dos ambientes y no tiene ni una tabla del producto, asi que el Job habria
+              # arrancado y muerto buscando `parametro_tributario`. El guion ya comprobaba
+              # la conexion contra `$BASE_DE_PARAMETROS` unas lineas mas arriba — las dos
+              # mitades de la misma verdad, y nada las comparaba (#16).
+              value: jdbc:postgresql://kamayuk-${AMBIENTE}-postgres:5432/${BASE_DE_PARAMETROS}
             # rol_carga_parametros, y solo aqui. parametro_tributario lleva FORCE ROW LEVEL
             # SECURITY y la unica politica de escritura de V6 nombra a este rol: ni kamayuk_app
             # ni kamayuk_owner pueden insertar en ella. Y este rol no alcanza ninguna otra tabla
