@@ -435,14 +435,22 @@ describe("C-14 §3 · los CronJob del emisor y del ingestor", () => {
     expect(declara(c, "KAMAYUK_CATASTRO_PUBLICACION_EJERCICIO")).toBe(false);
   });
 
-  it("`rentas` declara su ingestor entero, y nace SUSPENDIDO", () => {
+  it("`rentas` declara su ingestor entero, y CORRE (#21)", () => {
     const cron = cronDe("rentas", "kamayuk-rentas-ingestor");
     const c = cron.spec.jobTemplate.spec.template.spec.containers[0] as Contenedor;
 
-    // No hay identidad de servicio (ADR-0028 §2, C-8 hueco 3): sin credencial, `catastro`
-    // contesta 401 y el CronJob fallaria cada noche. Lo que se declara es la ventana, los
-    // limites y la configuracion; quitar el `suspend` es una linea el dia que exista.
-    expect(cron.spec.suspend).toBe(true);
+    // Hasta #21 esta linea exigia `toBe(true)`, y era el tercer caso de esta serie —tras C-17 §1
+    // y C-18 §5— en que una guarda **demandaba el defecto**: el `suspend` lo puso C-8 porque no
+    // habia identidad de servicio, y la comprobacion que lo describia lo convirtio en requisito.
+    // Con la cuenta de servicio por municipalidad (ADR-0028 §2), lo que sujeta al ingestor deja
+    // de ser un interruptor y pasa a ser una guarda que se pone roja: si la credencial de
+    // `KAMAYUK_CATASTRO_CREDENCIAL` deja de tener su cuenta declarada, `identidad-de-servicio`
+    // lo dice — y un `suspend` no dice nada, se lee igual que «esto todavia no toca».
+    expect(
+      cron.spec.suspend,
+      "el ingestor volvio a nacer suspendido: `valuacion_predio` se queda vacia y " +
+        "`CandadoDeEmision` no abre nunca, sin una sola linea que lo explique (#21 AC-4)",
+    ).not.toBe(true);
 
     // `@ConditionalOnProperty("kamayuk.rentas.ingestor.usuario")`: sin ella, el cableado del
     // ingestor no existe y el proceso `batch` arranca sin ingestar nada.
@@ -546,8 +554,21 @@ describe("C-14 · el egreso declarado ES el que se aplica", () => {
  *
  * Las dos cifras se MIDEN, no se razonan: se pone el techo a 0, se lee el «but was» y se
  * escribe. Es el mismo trato que `OPERACIONES_CON_FILTRO_QUE_NADIE_LEE` en `rentas`.
+ *
+ * ## Remedido en #21, y las dos mitades se movieron por motivos distintos
+ *
+ * | | pico de los cuatro | por que |
+ * |---|---|---|
+ * | C-14, lo que estaba escrito | 950m / 4864Mi | — |
+ * | medido antes de #21 | 950m / **4480Mi** | la CPU seguia exacta; **la memoria se habia aflojado 384Mi** y nadie la remidio |
+ * | medido con #21 AC-4 | **1000m** / **4736Mi** | el `CronJob` del ingestor de `rentas` deja de nacer suspendido: **+50m / +256Mi** |
+ *
+ * O sea que **el techo de memoria llevaba desde C-14 dejando crecer 384Mi en silencio**, que es
+ * justo lo que esta guarda existe para impedir. Se reescribe con la cifra medida y no con la
+ * vieja mas lo que suba #21: un techo que no es la medida no es un techo, es un margen que
+ * nadie decidio.
  */
-const TECHO_DE_LOS_SISTEMAS = { cpuEnMili: 950, memoriaEnMi: 4864 };
+const TECHO_DE_LOS_SISTEMAS = { cpuEnMili: 1000, memoriaEnMi: 4736 };
 
 describe("C-14 · lo que los cuatro sistemas anaden al nodo", () => {
   it.each(ENVIRONMENTS)("en «%s» no crece en silencio", (ambiente) => {

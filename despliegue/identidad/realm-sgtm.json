@@ -84,6 +84,33 @@
       ]
     }
   ],
+  "clientScopes": [
+    {
+      "name": "kamayuk-servicio",
+      "description": "El ambito de una identidad de servicio (ADR-0028 §2). Lleva `municipalidad_id` al token desde el atributo de la CUENTA DE SERVICIO, que es lo que acota la corrida a una municipalidad. No declara ningun cliente: los clientes por municipalidad los crea `reconciliar-identidades.sh servicios` desde `municipalidades/<ubigeo>.json`, porque una clave de cliente no puede vivir en git (ADR-0012).",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "municipalidad-id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "municipalidad_id",
+            "claim.name": "municipalidad_id",
+            "jsonType.label": "long",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
   "components": {
     "org.keycloak.userprofile.UserProfileProvider": [
       {
