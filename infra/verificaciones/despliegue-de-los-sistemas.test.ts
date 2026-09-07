@@ -1,18 +1,21 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { auditarManifiestos } from "../auditoria";
 import { construirManifiestos } from "../componentes";
-import { SISTEMAS_DEL_PRODUCTO } from "../componentes/convenciones";
+import { SISTEMAS_DEL_PRODUCTO, secretos } from "../componentes/convenciones";
 import { raizDelRepositorio } from "../componentes/fuentes";
 import { demandaDelStack } from "../capacidad";
 import { podsDe, type Contenedor, type Manifiesto } from "../componentes/tipos";
-import { ENVIRONMENTS, type Environment } from "../config";
+import { ENVIRONMENTS, namespaceName, type Environment } from "../config";
 import {
   entornoDelAmbiente,
   manifiestosDelAmbiente,
   manifiestosDeLosSistemas,
 } from "../herramientas/emitir-manifiestos";
+import { namespacesDelAmbiente } from "../descriptor/entorno";
 import { SISTEMAS } from "../descriptor/sistemas";
+import { REGISTRO_PROPIO } from "./imagenes-publicadas";
 import { prefijoDeLaImplantacion, variableDe } from "./prefijo-de-la-implantacion";
 import { correElBackend } from "./procesos-de-un-sistema";
 import { invariantesDe } from "./stacks";
@@ -211,6 +214,69 @@ describe("C-14 §1 · cada sistema publica DOS imagenes, y el migrador corre la 
           "de otro sistema desplegada en este namespace cruzaria la frontera de ADR-0031",
       ).toBe(true);
     }
+  });
+
+  /**
+   * Y son **exactamente** las que sus manifiestos despliegan: ni una de mas, ni una de menos.
+   *
+   * `arrayContaining` mas el prefijo, que es lo que quedo al abrirle sitio a la interfaz, dice
+   * «estan las dos del jar y lo demas se llama como tu» — o sea **cualquier numero**. Medido: con
+   * `rentas-interfaz` anadido al descriptor de `rentas`, que no despliega ninguna interfaz, este
+   * archivo entero pasa en verde.
+   *
+   * Las dos mitades se DERIVAN y se comparan, como en `compose-de-los-sistemas`: una es
+   * `descriptor.imagenes` y la otra son las referencias de imagen que los manifiestos de SU
+   * namespace llevan de verdad. Asi la cuenta no esta escrita en ningun sitio y sale sola —
+   * **tres** para `caja` desde su interfaz de ventanilla y **dos** para los otros tres—, que es lo
+   * unico que hace que aceptar la tercera no sea aceptar la cuarta.
+   *
+   * De las dos direcciones, la que esta guarda cierra es **declarada y no desplegada**: la imagen
+   * fantasma. No rompe el `up` —envejece en el inventario— y lo que hace es arrastrar a las
+   * guardas que leen esa lista: `compose-de-los-sistemas` le exigiria a su clon un servicio que
+   * nadie pidio, o sea un rojo que acusa al repositorio equivocado, que es el defecto que este
+   * mismo lote vino a cerrar.
+   *
+   * **La otra direccion ya la para `componerOFallar`, y antes**: medido quitandole `INTERFAZ` a
+   * `caja.imagenes` sin quitarle el `Deployment`, la composicion ni llega a terminar —«la imagen
+   * «…kamayuk-caja-interfaz:…» no sale de `entorno.imagenDe()`», 111 rojas en 12 archivos—. Se
+   * dice aqui para que nadie crea que esta linea es la que protege eso: no lo es, y una guarda a
+   * la que se le atribuye lo que no hace es la que nadie repone el dia que se borra.
+   *
+   * Se miran solo las del registro propio: una imagen de tercero —un `initContainer` de utilidad,
+   * el dia que lo haya— no es una que este sistema publique, y exigirle un renglon en `imagenes`
+   * seria acusarla de algo que no es.
+   */
+  it.each(SISTEMAS_DEL_PRODUCTO)("«%s» declara EXACTAMENTE las que despliega", (sistema) => {
+    const descriptor = SISTEMAS.find((s) => s.descriptor.sistema === sistema)?.descriptor;
+    const entorno = entornoDelAmbiente(invariantesDe(AMBIENTE))(sistema);
+    const declaradas = (descriptor?.imagenes ?? []).map((i) => entorno.imagenDe(i)).sort();
+
+    const desplegadas = [
+      ...new Set(
+        delSistema(AMBIENTE, sistema)
+          .flatMap((m) => podsDe(m))
+          .flatMap(({ pod }) => [...pod.containers, ...(pod.initContainers ?? [])])
+          .map((c) => c.image)
+          .filter((i): i is string => i !== undefined && i.startsWith(REGISTRO_PROPIO)),
+      ),
+    ].sort();
+
+    // Sin esto, un sistema que no compusiera ningun manifiesto compararia dos listas vacias y
+    // pasaria sin haber mirado nada.
+    expect(
+      desplegadas.length,
+      `«${sistema}» no despliega ninguna imagen del registro propio en «kamayuk-${sistema}-` +
+        `${AMBIENTE}», asi que esta comparacion no mide nada.`,
+    ).toBeGreaterThan(0);
+
+    expect(
+      desplegadas,
+      `«${sistema}» declara ${declaradas.length} imagenes y sus manifiestos despliegan ` +
+        `${desplegadas.length}. Una declarada que nadie despliega envejece en el inventario y ` +
+        "hace que las guardas que lo leen acusen al repositorio equivocado; una desplegada que " +
+        "nadie declara no la mira `imagenes-publicadas`, y su pod se queda en ImagePullBackOff " +
+        "con el `up` en verde.",
+    ).toEqual(declaradas);
   });
 
   /**
@@ -635,5 +701,76 @@ describe("C-17 §5 · ningun `Deployment` de un sistema corre un perfil que term
       )
       .map(({ m }) => m.kind);
     expect(enBatch.sort()).toEqual(["CronJob", "Job"]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// De punta a punta: los cinco espacios de nombres a la vez, y la auditoria
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * El stack entero compuesto de una vez —la plataforma **y** los cuatro sistemas— pasando la
+ * misma auditoria que la plataforma pasa sola.
+ *
+ * `componentes.test.ts` ya afirma «los manifiestos de los dos ambientes pasan su propia
+ * auditoria», y su `manifiestosDe` es `construirManifiestos(...)`: **solo la plataforma**. Los
+ * cuatro sistemas se auditan cada uno contra su namespace dentro de `componerOFallar`, o sea
+ * **en aislamiento**. Lo que no tenia quien lo afirmara es el conjunto: los cinco espacios de
+ * nombres en la misma lista.
+ *
+ * Y no es que no corriera nunca: corria **de rebote**. `variables-sin-omision.test.ts` llama a
+ * `emitir({ ambiente })` para mirar otra cosa —que ninguna variable se quede sin valor— y
+ * `emitir` audita el conjunto y lanza. O sea que la afirmacion existia como efecto colateral de
+ * una prueba que habla de otra cosa: el dia que esa prueba deje de llamar a `emitir`, la
+ * auditoria de punta a punta se apaga **sin que nada se ponga rojo**. Es el modo de fallo de
+ * `verificar-cuadros.mjs` y `verificar-rotacion.sh`, que existian y no los ejecutaba nadie.
+ *
+ * Aqui se afirma en su propio nombre. **Y lo que cada mitad puede y no puede cazar esta medido**,
+ * porque no es lo mismo:
+ *
+ *   - **el censo de espacios de nombres SI falla por su cuenta.** Sacando `caja` de `SISTEMAS`,
+ *     rojo en los dos ambientes nombrandola: «"stg" no compone el namespace de "caja"». Es la
+ *     mitad que protege lo que este criterio persigue de verdad —que la composicion de punta a
+ *     punta ocurra y cubra a los cuatro—, y la que no deja que la de abajo pase en verde por estar
+ *     mirando una lista sin sistemas dentro;
+ *   - **el `toEqual([])` de la auditoria esta TAPADO, y se dice**. Medido inyectando un
+ *     incumplimiento en un manifiesto de `caja`: sale rojo, pero con «La auditoria rechazo 1
+ *     cosa(s) de los descriptores de sistema» — o sea que quien lanza es `componerOFallar` dentro
+ *     de `manifiestosDelAmbiente`, y el `expect` no llega a evaluarse. Un incumplimiento de la
+ *     plataforma lo caza ademas `componentes.test.ts`. Se escribe igual porque **la llamada es la
+ *     afirmacion**: hoy la composicion entera solo corre de rebote desde una prueba que habla de
+ *     variables, y lo que aqui se fija es que corra desde una que habla de esto. Lo que no se hace
+ *     es venderlo como una guarda independiente: no lo es.
+ */
+describe("el stack entero se compone y se audita, con los cuatro sistemas dentro", () => {
+  it.each(ENVIRONMENTS)("«%s» compone los cinco espacios de nombres", (ambiente) => {
+    const todos = manifiestosDelAmbiente(invariantesDe(ambiente));
+
+    const espacios = [
+      ...new Set(todos.map((m) => m.metadata.namespace).filter((n): n is string => n !== undefined)),
+    ];
+    for (const sistema of SISTEMAS_DEL_PRODUCTO) {
+      expect(
+        espacios,
+        `«${ambiente}» no compone el namespace de «${sistema}», asi que la auditoria de abajo no ` +
+          "lo estaria mirando: la unica forma de que un sistema pase la auditoria del conjunto " +
+          "sin estar en el conjunto es no estar.",
+      ).toContain(`kamayuk-${sistema}-${ambiente}`);
+    }
+    expect(espacios).toContain(namespaceName(ambiente));
+  });
+
+  it.each(ENVIRONMENTS)("y «%s» sale con CERO incumplimientos", (ambiente) => {
+    const todos = manifiestosDelAmbiente(invariantesDe(ambiente));
+    // Contarlos antes de auditar: `auditarManifiestos([])` es `[]`, y una lista vacia auditada
+    // pasa en verde diciendo exactamente lo mismo que un stack impecable.
+    expect(todos.length).toBeGreaterThan(50);
+    expect(
+      auditarManifiestos(todos, {
+        secretoDeOwner: secretos(ambiente).owner,
+        namespace: namespaceName(ambiente),
+        namespacesDelAmbiente: namespacesDelAmbiente(ambiente),
+      }),
+    ).toEqual([]);
   });
 });
