@@ -216,7 +216,38 @@ describe("las muestras: que muerde, y que no muerde de mas", () => {
   it("reclamar el prefijo de otro sale nombrado", () => {
     const hallazgos = hallazgosDeLaMuestra("reclama-el-prefijo-de-otro.compose.yaml");
     expect(hallazgos).toHaveLength(1);
-    expect(hallazgos[0]).toContain("reclama el prefijo «/rentas»");
+    expect(hallazgos[0]).toContain("reclama «/rentas»");
+  });
+
+  /**
+   * El reparto del prefijo entre dos routers, que I-44 estreno y esta guarda no sabia leer.
+   *
+   * Las cuatro muestras van juntas a proposito: la primera es el CONTRASTE —sin ella, una
+   * comprobacion que rechazara todo reparto pasaria igual de verde— y las otras tres son las
+   * tres formas en que un reparto se rompe sin que nadie lo vea desde fuera.
+   */
+  it("repartir SU prefijo entre dos routers, con prioridad, no produce ni un hallazgo", () => {
+    expect(hallazgosDeLaMuestra("reparte-su-prefijo-en-regla.compose.yaml")).toEqual([]);
+  });
+
+  it("repartirlo sin declarar prioridad sale nombrado", () => {
+    const hallazgos = hallazgosDeLaMuestra("reparte-su-prefijo-sin-prioridad.compose.yaml");
+    expect(hallazgos).toHaveLength(1);
+    expect(hallazgos[0]).toContain("no declara `priority`");
+    expect(hallazgos[0]).toContain("POR ACCIDENTE");
+  });
+
+  it("repartirlo al reves sale nombrado, con las dos prioridades dentro", () => {
+    const hallazgos = hallazgosDeLaMuestra("reparte-su-prefijo-al-reves.compose.yaml");
+    expect(hallazgos).toHaveLength(1);
+    expect(hallazgos[0]).toContain("da prioridad 10 a «mercados»");
+    expect(hallazgos[0]).toContain("20 a «mercados-interfaz»");
+  });
+
+  it("y el prefijo de otro reclamado DESDE LA INTERFAZ tambien sale, que es la mitad nueva", () => {
+    const hallazgos = hallazgosDeLaMuestra("la-interfaz-reclama-el-prefijo-de-otro.compose.yaml");
+    expect(hallazgos).toHaveLength(1);
+    expect(hallazgos[0]).toContain("reclama «/rentas» en el router «mercados-interfaz»");
   });
 
   it("una sonda que pide lo que la cadena niega sale nombrada", () => {

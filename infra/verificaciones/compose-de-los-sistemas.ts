@@ -224,6 +224,73 @@ export function loQueElDescriptorDice(
  * ruta que la cadena niega deja el contenedor `unhealthy` **para siempre**, con la aplicacion
  * sana — y aqui ademas cuelga el `depends_on: service_healthy` de quien la espere.
  */
+/**
+ * Una ruta de Traefik declarada por etiquetas, con lo que reclama y con que precedencia.
+ *
+ * Se lee **por `router`** y no por servicio, porque un sistema puede repartir su prefijo entre
+ * dos —lo hace `rentas` desde I-44: `/rentas/api/v1` al backend y `/rentas` a la interfaz— y la
+ * pregunta «cual gana» solo tiene sentido entre routers.
+ */
+export interface RutaDeTraefik {
+  /** El nombre del `router` en la etiqueta. */
+  router: string;
+  /** El servicio del compose que la declara. */
+  servicio: string;
+  /** Todo lo que sus `PathPrefix(...)` reclaman, en el orden del texto. */
+  prefijos: string[];
+  /** Su `priority`, si la declara. */
+  prioridad?: number;
+}
+
+/**
+ * Lo que los `PathPrefix(...)` de una regla reclaman, **con la ruta entera**.
+ *
+ * Hasta I-44 esto era `/PathPrefix\(`\/([A-Za-z0-9_-]+)`\)/`, que **no admite barras**, asi que
+ * `PathPrefix(`/rentas/api/v1`)` no casaba: `pedido` quedaba `undefined`, el mensaje se componia
+ * con `${pedido ?? "?"}` y salia «reclama el prefijo «/?» y el suyo es «/rentas»» — un rojo que
+ * no nombra nada y acusa de lo contrario de lo que pasa, porque `/rentas/api/v1` **es** suyo.
+ */
+export function prefijosDeLaRegla(regla: string): string[] {
+  return [...regla.matchAll(/PathPrefix\(`([^`]*)`\)/g)].map((m) => m[1] ?? "");
+}
+
+/**
+ * El primer segmento de una ruta —`/rentas/api/v1` -> `rentas`—, que es lo que decide de quien es.
+ *
+ * Traefik casa por prefijo de camino, asi que quien reclama `/rentas/...` esta reclamando dentro
+ * de `/rentas` y de nadie mas. Comparar la ruta entera contra el prefijo del sistema rechazaria
+ * un reparto legitimo; comparar el primer segmento rechaza lo que hay que rechazar: reclamar el
+ * de otro.
+ */
+export function duenoDeLaRuta(ruta: string): string | undefined {
+  return /^\/([A-Za-z0-9_.-]+)(?:\/|$)/.exec(ruta)?.[1];
+}
+
+/**
+ * Las rutas de Traefik que declara un compose entero, servicio a servicio.
+ *
+ * **Se leen las de TODOS sus servicios y no solo las del backend**, que es la otra mitad del
+ * hueco que I-44 destapo: desde que un sistema puede tener dos procesos alcanzables por el
+ * ingreso, un `PathPrefix` escrito en el servicio de la interfaz no lo miraba nadie.
+ */
+export function rutasDeTraefik(compose: ComposeDeSistema): RutaDeTraefik[] {
+  const porRouter = new Map<string, RutaDeTraefik>();
+  for (const [servicio, definicion] of Object.entries(compose.services)) {
+    for (const etiqueta of definicion.labels ?? []) {
+      const casa = /^traefik\.http\.routers\.([A-Za-z0-9_-]+)\.(rule|priority)=(.*)$/.exec(
+        etiqueta.trim(),
+      );
+      if (casa === null) continue;
+      const [, router, campo, valor] = casa as unknown as [string, string, string, string];
+      const ruta = porRouter.get(router) ?? { router, servicio, prefijos: [] };
+      if (campo === "rule") ruta.prefijos.push(...prefijosDeLaRegla(valor));
+      else ruta.prioridad = Number(valor);
+      porRouter.set(router, ruta);
+    }
+  }
+  return [...porRouter.values()].filter((r) => r.prefijos.length > 0);
+}
+
 export function desajustes(
   compose: ComposeDeSistema,
   esperado: LoQueElDescriptorDice,
@@ -331,9 +398,8 @@ export function desajustes(
   }
 
   // El prefijo de Traefik: el suyo, y solo el suyo (prohibicion (a)).
-  const etiquetas = compose.services[esperado.procesos["web"]?.servicio ?? ""]?.labels ?? [];
-  const reglas = etiquetas.filter((l) => l.includes("PathPrefix"));
-  if (reglas.length === 0) {
+  const rutas = rutasDeTraefik(compose);
+  if (rutas.length === 0) {
     anotar(
       "prefijo",
       `«${esperado.sistema}» no publica ninguna regla \`PathPrefix\` de Traefik, asi que no se ` +
@@ -341,15 +407,46 @@ export function desajustes(
         "ningun puerto (ADR-0030 §2).",
     );
   }
-  for (const regla of reglas) {
-    const pedido = /PathPrefix\(`\/([A-Za-z0-9_-]+)`\)/.exec(regla)?.[1];
-    if (pedido !== esperado.prefijo) {
-      anotar(
-        "prefijo",
-        `«${esperado.sistema}» reclama el prefijo «/${pedido ?? "?"}» y el suyo es ` +
-          `«/${esperado.prefijo}». Reclamar el de otro NO falla: se lo queda, y las peticiones ` +
-          "dejan de llegar a su dueno.",
+  for (const ruta of rutas) {
+    for (const prefijo of ruta.prefijos) {
+      const dueno = duenoDeLaRuta(prefijo);
+      if (dueno !== esperado.prefijo) {
+        anotar(
+          "prefijo",
+          `«${esperado.sistema}» reclama «${prefijo}» en el router «${ruta.router}» y su prefijo ` +
+            `es «/${esperado.prefijo}». Reclamar el de otro NO falla: se lo queda, y las ` +
+            "peticiones dejan de llegar a su dueno.",
+        );
+      }
+    }
+  }
+
+  // Y si reparte su prefijo entre dos routers, cual gana lo dice el compose y no la longitud.
+  for (const suya of rutas) {
+    for (const otra of rutas) {
+      if (suya.router === otra.router) continue;
+      const masEspecifica = suya.prefijos.some((s) =>
+        otra.prefijos.some((o) => s !== o && s.startsWith(o.endsWith("/") ? o : `${o}/`)),
       );
+      if (!masEspecifica) continue;
+      if (suya.prioridad === undefined || otra.prioridad === undefined) {
+        anotar(
+          "prefijo",
+          `«${esperado.sistema}» reparte su prefijo entre «${suya.router}» y «${otra.router}», y ` +
+            `${suya.prioridad === undefined ? `«${suya.router}»` : `«${otra.router}»`} no declara ` +
+            "`priority`. Traefik v3 ordena por longitud de regla cuando falta, asi que hoy " +
+            "saldria bien POR ACCIDENTE: lo que decide que gana deja de estar escrito.",
+        );
+      } else if (suya.prioridad <= otra.prioridad) {
+        anotar(
+          "prefijo",
+          `«${esperado.sistema}» da prioridad ${suya.prioridad} a «${suya.router}» y ` +
+            `${otra.prioridad} a «${otra.router}», y la primera es la mas especifica. Al reves, ` +
+            "quien contesta la ruta larga es el otro y devuelve **200 con su propio cuerpo**: no " +
+            "un error, una pagina (`rentas`#44 lo midio: `200 text/html` con el `index.html` " +
+            "dentro donde tenia que contestar la API).",
+        );
+      }
     }
   }
 

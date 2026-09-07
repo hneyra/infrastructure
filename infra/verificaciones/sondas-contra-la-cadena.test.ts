@@ -4,10 +4,26 @@ import { describe, expect, it } from "vitest";
 import { construirManifiestos } from "../componentes";
 import { SISTEMAS_DEL_PRODUCTO } from "../componentes/convenciones";
 import { raizDelRepositorio } from "../componentes/fuentes";
-import { contenedoresDe, podsDe, type Contenedor, type Manifiesto, type Sonda } from "../componentes/tipos";
+import {
+  contenedoresDe,
+  podsDe,
+  type Contenedor,
+  type Manifiesto,
+  type Sonda,
+  type Volumen,
+} from "../componentes/tipos";
 import { correElBackend } from "./procesos-de-un-sistema";
 import { manifiestosDeLosSistemas } from "../herramientas/emitir-manifiestos";
-import { fuenteDeLaCadena, rutasPublicas } from "./sondas-contra-la-cadena";
+import {
+  CONFIGURACION_DE_NGINX,
+  atiende,
+  fuenteDeLaCadena,
+  locationsDe,
+  nginxDelClon,
+  nginxMontado,
+  rutasPublicas,
+  type FuenteDelNginx,
+} from "./sondas-contra-la-cadena";
 import { invariantesDe } from "./stacks";
 
 /**
@@ -43,21 +59,23 @@ const muestra = (nombre: string) => readFileSync(join(MUESTRAS, nombre), "utf8")
  * Ese ultimo dato es lo que #16 obliga a tener: la interfaz de `caja` es nginx, y su sonda no
  * la atiende `SeguridadWeb` sino su propio `location`. Ver `procesos-de-un-sistema.ts`.
  */
-function sondasDe(
-  sistema: string,
-): { donde: string; cual: string; ruta: string; backend: boolean; c: Contenedor }[] {
+interface SondaEncontrada {
+  donde: string;
+  cual: string;
+  ruta: string;
+  backend: boolean;
+  c: Contenedor;
+  /** Los volumenes del pod, que es lo unico que dice a que `ConfigMap` apunta un montaje. */
+  volumenes: Volumen[];
+}
+
+function sondasDe(sistema: string): SondaEncontrada[] {
   const plataforma = construirManifiestos(invariantesDe(AMBIENTE));
   const suyos: Manifiesto[] = manifiestosDeLosSistemas(invariantesDe(AMBIENTE), plataforma).filter(
     (m) => m.metadata.namespace === `kamayuk-${sistema}-${AMBIENTE}`,
   );
 
-  const encontradas: {
-    donde: string;
-    cual: string;
-    ruta: string;
-    backend: boolean;
-    c: Contenedor;
-  }[] = [];
+  const encontradas: SondaEncontrada[] = [];
   for (const m of suyos) {
     for (const { contexto, pod } of podsDe(m)) {
       for (const c of contenedoresDe(pod)) {
@@ -75,6 +93,7 @@ function sondasDe(
               ruta,
               backend: correElBackend(sistema, c),
               c,
+              volumenes: pod.volumes ?? [],
             });
           }
         }
@@ -182,43 +201,89 @@ describe("la lectura de la cadena muerde, y no muerde de mas", () => {
  * **fuera de toda comprobacion** —que no lo es—. Una sonda que pide una ruta que nginx no sirve
  * mata el pod igual que una que `SeguridadWeb` no abre; lo unico que cambia es quien contesta.
  *
- * Lo que la atiende viaja en el mismo manifiesto: el `ConfigMap` de nginx que ese pod monta. Se
- * lee de ahi y no del clon, porque lo que se despliega es el `ConfigMap`.
+ * ## Quien la atiende se DERIVA del punto de montaje, y no se declara
+ *
+ * Hasta I-44 esto leia los `location` de cualquier `ConfigMap` del sistema, y daba por hecho que
+ * la configuracion de nginx viaja en uno. Son **dos formas legitimas** y estan las dos:
+ *
+ *   - `caja` monta un `ConfigMap` en `/etc/nginx/conf.d/default.conf`: **ese** es su servidor;
+ *   - `rentas` la lleva dentro de la imagen (#44), y su unico `ConfigMap` monta
+ *     `configuracion.js` bajo `/usr/share/nginx/html/` — contenido servido, no servidor.
+ *
+ * Con la lectura vieja, `rentas` salia rojo con «ningun ConfigMap suyo declara un `location`»
+ * sobre un sistema **bien construido**: la guarda acusaba al repositorio equivocado. La lista de
+ * excepciones era la salida comoda y es la peor de las dos, porque una excepcion escrita a mano
+ * envejece sola; lo que separa las dos formas es **donde monta**, y eso lo dice el manifiesto.
+ *
+ * Lo que NO se hace es la union de las dos fuentes: un `ConfigMap` de `caja` al que se le cayera
+ * un `location` que su clon todavia tiene pasaria en verde, y lo que se despliega es el
+ * `ConfigMap`.
  */
 describe("#16 · la sonda de un contenedor que no es el backend, contra su nginx", () => {
-  /** Los `location` que declara cualquier `ConfigMap` de nginx del sistema. */
-  function locationsDe(sistema: string): string[] {
+  /** Los `ConfigMap` de un sistema, por nombre. */
+  function configMapsDe(sistema: string): Map<string, Record<string, string>> {
     const plataforma = construirManifiestos(invariantesDe(AMBIENTE));
-    return manifiestosDeLosSistemas(invariantesDe(AMBIENTE), plataforma)
-      .filter(
-        (m) =>
-          m.kind === "ConfigMap" && m.metadata.namespace === `kamayuk-${sistema}-${AMBIENTE}`,
-      )
-      .flatMap((m) => Object.values((m as { data?: Record<string, string> }).data ?? {}))
-      .flatMap((texto) => texto.split("\n"))
-      .map((linea) => linea.trim())
-      .filter((linea) => linea.startsWith("location "))
-      .map((linea) => linea.slice("location ".length).replace(/[{\s].*$/, ""));
+    return new Map(
+      manifiestosDeLosSistemas(invariantesDe(AMBIENTE), plataforma)
+        .filter(
+          (m) => m.kind === "ConfigMap" && m.metadata.namespace === `kamayuk-${sistema}-${AMBIENTE}`,
+        )
+        .map((m) => [m.metadata.name, (m as { data?: Record<string, string> }).data ?? {}]),
+    );
+  }
+
+  /**
+   * La configuracion de nginx que sirve a ese contenedor, con de donde salio.
+   *
+   * @throws si no sale de ningun sitio: «no se pudo comprobar» no puede leerse igual que «esta
+   *   bien», que es lo que C-15/C-16 dejaron escrito.
+   */
+  function nginxQueSirve(sistema: string, s: SondaEncontrada): FuenteDelNginx {
+    const montado = nginxMontado(
+      s.c.volumeMounts ?? [],
+      s.volumenes,
+      configMapsDe(sistema),
+    );
+    if (montado.length > 1) {
+      throw new Error(
+        `«${sistema}» monta ${montado.length} ConfigMap bajo «${CONFIGURACION_DE_NGINX}» en el ` +
+          `contenedor «${s.c.name}» (${montado.map((f) => f.nombre).join(", ")}). Cual gana lo ` +
+          "decide el orden de los montajes, y eso no se adivina: hay que decidir cual es la " +
+          "configuracion en vez de dejar que esta comprobacion elija.",
+      );
+    }
+    const primero = montado[0];
+    if (primero !== undefined) return primero;
+
+    const delClon = nginxDelClon(sistema);
+    if (delClon !== undefined) return delClon;
+
+    throw new Error(
+      `«${sistema}» corre «${s.c.name}», que no es su backend, y su configuracion de nginx no ` +
+        `sale de ningun sitio: ni monta un ConfigMap bajo «${CONFIGURACION_DE_NGINX}» ni su clon ` +
+        `trae «${sistema}/frontend/nginx.conf». Sin ella nadie sabe quien atiende su sonda, y ` +
+        "una comprobacion que no puede medir no pasa en verde: falla diciendolo.\n" +
+        `  Remedio: git clone https://github.com/hneyra/${sistema}`,
+    );
   }
 
   it.each(SISTEMAS_DEL_PRODUCTO)("«%s»", (sistema) => {
     const otras = sondasDe(sistema).filter((s) => !s.backend);
     if (otras.length === 0) return;
 
-    const locations = locationsDe(sistema);
-    expect(
-      locations,
-      `«${sistema}» corre un contenedor que no es su backend y ningun ConfigMap suyo declara un ` +
-        "`location`: entonces nadie sabe quien atiende su sonda",
-    ).not.toEqual([]);
-
     for (const s of otras) {
-      // `location /` es el prefijo que cubre cualquier ruta; los demas tienen que casar exacto.
-      const cubierta = locations.includes("/") || locations.includes(s.ruta);
+      const fuente = nginxQueSirve(sistema, s);
+      const donde =
+        fuente.clase === "configmap"
+          ? `el ConfigMap «${fuente.nombre}»`
+          : `«${fuente.ruta}», que viaja DENTRO de la imagen`;
+      const declarados = locationsDe(fuente.texto)
+        .map((l) => `«${`${l.modificador} ${l.ruta}`.trim()}»`)
+        .join(", ");
       expect(
-        cubierta,
-        `  · ${s.donde}: ${s.cual} pide «${s.ruta}», y el nginx de «${sistema}» solo declara ` +
-          `${locations.map((l) => `«${l}»`).join(", ")}.\n` +
+        atiende(fuente.texto, s.ruta, `${sistema}: ${donde}`),
+        `  · ${s.donde}: ${s.cual} pide «${s.ruta}», y el nginx de «${sistema}» —${donde}—\n` +
+          `    solo declara ${declarados}.\n` +
           "    Es el mismo fallo que una ruta cerrada en `SeguridadWeb`, con otro servidor\n" +
           "    contestando: el kubelet mata el pod y la aplicacion esta sana.",
       ).toBe(true);
@@ -228,17 +293,71 @@ describe("#16 · la sonda de un contenedor que no es el backend, contra su nginx
   /**
    * Y el censo, para que esto no pase en verde por lista vacia.
    *
-   * Hoy hay **exactamente un** contenedor asi en los cuatro sistemas: la interfaz de ventanilla
-   * de `caja` (#16). El dia que `rentas` estrene la suya, esta cifra sube y hay que mirarla; el
-   * dia que la de `caja` desaparezca sin querer, se pone roja aqui en vez de dejar el `if` de
-   * arriba saliendo por la puerta de atras en los cuatro.
+   * Eran **uno** hasta I-44 —la interfaz de ventanilla de `caja` (#16)— y su propio comentario
+   * decia «el dia que `rentas` estrene la suya, esta cifra sube y hay que mirarla». Subio. Lo que
+   * ese comentario NO anticipo es que la de `rentas` llevaria su nginx **dentro de la imagen**, y
+   * por eso el censo dice ahora tambien **de donde** sale la configuracion de cada una: si una
+   * cambia de forma, esta cifra lo dice en vez de dejarlo pasar.
    */
-  it("hoy hay exactamente uno, y es la interfaz de «caja»", () => {
+  it("hoy hay exactamente dos, y cada una dice de donde sale su nginx", () => {
     const censo = SISTEMAS_DEL_PRODUCTO.flatMap((sistema) =>
       sondasDe(sistema)
         .filter((s) => !s.backend)
-        .map((s) => `${sistema}: ${s.c.image.split(":")[0]?.split("/").pop() ?? ""}`),
+        .map((s) => {
+          const fuente = nginxQueSirve(sistema, s);
+          const imagen = s.c.image.split(":")[0]?.split("/").pop() ?? "";
+          return `${sistema}: ${imagen} <- ${fuente.clase}`;
+        }),
     );
-    expect([...new Set(censo)]).toEqual(["caja: kamayuk-caja-interfaz"]);
+    expect([...new Set(censo)].sort()).toEqual([
+      "caja: kamayuk-caja-interfaz <- configmap",
+      "rentas: kamayuk-rentas-interfaz <- imagen",
+    ]);
+  });
+
+  /**
+   * Y el contraste, que es lo que impide que lo de arriba se cumpla solo.
+   *
+   * Sin esto, una comprobacion que diera por atendida cualquier ruta pasaria igual de verde. Lo
+   * que se mide aqui es que `atiende` sepa decir que NO, y que sepa leer un `location =` — que
+   * es justo lo que la lectura vieja no sabia: `location = /index.html` se leia como «=».
+   */
+  describe("las muestras de `atiende`: que muerde, y que no muerde de mas", () => {
+    /** Una configuracion se lee LINEA A LINEA, que es como esta escrito un `nginx.conf`. */
+    const conf = (...lineas: string[]) => ["server {", ...lineas, "}"].join("\n");
+
+    const CONF = conf(
+      "    location / { try_files $uri /index.html; }",
+      "    location /assets/ { expires 1y; }",
+      "    location = /configuracion.js { add_header Cache-Control no-store; }",
+    );
+
+    it("lee la ruta de un `location =`, no su modificador", () => {
+      expect(locationsDe(CONF)).toEqual([
+        { modificador: "", ruta: "/" },
+        { modificador: "", ruta: "/assets/" },
+        { modificador: "=", ruta: "/configuracion.js" },
+      ]);
+    });
+
+    it("un prefijo cubre lo que empieza por el, y `=` solo lo exacto", () => {
+      expect(atiende(CONF, "/index.html", "muestra")).toBe(true);
+      expect(atiende(CONF, "/assets/x.js", "muestra")).toBe(true);
+      expect(atiende(CONF, "/configuracion.js", "muestra")).toBe(true);
+
+      const exacta = conf("    location = /index.html { }");
+      expect(atiende(exacta, "/index.html", "muestra")).toBe(true);
+      expect(atiende(exacta, "/index.html/x", "muestra")).toBe(false);
+    });
+
+    it("una configuracion que no declara la ruta contesta que no", () => {
+      expect(atiende(conf("    location /assets/ { }"), "/index.html", "muestra")).toBe(false);
+    });
+
+    it("una expresion regular lanza, en vez de darse por buena o por mala", () => {
+      expect(() => atiende(conf("    location ~ \\.php$ { }"), "/x", "muestra")).toThrow(
+        /no interpreta expresiones regulares/,
+      );
+    });
   });
 });

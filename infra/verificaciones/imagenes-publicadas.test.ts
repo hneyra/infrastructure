@@ -206,7 +206,7 @@ describe("quien puede traerse una imagen privada", () => {
   /**
    * Y la otra mitad, que es el hueco: los cuatro sistemas viven en el suyo desde ADR-0031, y ni
    * el `Secret` ni el parche llegan alli. Hoy funciona porque sus paquetes son publicos; hacerlos
-   * privados —que es lo que deberian ser— deja sus QUINCE cargas en `ImagePullBackOff`.
+   * privados —que es lo que deberian ser— deja sus DIECISEIS cargas en `ImagePullBackOff`.
    *
    * Esta prueba NO fosiliza el estado: exige que, mientras ningun pod de un sistema declare
    * credencial propia, el manifiesto no contenga ninguna — de modo que quien la anada tenga que
@@ -214,11 +214,14 @@ describe("quien puede traerse una imagen privada", () => {
    */
   it.each(ENVIRONMENTS)("y a ninguno de los cuatro sistemas, en «%s»", (ambiente) => {
     const sin = podsSinCredencial(ambiente);
-    // Las QUINCE cargas de los cuatro sistemas: CINCO Deployment, ocho Job y dos CronJob. Eran
-    // catorce hasta que `caja` estreno su interfaz de ventanilla (#16), que es el quinto
-    // Deployment — y su imagen es tan privada-o-publica como las otras, asi que el hueco crece
-    // con ella en vez de quedarse quieto.
-    expect(sin).toHaveLength(15);
+    // Las DIECISEIS cargas de los cuatro sistemas: SEIS Deployment, ocho Job y dos CronJob. Eran
+    // catorce hasta que `caja` estreno su interfaz de ventanilla (#16) y quince hasta que
+    // `rentas` estreno la suya (I-44) — y su imagen es tan privada-o-publica como las otras, asi
+    // que el hueco crece con cada una en vez de quedarse quieto.
+    //
+    // Esta cifra es el censo de lo que costaria cerrar el hueco, y por eso se toca a mano: cada
+    // interfaz nueva pasa por aqui y por la decision de si sigue abierto.
+    expect(sin).toHaveLength(16);
     expect([...new Set(sin.map((p) => p.espacio))].sort()).toEqual([
       `kamayuk-caja-${ambiente}`,
       `kamayuk-catastro-${ambiente}`,

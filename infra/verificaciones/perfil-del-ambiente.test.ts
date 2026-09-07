@@ -254,11 +254,29 @@ describe("C-19 · el perfil de recursos de un ambiente no alcanza al otro", () =
    * cabe ahora**, así que la interfaz no cambia la decisión pendiente —es D-25—, pero la empeora
    * en la cantidad exacta que cuesta, y esa cantidad queda escrita aquí y no en la cabeza de
    * nadie.
+   *
+   * ## Y volvieron a subir, por lo mismo y en otro repositorio (`rentas` I-44)
+   *
+   * De `1390m / 5216Mi` permanentes a **`1440m / 5280Mi`**, y del pico `1860m / 7584Mi` a
+   * **`1910m / 7648Mi`**: **50m y 64Mi** otra vez, y por la misma pieza — `rentas` estrenó su
+   * `Deployment/kamayuk-rentas-interfaz`, que es el SEXTO de los cuatro sistemas.
+   *
+   * Lo que esto enseña no es la cifra sino **de dónde llegó**: este repositorio no tuvo ni un
+   * commit ese día. La demanda de `prod` cambió porque un hermano integró una interfaz, y lo
+   * único que lo dijo fue esta prueba —al día siguiente, cuando alguien volvió a correr el
+   * flujo—. Es el hueco que `E` dejó declarado: un filtro `paths` sólo nombra rutas de su
+   * repositorio, así que un merge en `rentas` no dispara este flujo y `main` puede quedarse rojo
+   * sin un commit propio.
+   *
+   * Medido contra el nodo, que es lo que el párrafo de arriba exige: `prod` pasa de faltarle
+   * **60m** de CPU a faltarle **110m**, y de **1 856Mi** a **1 920Mi**. Sigue sin caber, sigue
+   * siendo D-25, y la brecha (#1) no se toca: `capacidad.test.ts` exige desde C-16 que quien la
+   * declara siga sin caber, y sigue.
    */
   it("prod pide exactamente lo medido en `E`", () => {
     const demanda = demandaDelStack(manifiestosDe("prod"));
-    expect(demanda.permanente).toEqual({ cpuEnMili: 1390, memoriaEnMi: 5216 });
-    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 1860, memoriaEnMi: 7584 });
+    expect(demanda.permanente).toEqual({ cpuEnMili: 1440, memoriaEnMi: 5280 });
+    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 1910, memoriaEnMi: 7648 });
   });
 
   /** Y `prod` declara el perfil dimensionado, que es la tabla base. */
