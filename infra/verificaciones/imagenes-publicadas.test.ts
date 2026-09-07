@@ -221,6 +221,16 @@ describe("quien puede traerse una imagen privada", () => {
     //
     // Esta cifra es el censo de lo que costaria cerrar el hueco, y por eso se toca a mano: cada
     // interfaz nueva pasa por aqui y por la decision de si sigue abierto.
+    //
+    // Y la SIGUIENTE ya se sabe cuanto cuesta, que es el AC-4 de #12: `catastro` publica
+    // `kamayuk-catastro-web` y ningun descriptor la despliega todavia; el dia que lo haga esta
+    // cifra pasa a DIECISIETE. No hay que declararla en `espaciosConCredencialDeRegistro()`
+    // porque **es publica, y eso se midio en vez de suponerse**: el 2026-09-07, con un token
+    // ANONIMO de `ghcr.io/token` y el `sha` que los dos stacks declaran
+    // (`37cc08b25712db92a72c3b375d76158665c3a418`), las tres de `catastro` contestan 200 —
+    // `kamayuk-catastro`, `kamayuk-catastro-migrador` y `kamayuk-catastro-web`—. O sea que la
+    // tercera nace con la MISMA condicion que las otras dos: hereda el hueco de D-23 en vez de
+    // necesitar credencial, y hacerlas privadas las deja a las diecisiete en ImagePullBackOff.
     expect(sin).toHaveLength(16);
     expect([...new Set(sin.map((p) => p.espacio))].sort()).toEqual([
       `kamayuk-caja-${ambiente}`,
@@ -241,6 +251,19 @@ describe("quien puede traerse una imagen privada", () => {
  * no rompa no quiere decir que no haya que verla —es una imagen que alguien construye en cada
  * merge, con su coste y su superficie— asi que se cuenta, con su nombre, y cambiarla obliga a
  * tocar esta linea y decir por que.
+ *
+ * ## Este censo lee lo DECLARADO, y hay una segunda lectura que lee lo DESPLEGADO (#12)
+ *
+ * Aqui «desplegada» significa «esta en `descriptor.imagenes`», que es lo que el descriptor
+ * DECLARA. `verificaciones/upstream-de-la-interfaz.ts` hace la otra lectura —lo que los
+ * MANIFIESTOS piden— y **no son la misma**: una imagen declarada que ningun `Deployment` use se
+ * cae por el hueco entre las dos y no sale ni como desplegada ni como huerfana.
+ *
+ * Medido, retirando el `Deployment` de la interfaz de `caja` de su descriptor y dejando su
+ * `imagenes` intacto: este censo sigue diciendo «solo `kamayuk-catastro-web`» sobre un ambiente
+ * que ya no despliega la de `caja`; el censo del otro modulo la nombra. Se deja asi a proposito
+ * —cada uno contesta una pregunta distinta y las dos hacen falta— y queda escrito para que el
+ * dia que las dos discrepen se sepa cual es cual.
  */
 describe("lo que se publica y nadie despliega, contado", () => {
   it("hoy es una, la interfaz que «catastro» esta estrenando", () => {
