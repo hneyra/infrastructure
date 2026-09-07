@@ -140,6 +140,19 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
       // catastro 10 desde la etapa 1 del territorio: `V6` trajo el CUC del SNCP y
       // `frente_predio` (T-0, ADR-0034/ADR-0036), y `V7`..`V10` la zonificacion, la gestion
       // del riesgo, la fiscalizacion catastral y el buzon del territorio.
+      // catastro 13 desde `V11`..`V13`, y esto es lo que el parrafo de abajo manda hacer antes
+      // de tocar el numero: se miro que extension usa cada una y si su esquema la declara.
+      //   - `V11` (#22): `ST_Relate` sobre `geography` dentro de un CONSTRAINT TRIGGER, y un
+      //     indice GiST -> `postgis`, que `catastro/crear-roles.sql` declara.
+      //   - `V12` (#23/#24/#25): retira `hallazgo.geometria` con sus cuatro columnas de marco y
+      //     su GiST. No usa ninguna extension que su esquema no tuviera ya.
+      //   - `V13` (#27): `DROP INDEX`, un CHECK y cuatro `COMMENT ON`. Su unica clase de
+      //     operadores es `text_pattern_ops`, que es del NUCLEO y por eso no se declara —es la
+      //     lista `DEL_NUCLEO` de la guarda de #742, escrita justo para no dar dieciseis falsos
+      //     positivos con ella—.
+      // Las tres estan cubiertas por `unaccent`/`postgis`/`btree_gist`, que ese archivo ya
+      // declaraba, y las demas pruebas de este mismo archivo —las que comparan uso contra
+      // declaracion— siguen en verde con las trece dentro.
       // rentas 13 desde C-12, que retiro `contribuyente_nombre_trgm_ix` —inalcanzable bajo RLS—.
       // Cuando esto se ponga rojo lo que hay que hacer NO es actualizar el numero: es mirar que
       // migracion entro y comprobar que declaro las extensiones que usa. Se comprobo para `V13`:
@@ -148,7 +161,7 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
       // mantiene verde el `gin_trgm_ops` que `V1` sigue nombrando, o sea por un motivo que dejo
       // de ser cierto—.
       rentas: 13,
-      catastro: 10,
+      catastro: 13,
       normativa: 1,
       caja: 2,
     });

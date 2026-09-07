@@ -193,7 +193,12 @@ rl_db_de() {
     # Desde `E` no hay ninguna copia local: el esquema del monolito salio del repositorio
     # con el monolito, y los cuatro que quedan viven cada uno en su clon hermano.
     local clon="$raiz/../$sistema"
-    [ -d "$clon/.git" ] || {
+    # `-e` y no `-d`: en un `git worktree` el `.git` de la raiz es un ARCHIVO con una linea
+    # `gitdir:` dentro, y un worktree es un clon tan legitimo como otro. Con `-d` esto no da
+    # un rojo que hable de lo que vigila: da uno que dice que el clon no esta cuando si esta,
+    # y manda a mirar donde no es. Es el mismo defecto que `ClonesHermanosDelWorkflowTest` y
+    # `CatalogoDelSistemaTest` cerraron en Java con `Files.exists`.
+    [ -e "$clon/.git" ] || {
         echo "No esta el clon de «${sistema}» en «${clon}», asi que no se puede volcar" >&2
         echo "su esquema. Traelo con:" >&2
         echo "    git clone https://github.com/hneyra/$sistema $clon" >&2

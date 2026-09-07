@@ -1,0 +1,62 @@
+# El mismo reparto, y ningun router declara `priority`.
+#
+# Traefik v3 ordena por longitud de regla cuando falta, asi que HOY saldria bien por
+# accidente. Lo que se pierde es que quede escrito cual gana, que es exactamente lo que
+# `caja`#17 y `rentas`#44 decidieron declarar en vez de heredar del orden.
+name: kamayuk-mercados
+
+services:
+  mercados-migraciones:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: migrador
+    environment:
+      KAMAYUK_DB_URL: jdbc:postgresql://base:5432/mercados
+      KAMAYUK_DB_OWNER_USUARIO: kamayuk_owner
+      KAMAYUK_DB_OWNER_CLAVE: ${KAMAYUK_CLAVE_OWNER:?falta}
+    restart: "no"
+
+  mercados-implantacion:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: aplicacion
+    environment:
+      SPRING_PROFILES_ACTIVE: batch
+      KAMAYUK_DB_URL: jdbc:postgresql://base:5432/mercados
+      KAMAYUK_DB_USUARIO: kamayuk_app
+      KAMAYUK_DB_CLAVE: ${KAMAYUK_CLAVE_APP:?falta}
+    restart: "no"
+
+  mercados:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: aplicacion
+    environment:
+      SPRING_PROFILES_ACTIVE: web
+      KAMAYUK_DB_URL: jdbc:postgresql://base:5432/mercados
+      KAMAYUK_DB_USUARIO: kamayuk_app
+      KAMAYUK_DB_CLAVE: ${KAMAYUK_CLAVE_APP:?falta}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.mercados.rule=PathPrefix(`/mercados/api/v1`)
+      - traefik.http.services.mercados.loadbalancer.server.port=8080
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8080/actuator/health || exit 1"]
+
+  mercados-interfaz:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      target: interfaz
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.mercados-interfaz.rule=PathPrefix(`/mercados`)
+      - traefik.http.services.mercados-interfaz.loadbalancer.server.port=8080
+
+networks:
+  default:
+    name: kamayuk-plataforma
+    external: true

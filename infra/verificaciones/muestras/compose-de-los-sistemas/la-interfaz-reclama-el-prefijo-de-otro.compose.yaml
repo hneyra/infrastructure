@@ -1,0 +1,63 @@
+# El backend reclama lo suyo y **la interfaz reclama el prefijo de otro sistema**.
+#
+# Hasta I-44 esto no lo miraba nadie: la comprobacion leia solo las etiquetas del servicio
+# del backend, asi que un `PathPrefix` escrito en el servicio de la interfaz era invisible.
+name: kamayuk-mercados
+
+services:
+  mercados-migraciones:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: migrador
+    environment:
+      KAMAYUK_DB_URL: jdbc:postgresql://base:5432/mercados
+      KAMAYUK_DB_OWNER_USUARIO: kamayuk_owner
+      KAMAYUK_DB_OWNER_CLAVE: ${KAMAYUK_CLAVE_OWNER:?falta}
+    restart: "no"
+
+  mercados-implantacion:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: aplicacion
+    environment:
+      SPRING_PROFILES_ACTIVE: batch
+      KAMAYUK_DB_URL: jdbc:postgresql://base:5432/mercados
+      KAMAYUK_DB_USUARIO: kamayuk_app
+      KAMAYUK_DB_CLAVE: ${KAMAYUK_CLAVE_APP:?falta}
+    restart: "no"
+
+  mercados:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: aplicacion
+    environment:
+      SPRING_PROFILES_ACTIVE: web
+      KAMAYUK_DB_URL: jdbc:postgresql://base:5432/mercados
+      KAMAYUK_DB_USUARIO: kamayuk_app
+      KAMAYUK_DB_CLAVE: ${KAMAYUK_CLAVE_APP:?falta}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.mercados.rule=PathPrefix(`/mercados/api/v1`)
+      - traefik.http.routers.mercados.priority=20
+      - traefik.http.services.mercados.loadbalancer.server.port=8080
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8080/actuator/health || exit 1"]
+
+  mercados-interfaz:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      target: interfaz
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.mercados-interfaz.rule=PathPrefix(`/rentas`)
+      - traefik.http.routers.mercados-interfaz.priority=10
+      - traefik.http.services.mercados-interfaz.loadbalancer.server.port=8080
+
+networks:
+  default:
+    name: kamayuk-plataforma
+    external: true
