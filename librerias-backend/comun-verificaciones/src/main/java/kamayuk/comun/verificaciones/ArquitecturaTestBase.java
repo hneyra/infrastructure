@@ -4,9 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.lang.ArchRule;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import kamayuk.comun.verificaciones.SujetosDeLaConfiguracion.EntradaSinSujeto;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,10 +39,18 @@ public abstract class ArquitecturaTestBase {
     private static final Set<String> AMBITOS_ACOTADOS = Set.of("fiscalizacion", "indicadores");
 
     private static JavaClasses clases;
+    private static JavaClasses muestras;
 
     @BeforeAll
     static void importar() {
         clases = ReglasDeArquitectura.clasesDeProduccion();
+        // Las muestras entran aparte y no mezcladas: las reglas se aplican solo a produccion, pero
+        // las listas de exencion se expanden bajo LOS DOS arboles (`bajoLasDosRaices`), asi que
+        // contrastarlas solo contra produccion pondria rojas las entradas que existen para que la
+        // regla pueda demostrarse sobre su muestra.
+        muestras =
+                new ClassFileImporter()
+                        .importPackages(ConfiguracionDeLasVerificaciones.PAQUETE_DE_MUESTRAS);
     }
 
     @Test
@@ -124,6 +136,275 @@ public abstract class ArquitecturaTestBase {
         boolean sinNegocio = CONFIG.sinContextosAcotadosTodavia();
         for (ArchRule regla : ReglasDeArquitectura.todas()) {
             (sinNegocio ? regla.allowEmptyShould(true) : regla).check(clases);
+        }
+    }
+
+    @Test
+    @DisplayName("ninguna entrada de la configuracion nombra algo que no esta")
+    void ningunaEntradaDeLaConfiguracionNombraAlgoQueNoEsta() {
+        // #27. Todas estas listas se consultan por NOMBRE, con `contains` o con
+        // `getOrDefault(..., SISTEMA_REPLICADO)`. Un nombre que no casa con nada NO es un error:
+        // no exime, no permite y no clasifica a nadie, y el conjunto sigue en verde. Medido:
+        // borrando `kamayuk.catastro.fiscalizacion.dominio.Tolerancia` y dejando su nombre en
+        // `envoltoriosDeDecimal()`, `verificarArquitectura` daba BUILD SUCCESSFUL.
+        //
+        // Solo se exige a las CINCO listas que eximen o permiten. El porque de esa linea —y por
+        // que las otras dos van a un censo y no a un rojo— esta en SujetosDeLaConfiguracion.
+        assertThat(clases)
+                .as(
+                        "sin clases importadas esta guarda no mide nada: pasaria en verde con todas"
+                                + " las entradas muertas del mundo dentro")
+                .isNotEmpty();
+
+        int examinadas =
+                CONFIG.envoltoriosDeDecimal().size()
+                        + CONFIG.tiposAjenosQueFiscalizacionSoloLee().size()
+                        + CONFIG.quienesPuedenMoverElContexto().size()
+                        + CONFIG.escriturasSinUsuarioQueObserve().size()
+                        + CONFIG.busquedasDeTextoLibreConMotivo().size();
+        assertThat(examinadas)
+                .as(
+                        "las cinco listas de exencion estan TODAS vacias: esta guarda se quedaria"
+                                + " sin sujeto y se cumpliria sola. Dos de ellas tienen valor por"
+                                + " omision, asi que llegar a cero significa que algo mas se rompio")
+                .isGreaterThan(0);
+
+        // El censo de las dos listas que declaran o reparten. No es un rojo —su motivo esta en
+        // `declaracionesSinSujeto`— pero se imprime, porque una entrada que nadie consulta no se
+        // ve de ninguna otra manera.
+        List<EntradaSinSujeto> censo =
+                SujetosDeLaConfiguracion.declaracionesSinSujeto(
+                        CONFIG,
+                        clases,
+                        SujetosDeLaConfiguracion.modulosDelDisco(CONFIG.raizDelCodigo()),
+                        AMBITOS_ACOTADOS);
+        if (!censo.isEmpty()) {
+            System.out.println(
+                    "[#27] censo de entradas que hoy no consulta nadie ("
+                            + censo.size()
+                            + "), sin rojo y con su motivo en SujetosDeLaConfiguracion:");
+            censo.forEach(entrada -> System.out.println("  - " + entrada));
+        }
+
+        assertThat(SujetosDeLaConfiguracion.exencionesSinSujeto(CONFIG, clases, muestras))
+                .as(
+                        "una entrada que no nombra nada del arbol no exime a nadie hoy, y el dia que"
+                                + " nazca una clase con ese nombre la eximira sin que nadie lo haya"
+                                + " decidido. El remedio es borrarla, o traer lo que nombra: no hay"
+                                + " lista de excepciones a proposito")
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("la guarda de las entradas sin sujeto muerde, y no grita en lo correcto")
+    void laGuardaDeLasEntradasSinSujetoMuerde() {
+        // Las dos direcciones. Sin la segunda, una guarda que devolviera SIEMPRE todo lo que se le
+        // pasa —o sea que no supiera reconocer un sujeto vivo— pasaria esta demostracion igual, y
+        // entonces el rojo de arriba no significaria nada.
+        JavaClass unaDeProduccion = clases.stream().findFirst().orElseThrow();
+
+        assertThat(
+                        SujetosDeLaConfiguracion.exencionesSinSujeto(
+                                new ConfiguracionConEntradasMuertas(CONFIG), clases, muestras))
+                .as("las cinco listas de exencion, con una entrada muerta cada una")
+                .extracting(EntradaSinSujeto::lista)
+                .containsExactlyInAnyOrder(
+                        "envoltoriosDeDecimal",
+                        "tiposAjenosQueFiscalizacionSoloLee",
+                        "quienesPuedenMoverElContexto",
+                        "escriturasSinUsuarioQueObserve",
+                        "busquedasDeTextoLibreConMotivo");
+
+        assertThat(
+                        SujetosDeLaConfiguracion.declaracionesSinSujeto(
+                                new ConfiguracionConEntradasMuertas(CONFIG),
+                                clases,
+                                Set.of("kamayuk-un-modulo-que-si-existe"),
+                                AMBITOS_ACOTADOS))
+                .as("y las dos que declaran o reparten, que van al censo y no al rojo")
+                .extracting(EntradaSinSujeto::lista)
+                .containsExactlyInAnyOrder("modulosDelReparto", "ambitosAusentes");
+
+        assertThat(
+                        SujetosDeLaConfiguracion.exencionesSinSujeto(
+                                new ConfiguracionConEntradasVivas(CONFIG, unaDeProduccion),
+                                clases,
+                                muestras))
+                .as(
+                        "y con las mismas cinco listas nombrando cosas que SI estan —cuatro de las"
+                                + " muestras y una clase de produccion de este repositorio— no"
+                                + " sobra ni una: una guarda que marcara todo tambien pasaria la"
+                                + " mitad de arriba")
+                .isEmpty();
+    }
+
+    /** La misma configuracion con una entrada muerta en cada una de las siete listas. */
+    private record ConfiguracionConEntradasMuertas(ConfiguracionDeLasVerificaciones original)
+            implements ConfiguracionDeLasVerificaciones {
+
+        private static final String NO_EXISTE = ".paquete.que.no.existe.ClaseQueNoExiste";
+
+        @Override
+        public Set<String> envoltoriosDeDecimal() {
+            return Set.of(NO_EXISTE);
+        }
+
+        @Override
+        public Set<String> tiposAjenosQueFiscalizacionSoloLee() {
+            return Set.of(NO_EXISTE);
+        }
+
+        @Override
+        public Set<String> quienesPuedenMoverElContexto() {
+            return Set.of(NO_EXISTE);
+        }
+
+        @Override
+        public Set<String> escriturasSinUsuarioQueObserve() {
+            return Set.of(NO_EXISTE + ".unMetodo(java.lang.String)");
+        }
+
+        @Override
+        public Set<String> busquedasDeTextoLibreConMotivo() {
+            return Set.of("ClaseQueNoExisteEnNingunRepositorio");
+        }
+
+        @Override
+        public Set<String> modulosDelReparto() {
+            return Set.of("kamayuk-un-modulo-que-no-existe");
+        }
+
+        @Override
+        public Set<String> ambitosAusentes() {
+            return Set.of("un-ambito-que-ninguna-regla-acota");
+        }
+
+        @Override
+        public String paqueteRaiz() {
+            return original.paqueteRaiz();
+        }
+
+        @Override
+        public String sistema() {
+            return original.sistema();
+        }
+
+        @Override
+        public Set<String> tablasProtegidas() {
+            return original.tablasProtegidas();
+        }
+
+        @Override
+        public Set<String> tablasInmutables() {
+            return original.tablasInmutables();
+        }
+
+        @Override
+        public Map<String, String> sistemaDeCadaTabla() {
+            return original.sistemaDeCadaTabla();
+        }
+
+        @Override
+        public List<CruceConsentido> crucesConsentidos() {
+            return original.crucesConsentidos();
+        }
+
+        @Override
+        public Set<String> componenElAreaAManoConMotivo() {
+            return original.componenElAreaAManoConMotivo();
+        }
+
+        @Override
+        public Set<String> paquetesQueTienenQueExistir() {
+            return original.paquetesQueTienenQueExistir();
+        }
+
+        @Override
+        public Path raizDelCodigo() {
+            return original.raizDelCodigo();
+        }
+    }
+
+    /**
+     * El contraste: las mismas cinco listas nombrando cosas que SI estan.
+     *
+     * <p>Cuatro salen de las muestras, que viajan con la libreria y por tanto valen igual en los
+     * cinco repositorios; la quinta tiene que ser una clase de PRODUCCION porque el escaner de
+     * busqueda por prefijo mira el nombre del archivo y la muestra no entra ahi a proposito.
+     */
+    private record ConfiguracionConEntradasVivas(
+            ConfiguracionDeLasVerificaciones original, JavaClass deProduccion)
+            implements ConfiguracionDeLasVerificaciones {
+
+        @Override
+        public Set<String> envoltoriosDeDecimal() {
+            return Set.of(".dominio.Dinero");
+        }
+
+        @Override
+        public Set<String> tiposAjenosQueFiscalizacionSoloLee() {
+            return Set.of(".catastro.PredioDelContribuyente");
+        }
+
+        @Override
+        public Set<String> quienesPuedenMoverElContexto() {
+            return Set.of(".compartido.TenantContext");
+        }
+
+        @Override
+        public Set<String> escriturasSinUsuarioQueObserve() {
+            return Set.of(
+                    ".aplicacion.MuestraDeCasoDeUsoSinObservacion.darDeAlta(java.lang.String)");
+        }
+
+        @Override
+        public Set<String> busquedasDeTextoLibreConMotivo() {
+            return Set.of(deProduccion.getSimpleName());
+        }
+
+        @Override
+        public String paqueteRaiz() {
+            return original.paqueteRaiz();
+        }
+
+        @Override
+        public String sistema() {
+            return original.sistema();
+        }
+
+        @Override
+        public Set<String> tablasProtegidas() {
+            return original.tablasProtegidas();
+        }
+
+        @Override
+        public Set<String> tablasInmutables() {
+            return original.tablasInmutables();
+        }
+
+        @Override
+        public Map<String, String> sistemaDeCadaTabla() {
+            return original.sistemaDeCadaTabla();
+        }
+
+        @Override
+        public List<CruceConsentido> crucesConsentidos() {
+            return original.crucesConsentidos();
+        }
+
+        @Override
+        public Set<String> componenElAreaAManoConMotivo() {
+            return original.componenElAreaAManoConMotivo();
+        }
+
+        @Override
+        public Set<String> paquetesQueTienenQueExistir() {
+            return original.paquetesQueTienenQueExistir();
+        }
+
+        @Override
+        public Path raizDelCodigo() {
+            return original.raizDelCodigo();
         }
     }
 }
