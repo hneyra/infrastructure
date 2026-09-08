@@ -109,7 +109,7 @@ config:
   # (ADR-0011 §5, `ignoreChanges`), pero **no es inerte**: el `Job` de migracion de ese sistema
   # lleva la version en el nombre, asi que un valor nuevo no modifica un Job — crea otro, y ese
   # Job aplica las migraciones de esa version.
-  kamayuk:versionDeRentas: 293c7a99658e52a3bbda77c752ba57fe10b93a93
+  kamayuk:versionDeRentas: 0fa7d034d185842012f8a8282eb513d6aa12ccd9
   kamayuk:versionDeCatastro: 37cc08b25712db92a72c3b375d76158665c3a418
   kamayuk:versionDeNormativa: b364c22b0fa667b31af47061dd827980391ffb46
   kamayuk:versionDeCaja: 5db1db30f464aa2ce4cd3511c39317513d4e0f96
