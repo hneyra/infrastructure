@@ -199,6 +199,37 @@ CLAVE_SUPER=$(kubectl -n "$NAMESPACE" get secret "$SECRETO_SUPER" \
 [ -n "$CLAVE_SUPER" ] \
     || { echo "No se pudo leer la clave del superusuario desde «${SECRETO_SUPER}»." >&2; exit 1; }
 
+# ── Esperar a que el motor conteste, ANTES de crear ni comprobar nada ────────────
+#
+# Este paso corre DETRAS de `pulumi up`, y un `up` que toque el `Deployment` del motor lo
+# recrea —lleva un `PersistentVolumeClaim`, asi que la estrategia es `Recreate`: baja a cero
+# y vuelve a subir—. Sin esta espera, el guion pregunta mientras el motor arranca, no obtiene
+# respuesta y **detiene el despliegue por una extension que existe**.
+#
+# Medido el 2026-09-08 en `stg`: PostgreSQL escribio «extension "pg_trgm" already exists,
+# skipping» y dos segundos despues este guion dijo «FALTA pg_trgm NO esta creada». Las dos
+# frases en el mismo registro y sobre la misma base.
+#
+# El limite es el de un arranque, no el de una caida: si el motor no contesta en dos minutos
+# no es que este arrancando, es que no esta, y entonces si hay que parar.
+echo "· Esperando a que el motor de «${NAMESPACE}» acepte consultas"
+ESPERAS=24
+LISTO=no
+for _ in $(seq 1 "$ESPERAS"); do
+    if kubectl -n "$NAMESPACE" exec "$MOTOR" -c postgres -- env PGPASSWORD="$CLAVE_SUPER" \
+            psql --username=postgres --dbname="$BASE" --quiet --tuples-only \
+            --command "SELECT 1" >/dev/null 2>&1; then
+        LISTO=si
+        break
+    fi
+    sleep 5
+done
+if [ "$LISTO" != "si" ]; then
+    echo "FALLO: el motor de «${NAMESPACE}» no acepto consultas contra «${BASE}» en dos" >&2
+    echo "minutos. NO es que falte una extension: es que no hay con quien hablar." >&2
+    exit 1
+fi
+
 FALLOS=0
 for extension in $extensiones; do
     if [ -z "$SOLO_COMPROBAR" ]; then
@@ -210,10 +241,27 @@ SQL
     fi
 
     # Lo unico que demuestra algo: que la sentencia no diera error no dice que este.
-    if kubectl -n "$NAMESPACE" exec "$MOTOR" -c postgres -- env PGPASSWORD="$CLAVE_SUPER" \
-            psql --username=postgres --dbname="$BASE" --quiet --tuples-only \
-            --command "SELECT 1 FROM pg_extension WHERE extname = '$extension'" 2>/dev/null \
-            | grep -q 1; then
+    #
+    # Y «no pude preguntar» NO es «no esta». Esto llevaba un `2>/dev/null` y un `grep -q 1`, y
+    # con eso las dos cosas eran indistinguibles: si `psql` no podia abrir sesion —porque el
+    # motor estaba rodando, que es lo que pasa cuando este paso corre justo despues de un
+    # `pulumi up` que toco el `Deployment`— la salida venia vacia y el guion decia FALTA.
+    #
+    # Medido el 2026-09-08 en `stg`: PostgreSQL escribio «extension "pg_trgm" already exists,
+    # skipping» y dos segundos despues este guion dijo «FALTA pg_trgm NO esta creada». Las dos
+    # frases en el mismo registro, sobre la misma base. Comprobado luego contra el motor:
+    # `pg_trgm` estaba, en `public`. El despliegue se detuvo por una extension que existia.
+    salida=$(kubectl -n "$NAMESPACE" exec "$MOTOR" -c postgres -- env PGPASSWORD="$CLAVE_SUPER" \
+        psql --username=postgres --dbname="$BASE" --quiet --tuples-only --no-align \
+        --command "SELECT 1 FROM pg_extension WHERE extname = '$extension'" 2>&1)
+    codigo=$?
+
+    if [ "$codigo" -ne 0 ]; then
+        echo "  NO SE PUDO PREGUNTAR por ${extension} en «${BASE}» de ${NAMESPACE}:" >&2
+        echo "$salida" | sed 's/^/         /' >&2
+        echo "         Esto NO es «la extension falta»: es que la consulta no llego a la base." >&2
+        FALLOS=$((FALLOS + 1))
+    elif [ "$(printf %s "$salida" | tr -d '[:space:]')" = "1" ]; then
         echo "  OK     ${extension} esta creada en «${BASE}» de ${NAMESPACE}"
     else
         echo "  FALTA  ${extension} NO esta creada en «${BASE}» de ${NAMESPACE}" >&2
