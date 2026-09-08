@@ -1291,7 +1291,7 @@ jobs:
 
       - name: Qué quedó a medias, si algo falló
         if: failure() && steps.credenciales.outputs.hay == 'si'
-        run: infrastructure/.github/diagnostico-del-namespace.sh kamayuk-stg
+        run: infrastructure/.github/diagnostico-del-namespace.sh --ambiente stg
 
   aplicar-prod:
     name: pulumi up en prod (con aprobación)
@@ -1548,7 +1548,7 @@ jobs:
 
       - name: Qué quedó a medias, si algo falló
         if: failure()
-        run: infrastructure/.github/diagnostico-del-namespace.sh kamayuk-prod
+        run: infrastructure/.github/diagnostico-del-namespace.sh --ambiente prod
 
   deteccion-de-deriva:
     name: Detección de deriva en prod
@@ -1706,4 +1706,4 @@ jobs:
 
       - name: Qué quedó a medias, si algo falló
         if: failure() && steps.credenciales.outputs.hay == 'si'
-        run: infrastructure/.github/diagnostico-del-namespace.sh kamayuk-prod
+        run: infrastructure/.github/diagnostico-del-namespace.sh --ambiente prod
