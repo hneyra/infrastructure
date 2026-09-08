@@ -188,6 +188,20 @@ export interface DivergenciaDeclarada {
 export const DIVERGENCIAS_DECLARADAS: readonly DivergenciaDeclarada[] = [
   {
     pieza: "dominio-compartido",
+    archivo: "dominio/OperacionTodaviaNoCompletable.java",
+    grupos: "rentas",
+    clase: "solo-en-uno",
+    motivo:
+      "De `rentas`#40, y llego DESPUES de que este censo se escribiera: es el tipo comun que " +
+      "hace que las tres escrituras que ese backend publica y que hoy no pueden terminar dejen " +
+      "de salir como `ERROR_INTERNO` con numero de incidencia. Vive en el dominio compartido " +
+      "por lo mismo que `MotivoDeInalcanzable`: sus excepciones estan en `tesoreria` y en " +
+      "`catastro`, y `ManejadorDeErrores` vive en `plataforma`, que no depende de ninguno. Los " +
+      "otros tres no lo tienen, asi que una limitacion de diseno conocida les sigue saliendo " +
+      "como fallo del servidor. Cierra: la libreria 1 de #22 (`comun-dominio`).",
+  },
+  {
+    pieza: "dominio-compartido",
     archivo: "dominio/MotivoDeInalcanzable.java",
     grupos: "rentas",
     clase: "solo-en-uno",
