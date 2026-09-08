@@ -923,10 +923,23 @@ jobs:
           pulumi config set --secret --stack stg backupSecretAccessKey -- "$BACKUP_SECRET_ACCESS_KEY_VALUE"
           pulumi config set --secret --stack stg registryPullToken -- "$REGISTRY_PULL_TOKEN_VALUE"
 
+      # `refresh: true`, igual que los dos `up` (#44). Sin el, el `preview` compara contra un
+      # estado que puede estar viejo y **falla en vez de avisar**: basta con que alguien haya
+      # borrado un recurso fuera de Pulumi para que TODOS los PR se pongan rojos hasta que corra
+      # un `up`.
+      #
+      # No es hipotetico: desatascar `stg` obligo a borrar a mano tres `Job` que habian agotado
+      # su `backoffLimit` —un `Job` que llega a su limite no reintenta, y su nombre lleva el
+      # `sha`, asi que `pulumi up` tampoco puede recrearlo—, y el siguiente `preview` murio con
+      # «unable to get cluster state: jobs.batch "kamayuk-catastro-migracion-…" not found».
+      #
+      # En `preview` el refresco es EN MEMORIA: no guarda estado, solo evita comparar contra algo
+      # que ya no existe. Por eso vale en un PR, donde escribir estado no seria aceptable.
       - uses: pulumi/actions@v6
         if: steps.token.outputs.hay == 'si'
         with:
           command: preview
+          refresh: true
           stack-name: stg
           work-dir: infrastructure/infra
           comment-on-pr: true
@@ -1025,10 +1038,23 @@ jobs:
           pulumi config set --secret --stack prod backupSecretAccessKey -- "$BACKUP_SECRET_ACCESS_KEY_VALUE"
           pulumi config set --secret --stack prod registryPullToken -- "$REGISTRY_PULL_TOKEN_VALUE"
 
+      # `refresh: true`, igual que los dos `up` (#44). Sin el, el `preview` compara contra un
+      # estado que puede estar viejo y **falla en vez de avisar**: basta con que alguien haya
+      # borrado un recurso fuera de Pulumi para que TODOS los PR se pongan rojos hasta que corra
+      # un `up`.
+      #
+      # No es hipotetico: desatascar `stg` obligo a borrar a mano tres `Job` que habian agotado
+      # su `backoffLimit` —un `Job` que llega a su limite no reintenta, y su nombre lleva el
+      # `sha`, asi que `pulumi up` tampoco puede recrearlo—, y el siguiente `preview` murio con
+      # «unable to get cluster state: jobs.batch "kamayuk-catastro-migracion-…" not found».
+      #
+      # En `preview` el refresco es EN MEMORIA: no guarda estado, solo evita comparar contra algo
+      # que ya no existe. Por eso vale en un PR, donde escribir estado no seria aceptable.
       - uses: pulumi/actions@v6
         if: steps.token.outputs.hay == 'si'
         with:
           command: preview
+          refresh: true
           stack-name: prod
           work-dir: infrastructure/infra
           comment-on-pr: true
