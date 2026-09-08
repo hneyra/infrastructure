@@ -168,7 +168,15 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
       // pruebas de este mismo archivo —las que comparan uso contra declaracion— siguen en verde
       // con la catorce dentro, y ese verde es la medida: si `V14` usara algo sin declarar,
       // saldrian rojas ellas y no esta.
-      rentas: 14,
+      // rentas 15 desde `V17__el_codigo_del_padron_por_prefijo.sql` (`rentas`#35), y el mismo
+      // parrafo obliga a lo mismo: se leyo la migracion antes de tocar el numero. Crea UN
+      // indice —`contribuyente (municipalidad_id, codigo_contribuyente text_pattern_ops)`— y
+      // **`text_pattern_ops` es del NUCLEO de PostgreSQL, no de ninguna extension**: es la
+      // clase de operadores que compara en bytes, la que hace que un `LIKE 'algo%'` alcance un
+      // b-tree bajo cualquier colacion. No hay `CREATE EXTENSION`, ni `gin_trgm_ops`, ni
+      // geometria, ni `EXCLUDE`. Las demas pruebas de este archivo siguen en verde con la
+      // quince dentro, y ese verde es la medida.
+      rentas: 15,
       catastro: 13,
       normativa: 1,
       caja: 2,
