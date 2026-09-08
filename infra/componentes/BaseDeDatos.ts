@@ -397,7 +397,29 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
               // contenedor, asi que no depende de que la imagen traiga `wget` —la
               // de `postgres_exporter` no trae shell ni utilidades, es un solo
               // binario Go—.
-              readinessProbe: sondaHttp("/metrics", 9187, { periodSeconds: 10, failureThreshold: 3 }),
+              //
+              // ── SIN `readinessProbe`, Y ESO ES EL ARREGLO DE #42 ────────────────────────
+              //
+              // Tenia una, y **`readiness` es del POD y no del contenedor**: un pod solo esta
+              // `Ready` cuando lo estan TODOS sus contenedores, asi que cuando este sidecar
+              // tardaba en contestar el pod perdia su `Endpoints` y
+              // `kamayuk-<amb>-postgres.<ns>:5432` empezaba a dar «connection refused» — a los
+              // cuatro sistemas, al `Job` del realm y al respaldo a la vez.
+              //
+              // Medido en `stg` el 2026-09-08: el motor `2/2 Running`, 0 reinicios, 32h, con
+              // sus tres `pg_isready` en verde, y aun asi pods rojos en los CINCO espacios de
+              // nombres. El unico evento era «Readiness probe failed: Get
+              // http://10.42.0.38:**9187**/metrics: context deadline exceeded» — el puerto del
+              // exportador, no el del motor.
+              //
+              // Un exportador de metricas es observabilidad: que no conteste tiene que costar
+              // un hueco en una grafica, no el padron entero. Quien decide si la base esta
+              // disponible es el contenedor que la sirve, y ese ya tiene sus tres sondas.
+              //
+              // **Lo que se pierde, dicho:** sin `readinessProbe` este contenedor no se
+              // reinicia por esa via. Le queda la `livenessProbe`, que es la que corresponde a
+              // «este proceso esta colgado» — y esa SI puede quedarse, porque reinicia el
+              // contenedor sin tocar el `Endpoints` del `Service`.
               livenessProbe: sondaHttp("/metrics", 9187, { periodSeconds: 20, failureThreshold: 5 }),
             },
           ],
