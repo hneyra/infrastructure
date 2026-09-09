@@ -173,6 +173,16 @@ export interface EntornoDelDescriptor {
     /** El JWKS, direccion de red **interna**, ya cruzando el namespace. */
     readonly jwks: string;
     /**
+     * El punto de emision de tokens, direccion de red **interna**, ya cruzando el namespace.
+     *
+     * Es la quinta cosa, y llego con #21 AC-2: un proceso de fondo corre sin usuario delante, asi
+     * que no tiene ninguna peticion de la que sacar un `Authorization` — lo pide el mismo, con
+     * `client_credentials` y la clave de su cliente confidencial. Va aqui por lo mismo que
+     * `jwks`: es una direccion de red y no una identidad, y componerla en cada descriptor a
+     * partir del emisor publico dejaria a los cuatro saliendo al ingreso para volver a entrar.
+     */
+    readonly token: string;
+    /**
      * El anfitrion del motor de datos, `host:puerto`, **ya cruzando el namespace**.
      *
      * Es la cuarta cosa, y llego tarde: hasta C-17 los cuatro descriptores escribian a mano

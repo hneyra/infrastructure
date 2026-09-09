@@ -92,6 +92,8 @@ export interface Secretos {
    * un ambiente mas tarde.
    */
   ingestorDeCatastro: string;
+  /** El `Secret` con la clave de cada cliente confidencial de servicio (#21 AC-2). */
+  serviciosDeIdentidad: string;
 }
 
 export function secretos(environment: Environment): Secretos {
@@ -105,7 +107,24 @@ export function secretos(environment: Environment): Secretos {
     grafana: resourceName(environment, "grafana"),
     carga: resourceName(environment, "postgres-carga"),
     ingestorDeCatastro: resourceName(environment, "postgres-ingestor-catastro"),
+    serviciosDeIdentidad: resourceName(environment, "servicios-de-identidad"),
   };
+}
+
+/**
+ * La clave, dentro de `servicios-de-identidad`, de un par (origen, destino) y su municipalidad.
+ *
+ * **Una por cliente confidencial y no una por par**, que es lo que cuesta y lo que se decide
+ * aqui: los clientes son `kamayuk-<sistema>-servicio-<ubigeo>` (#21 AC-1), uno por municipalidad,
+ * y darles a todos la misma clave dejaria que el proceso implantado en una municipalidad pidiera
+ * un token de otra — o sea, deshacer con el secreto lo que el atributo de la cuenta de servicio
+ * acota (ADR-0028 §2).
+ *
+ * El nombre lleva `-a-` en medio porque los tres trozos son nombres de sistema y de ubigeo, y
+ * `rentas-catastro-200101` no dice cual llama a cual.
+ */
+export function claveDeServicio(sistema: string, llamaA: string, ubigeo: string): string {
+  return `${sistema}-a-${llamaA}-${ubigeo}`;
 }
 
 /** Las claves dentro de cada `Secret`. Se nombran una vez y se citan desde todas partes. */
@@ -645,6 +664,20 @@ export const ETIQUETA_DE_NAMESPACE_DE_SISTEMA = { "kamayuk-sistema": "si" } as c
 export function jwksInterno(environment: Environment, realm: string): string {
   const servicio = servicioDeIdentidad(environment);
   return `http://${servicio}:8080/keycloak/realms/${realm}/protocol/openid-connect/certs`;
+}
+
+/**
+ * El punto de emision de tokens, por la red interna (#21 AC-2).
+ *
+ * Es una DIRECCION DE RED, como el JWKS y por el mismo motivo: un backend que pidiera su token
+ * al nombre publico saldria al ingreso para volver a entrar, y con la politica de egreso
+ * declarada —que nombra el pod de identidad, no internet— **no saldria en absoluto**. El emisor
+ * publico sigue siendo lo que se compara con el `iss` del token que se recibe; esto es a donde
+ * se va a buscarlo.
+ */
+export function tokenInterno(environment: Environment, realm: string): string {
+  const servicio = servicioDeIdentidad(environment);
+  return `http://${servicio}:8080/keycloak/realms/${realm}/protocol/openid-connect/token`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
