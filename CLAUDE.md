@@ -79,7 +79,7 @@ Registro completo en [GOB-02](https://github.com/hneyra/sgtm/blob/migracion-a-mi
 | D-22 | **Quién opera cuatro despliegues.** Una municipalidad no opera cuatro | La implantación |
 | ~~D-23~~ | **Contestada el 2026-09-07: un repositorio propio, `kamayuk-lib`** ([D-23b](docs/00-gobierno/D-23b-quien-publica-las-librerias-comunes.md), [ADR-0038](docs/30-arquitectura/adr/ADR-0038-el-corte-entre-el-producto-y-el-suelo.md)). Ojo al nombre: `D-23-quien-publica-las-imagenes.md` es **otra cosa** y esta cerrada | ~~`comun-dominio`, `comun-plataforma`, `comun-integracion`~~. Desbloquea #23 y #24 |
 | D-25 | **Si la separación llega o no al hierro.** Cuatro sistemas sobre un k3s de un nodo comparten disponibilidad | El dimensionado |
-| D-19 | Cómo llega el catálogo de accesos a cuatro sistemas | La sesión |
+| ~~D-19~~ | **Contestada el 2026-09-09** en su parte de «quién es el dueño»: la autorización es un **sistema propio** y se replica por el buzón ([ADR-0039](docs/30-arquitectura/adr/ADR-0039-la-identidad-es-un-sistema.md), se construye en [#52](https://github.com/hneyra/infrastructure/issues/52)). Sigue abierto **quién compone el catálogo de accesos de la sesión** | La sesión |
 | D-05 | Régimen de firma digital de valores y resoluciones | La capa de documentos |
 ## Reglas que no se negocian
 
