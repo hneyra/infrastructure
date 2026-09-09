@@ -12,24 +12,43 @@
 # credenciales distintas a las de prod (INF-03 §4), un secreto de stg comprometido no
 # puede abrir prod.
 config:
-  # Lo ASIGNABLE del nodo (`capacidad.ts`). ⚠ A DIFERENCIA DE `prod`, ESTO NO ESTÁ
-  # MEDIDO: `reservar-recursos-del-nodo.sh` todavía no se ha ejecutado contra el nodo de
-  # `stg` (su registro en INF-10 §4 tiene una sola fila, y es la de `prod`), así que no
-  # hay ninguna cifra de este nodo escrita en el repositorio.
+  # Lo ASIGNABLE del nodo (`capacidad.ts`). YA ESTÁ MEDIDO, y no hizo falta ningún
+  # `kubectl` a mano: lo imprime el propio paso «Lo declarado cabe en el nodo real» que
+  # `infra.yml` corre antes de cada `up`. Corrida 34282370245, trabajo 102250207213,
+  # 2026-09-08:
   #
-  # Lo que hay es una **cota inferior demostrable**: `stg` despliega hoy su stack
-  # completo, y su pico de arranque son 3 560m y 6 368Mi (los Jobs de migración e
-  # implantación piden 1 CPU cada uno y coexisten con los Deployment). Un nodo que ubica
-  # eso tiene al menos esto asignable. Declarar por debajo de lo real es seguro en los
-  # dos sentidos: `capacidad.ts` sigue exigiendo que el stack quepa, y el paso
-  # «Lo declarado cabe en el nodo real» de `infra.yml` rechaza cualquier declaración que
-  # sea MAYOR que lo que el nodo dice — así que una cifra optimista no puede pasar en
-  # silencio, solo una pesimista, y una pesimista solo aprieta la comprobación.
+  #   Nodo real de «stg»: 6 CPU / 12247552Ki asignables.
+  #   El stack declara:            4 CPU / 7Gi.
+  #   ::notice:: «stg» se declara mas pequeño de lo que es. Es admisible —solo aprieta
+  #   la comprobacion— pero actualizarlo con los valores reales de arriba da el margen
+  #   que el nodo de verdad tiene.
   #
-  # Sustituir por la medición en cuanto alguien tenga el túnel abierto:
+  # Ese aviso pedía por escrito que se declarara, y apretar de más costó: con `4`/`7Gi`
+  # el pico de arranque —**7 424Mi** desde que `identidad` entra al stack— salía
+  # «faltan 416Mi» sobre un nodo que reparte **11 960Mi**, o sea un check en rojo por un
+  # nodo que sí cabía. Con lo medido quedan 11 800Mi disponibles tras descontar los
+  # 160Mi de los pods de serie de k3s: **cabe, con ~4 376Mi de margen**.
+  #
+  # La cifra se escribe VERBATIM, en el `Ki` que devuelve el API server, para que esta
+  # línea se pueda comparar letra por letra con lo que el nodo contesta. `capacidad.ts`
+  # admite esa unidad a propósito, y `Pulumi.prod.yaml` ya declara la suya así.
+  #
+  # Dos cosas que sorprenden, y por eso van escritas:
+  #
+  #   - Este nodo es MÁS grande que el de `prod` (2 CPU / 6029348Ki), aunque la cabecera
+  #     de este archivo llame a `stg` «más pequeño». Son dos cosas a la vez: su VPS tiene
+  #     más hierro, y aquí `reservar-recursos-del-nodo.sh` NO se ha ejecutado —su registro
+  #     en INF-10 §4 sigue teniendo una sola fila, la de `prod`, donde esa reserva se
+  #     llevó exactamente 2 CPU y 2 Gi—.
+  #   - Por lo mismo, esta cifra BAJA el día que alguien aplique la reserva aquí. No hay
+  #     que acordarse: el paso de arriba compara lo declarado contra el nodo antes de cada
+  #     `up` y rechaza declarar de más, así que ese día sale en rojo nombrando las dos
+  #     cifras — la dirección ruidosa, y la única en la que el error hace daño.
+  #
+  # Volver a medirlo es leer ese paso, o:
   #   kubectl get node -o jsonpath='{.items[0].status.allocatable.cpu}{"/"}{.items[0].status.allocatable.memory}'
-  kamayuk:nodeAllocatableCpu: "4"
-  kamayuk:nodeAllocatableMemory: 7Gi
+  kamayuk:nodeAllocatableCpu: "6"
+  kamayuk:nodeAllocatableMemory: 12247552Ki
   #
   # LA BRECHA DE #1 SE RETIRA (C-19). Este nodo NO daba para el monolito y los cuatro
   # sistemas juntos —C-16 lo midio: faltaban 3 232Mi—, y la direccion decidio que `stg` es un
@@ -41,6 +60,13 @@ config:
   #   pico del arranque 1820m / 6528Mi contra 3800m / 7008Mi disponibles  ->  CABE
   #     el monolito que se retira valia          800m / 2176Mi
   #     el perfil `minimo` del motor vale                 1024Mi
+  #
+  # Esas cuatro cifras son las de C-19, medidas cuando el stack eran cuatro sistemas y el
+  # nodo se declaraba `4`/`7Gi`. Hoy el pico son 2 170m / 7 424Mi —entro `identidad`— contra
+  # los 5 800m / 11 800Mi que deja el nodo medido de arriba, y `yarn capacidad --ambiente stg`
+  # las imprime al dia. No se reescriben: son el registro de por que se retiro la brecha, y
+  # lo que aquella medicion afirmaba —que sin el monolito y con el perfil `minimo` este
+  # ambiente CABE— sigue siendo cierto, y con mas margen.
   #
   # `prod` conserva su brecha: alli el monolito se despliega y el nodo es el que es.
   #
