@@ -487,9 +487,27 @@ describe("C-14 §3 · los CronJob del emisor y del ingestor", () => {
   /**
    * El contraste. Sin el, «todo sistema declara un CronJob» podria satisfacerse dandole uno a
    * quien no tiene ningun proceso periodico, y una lista vacia dejaria de significar algo.
+   *
+   * Hasta la etapa 4 de ADR-0039 eran tres —`normativa`, `caja` e `identidad`—. Desde ella los
+   * cuatro que no son `identidad` corren el consumidor de la autorizacion cada cinco minutos
+   * (`consumidor-de-identidad.test.ts` mide que exista, que no nazca suspendido y que su
+   * credencial tenga cuenta), asi que el unico sin ningun `CronJob` es el dueno: **no se consume
+   * a si mismo**, y sirve el buzon en vez de empujarlo.
    */
-  it.each(["normativa", "caja", "identidad"])("«%s» no declara ninguno, y es una afirmacion", (sistema) => {
+  it.each(["identidad"])("«%s» no declara ninguno, y es una afirmacion", (sistema) => {
     expect(delSistema(AMBIENTE, sistema).filter((m) => m.kind === "CronJob")).toEqual([]);
+  });
+
+  it.each(["normativa", "caja"])("«%s» declara UNO desde la etapa 4, y es su consumidor de la autorizacion", (sistema) => {
+    // Hasta entonces «no declara ninguno» era la afirmacion de estos dos; ahora la afirmacion
+    // es la contraria y hay que sostenerla por este lado tambien: un consumidor que
+    // desaparezca del descriptor deja el contraste de arriba en verde por accidente.
+    const cronjobs = delSistema(AMBIENTE, sistema).filter((m) => m.kind === "CronJob");
+    expect(
+      cronjobs.map((m) => m.metadata.name),
+      `«${sistema}» sin su consumidor: la copia local de la autorizacion se queda como la dejo ` +
+        "la implantacion (identidad#4 AC-3)",
+    ).toHaveLength(1);
   });
 
   /**

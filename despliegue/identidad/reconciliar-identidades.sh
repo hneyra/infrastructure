@@ -367,7 +367,12 @@ fi
 # verdad es el `Secret` del cluster, y aqui se FIJA.
 #
 # Las claves llegan como ficheros en `$CLAVES_DE_SERVICIO` —un `Secret` montado como volumen,
-# un fichero por clave, con el mismo nombre que la clave: `<sistema>-a-<llamaA>-<ubigeo>`—.
+# un fichero por clave, con el mismo nombre que la clave: `<sistema>-<ubigeo>`—. Es UNA por
+# CLIENTE y no una por cuenta declarada: `rentas` declara dos cuentas —hacia `catastro` y hacia
+# `identidad`, etapa 4 de ADR-0039— y las dos las sirve el mismo cliente
+# `kamayuk-rentas-servicio-<ubigeo>`, que tiene una sola clave. Hasta esa etapa el fichero se
+# llamaba `<sistema>-a-<llamaA>-<ubigeo>`, y con dos destinos este bucle habria fijado la segunda
+# clave encima de la primera: el proceso que llevaba la otra, 401 en su primera llamada.
 # Se montan y no se pasan por variable de entorno porque un `env` de un pod lo lee cualquiera
 # que pueda describirlo, y porque con una variable por cuenta el `Deployment` crece con cada
 # municipalidad.
@@ -442,7 +447,7 @@ if [ "$CUAL" = servicios ]; then
         kc update "users/$cuenta" -r "$REALM" -s "attributes.municipalidad_id=$ubigeo" >/dev/null
 
         # Y la CLAVE, que es lo que hace que el cliente sirva para algo (#21 AC-2).
-        archivo="$CLAVES_DE_SERVICIO/${sistema}-a-${llamaA}-${ubigeo}"
+        archivo="$CLAVES_DE_SERVICIO/${sistema}-${ubigeo}"
         if [ ! -s "$archivo" ]; then
             echo "FALLO: no esta la clave de «$cliente»." >&2
             echo "Se busco en «$archivo», que es donde se monta «<amb>-servicios-de-identidad»." >&2
@@ -481,7 +486,7 @@ if [ "$CUAL" = servicios ]; then
         # Y que la clave que quedo puesta sea la del `Secret`, que es distinto de haberla
         # mandado: un `update` que Keycloak rechace sale por otro lado y aqui se veria igual.
         # Se compara el valor, no se imprime: lo que se dice es «no coincide».
-        archivo="$CLAVES_DE_SERVICIO/${sistema}-a-${llamaA}-${ubigeo}"
+        archivo="$CLAVES_DE_SERVICIO/${sistema}-${ubigeo}"
         puesta=$(kc get "clients/$id/client-secret" -r "$REALM" 2>/dev/null | tr -d ' \n' \
             | sed -n 's/.*"value":"\([^"]*\)".*/\1/p')
         if [ -z "$puesta" ] || [ "$puesta" != "$(cat "$archivo" 2>/dev/null)" ]; then

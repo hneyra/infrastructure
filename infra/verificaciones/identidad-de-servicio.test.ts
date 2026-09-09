@@ -65,8 +65,16 @@ describe("las cuentas de servicio se declaran por municipalidad (ADR-0028 §2)",
 
   it("el identificador del cliente lleva el ubigeo, que es lo que impide un token para todas", () => {
     const ubigeos = ubigeosDeclarados(RAIZ);
-    const ids = serviciosDeclarados(RAIZ).map((s) => clienteDeServicio(s.sistema, s.ubigeo));
-    expect(new Set(ids).size, "dos municipalidades no pueden compartir cliente").toBe(ids.length);
+    // Un cliente por (sistema, ubigeo), y NO por cuenta declarada: desde la etapa 4 de ADR-0039
+    // `rentas` declara dos cuentas —hacia `catastro` y hacia `identidad`— y las dos las sirve el
+    // mismo cliente. Hasta entonces esta linea comparaba contra el numero de cuentas, y con dos
+    // destinos por sistema habria salido roja sobre una declaracion correcta.
+    const pares = new Set(serviciosDeclarados(RAIZ).map((s) => `${s.sistema}|${s.ubigeo}`));
+    const ids = [...pares].map((p) => {
+      const [sistema = "", ubigeo = ""] = p.split("|");
+      return clienteDeServicio(sistema, ubigeo);
+    });
+    expect(new Set(ids).size, "dos municipalidades no pueden compartir cliente").toBe(pares.size);
     for (const u of ubigeos) {
       expect(ids.filter((i) => i.endsWith(`-${u}`)).length).toBeGreaterThan(0);
     }
@@ -119,9 +127,12 @@ describe("la clave del cliente de servicio la pone el despliegue, no Keycloak (A
           .filter((e) => e.secreto === `kamayuk-${ambiente}-servicios-de-identidad`)
           .map((e) => e.clave),
       );
-      const declaradas = serviciosDeclarados(RAIZ).map((s) =>
-        claveDeServicio(s.sistema, s.llamaA, s.ubigeo),
-      );
+      // Una clave por CLIENTE: `rentas` declara dos cuentas —hacia `catastro` y hacia
+      // `identidad`— y las dos las sirve el mismo cliente con la misma clave (etapa 4 de
+      // ADR-0039). Por eso el conjunto, y no la lista.
+      const declaradas = [
+        ...new Set(serviciosDeclarados(RAIZ).map((s) => claveDeServicio(s.sistema, s.ubigeo))),
+      ];
       expect(declaradas.length, "sin cuentas declaradas esto no mide nada").toBeGreaterThan(0);
       expect(declaradas.filter((c) => !enElSecreto.has(c))).toEqual([]);
       // Y la otra direccion: una clave que no reclama ninguna cuenta es una credencial que

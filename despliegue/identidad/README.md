@@ -123,6 +123,47 @@ Un realm versionado que trae usuarios con contraseña es la forma más cómoda d
 que esa contraseña acabe en producción. Por eso se separan, aunque cueste un paso
 más al instalar.
 
+## Las cuentas de servicio: como nacen las seis, y por que una clave por cliente
+
+Un backend que llama a otro sin un usuario delante —el ingestor de `rentas`, el publicador de
+`caja` y, desde la etapa 4 de ADR-0039, **los cuatro consumidores de la autorizacion**— pide su
+token con `client_credentials` a un **cliente confidencial por (sistema, municipalidad)**:
+`kamayuk-<sistema>-servicio-<ubigeo>` (#21, ADR-0028 §2: «no hay un proceso con permiso sobre
+todas»). Ninguno vive en `realm-sgtm.json`, porque un cliente confidencial tiene una clave y una
+clave no vive en git (ADR-0012). **Nacen con este guion**, en su tercer modo:
+
+```bash
+./identidad/reconciliar-identidades.sh servicios
+```
+
+Lo que aplica sale del bloque `servicios` de [`municipalidades/<ubigeo>.json`](municipalidades/README.md),
+una entrada por par (origen, destino) con su `proposito`:
+
+| `sistema` | `llamaA` | Para que | Desde |
+|---|---|---|---|
+| `caja` | `rentas` | entregar el evento de cada pago (ADR-0026 §3) | #21 |
+| `rentas` | `catastro` | traer el buzon de hechos del territorio (C-8) | #21 |
+| `rentas`, `catastro`, `normativa`, `caja` | `identidad` | traer el buzon de la autorizacion cada cinco minutos y acusar lo aplicado | `identidad`#4 (etapa 4 de ADR-0039) |
+
+Seis cuentas por municipalidad, sobre **cuatro** clientes: `rentas` llama a dos sistemas y las dos
+cuentas las sirve el mismo cliente. En el cluster lo corre el `Job` de identidad de la plataforma
+(`Identidad.ts` deriva `servicios.tsv` del JSON y lo monta en el `ConfigMap`), y **se para
+nombrando lo que falta** en vez de darlo por bueno: cero cuentas declaradas, un ambito sin
+mapeador, o una clave que no esta.
+
+**La clave es UNA por cliente, y hasta la etapa 4 el codigo hacia lo contrario.** El `Secret`
+`kamayuk-<amb>-servicios-de-identidad` guardaba una clave por cuenta declarada —`rentas-a-catastro-200105`— y
+este guion la fijaba en el cliente una vez por linea del TSV. Con un solo destino por sistema no se
+notaba; con el segundo destino de `rentas` la ultima linea habria pisado a la primera y el
+ingestor de `catastro` habria recibido 401 en su primera vuelta. Desde `identidad`#4 el fichero se
+llama `<sistema>-<ubigeo>` (`claveDeServicio` de `infra/componentes/convenciones.ts`), hay uno por
+cliente, y las dos credenciales de `rentas` son espejo de la misma clave. Lo que lo sujeta esta en
+`infra/verificaciones/identidad-de-servicio.test.ts` —las dos fuentes tienen que decir lo mismo,
+en las dos direcciones— y en `consumidor-de-identidad.test.ts`, que exige ademas que el `CronJob`
+que la usa exista y no nazca suspendido. El runbook de la copia local, con como mirarla en un
+ambiente desplegado, es
+[`docs/00-gobierno/identidad-4-la-ventana-de-la-copia-local.md`](../../docs/00-gobierno/identidad-4-la-ventana-de-la-copia-local.md).
+
 ## El emisor es una identidad, no una dirección de red
 
 Es lo que más cuesta si se descubre por las malas. El navegador llega a Keycloak

@@ -12,6 +12,26 @@
       "sistema": "rentas",
       "llamaA": "catastro",
       "proposito": "traer el buzon de hechos del territorio; sin esto el ingestor nace suspendido (C-8, #21)"
+    },
+    {
+      "sistema": "rentas",
+      "llamaA": "identidad",
+      "proposito": "traer el buzon de la autorizacion cada cinco minutos y acusar lo aplicado; sin esto la copia local de usuario/grupo/miembro/permiso se queda como la dejo la implantacion y el guardia autoriza con ella para siempre (ADR-0039 etapa 4, identidad#4)"
+    },
+    {
+      "sistema": "catastro",
+      "llamaA": "identidad",
+      "proposito": "traer el buzon de la autorizacion cada cinco minutos y acusar lo aplicado; sin esto la copia local de usuario/grupo/miembro/permiso se queda como la dejo la implantacion y el guardia autoriza con ella para siempre (ADR-0039 etapa 4, identidad#4)"
+    },
+    {
+      "sistema": "normativa",
+      "llamaA": "identidad",
+      "proposito": "traer el buzon de la autorizacion cada cinco minutos y acusar lo aplicado; sin esto la copia local de usuario/grupo/miembro/permiso se queda como la dejo la implantacion y el guardia autoriza con ella para siempre (ADR-0039 etapa 4, identidad#4)"
+    },
+    {
+      "sistema": "caja",
+      "llamaA": "identidad",
+      "proposito": "traer el buzon de la autorizacion cada cinco minutos y acusar lo aplicado; sin esto la copia local de usuario/grupo/miembro/permiso se queda como la dejo la implantacion y el guardia autoriza con ella para siempre (ADR-0039 etapa 4, identidad#4)"
     }
   ],
   "usuarios": [
