@@ -425,11 +425,15 @@ export const DIVERGENCIAS_DECLARADAS: readonly DivergenciaDeclarada[] = [
   {
     pieza: "plataforma",
     archivo: "web/CodigoDeError.java",
-    grupos: "caja, catastro, identidad, normativa | rentas",
+    grupos: "caja, catastro, normativa | identidad | rentas",
     clase: "codigo",
     motivo:
-      "**El desajuste que el AC-1 de #22 nombra.** Doce constantes en `rentas` y once en los " +
-      "otros cuatro: `SERVICIO_NO_DISPONIBLE` existe solo alli. `catastro`#41 midio lo que cuesta " +
+      "**El desajuste que el AC-1 de #22 nombra.** Doce constantes en `rentas` y once en " +
+      "`caja`, `catastro` y `normativa`: `SERVICIO_NO_DISPONIBLE` existe solo alli. Y desde la " +
+      "etapa 3 de #52 (identidad#9) `identidad` va por su lado con doce DISTINTAS: las once mas " +
+      "`SIN_IDENTIDAD_DE_SERVICIO`, el 403 de quien lee el buzon sin una cuenta de servicio, que " +
+      "es codigo propio porque su remedio es pedir otro token y no conceder un permiso. Tres " +
+      "grupos, y ninguno es el correcto por construccion. `catastro`#41 midio lo que cuesta " +
       "que un cliente no reconozca un codigo: `esCodigoConocido` lo rechaza, degrada al del estado " +
       "HTTP, y la pantalla sale con el titulo de OTRO codigo y con «Reintentar» puesto o quitado " +
       "por el motivo equivocado. Cierra: la libreria 2 de #22 (`comun-plataforma`).",

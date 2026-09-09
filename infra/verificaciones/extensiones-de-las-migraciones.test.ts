@@ -194,11 +194,15 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
       // de mover el numero: una tabla (`identidad_evento`), un indice b-tree corriente sobre
       // `(municipalidad_id, id)`, su politica de RLS forzada y los GRANT. Ni GiST, ni GIN, ni
       // `EXCLUDE`, ni `text_pattern_ops` siquiera. Sigue sin declarar ninguna extension.
+      // identidad 3: la etapa 3 (identidad#9) trae `V3__acuses_del_buzon.sql`, leida entera antes
+      // de mover el numero: una tabla (`identidad_evento_acuse`) con su clave primaria compuesta,
+      // una foranea compuesta a `identidad_evento`, un `CHECK` de cuatro literales, su RLS
+      // forzada y los GRANT. Ningun indice que pida extension. Sigue sin declarar ninguna.
       rentas: 15,
       catastro: 13,
       normativa: 1,
       caja: 2,
-      identidad: 2,
+      identidad: 3,
     });
   });
 
