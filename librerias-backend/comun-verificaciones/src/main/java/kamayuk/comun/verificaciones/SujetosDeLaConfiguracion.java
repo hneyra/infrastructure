@@ -36,16 +36,19 @@ import java.util.stream.Stream;
  * verde. Es inocuo hoy y por eso peor mañana — el dia que alguien cree otra clase con ese nombre
  * queda eximida sin que nadie lo haya decidido.
  *
- * <h2>Las siete listas NO se comportan igual, y el criterio no es «existe»</h2>
+ * <h2>Las ocho listas NO se comportan igual, y el criterio no es «existe»</h2>
  *
- * <p>El criterio es <b>que cuesta que una entrada no case</b>, y ahi las siete se parten en dos:
+ * <p>El criterio es <b>que cuesta que una entrada no case</b>, y ahi las ocho se parten en dos:
  *
  * <ul>
- *   <li><b>Cinco EXIMEN o PERMITEN</b> —{@code envoltoriosDeDecimal}, {@code
+ *   <li><b>Seis EXIMEN o PERMITEN</b> —{@code envoltoriosDeDecimal}, {@code
  *       tiposAjenosQueFiscalizacionSoloLee}, {@code escriturasSinUsuarioQueObserve}, {@code
- *       quienesPuedenMoverElContexto} y {@code busquedasDeTextoLibreConMotivo}—: una entrada sin
- *       sujeto es un permiso que hoy no usa nadie y que mañana usara quien nazca con ese nombre.
- *       Esas tienen que <b>cuadrar</b>, y por eso {@link #exencionesSinSujeto} es un rojo.
+ *       quienesPuedenMoverElContexto}, {@code busquedasDeTextoLibreConMotivo} y {@code
+ *       escritoresDeLaAutorizacionConMotivo}—: una entrada sin sujeto es un permiso que hoy no usa
+ *       nadie y que mañana usara quien nazca con ese nombre. Esas tienen que <b>cuadrar</b>, y por
+ *       eso {@link #exencionesSinSujeto} es un rojo. La sexta solo se contrasta <b>si el
+ *       repositorio la ha declarado</b>: por omision devuelve {@code null}, que significa «la
+ *       prohibicion de ADR-0039 todavia no esta activa aqui» y no «no exime a nadie».
  *   <li><b>Dos DECLARAN o REPARTEN</b> —{@code modulosDelReparto} y {@code ambitosAusentes}—: no
  *       eximen a nadie, y la direccion que si cuesta ya la cierra otra guarda. Van a {@link
  *       #declaracionesSinSujeto}, que es un <b>censo con su motivo</b> y no un rojo. El porque de
@@ -54,7 +57,7 @@ import java.util.stream.Stream;
  *
  * <p>Marcar de rojo las dos ultimas pondria roja la mitad de los consumidores el primer dia sobre
  * entradas que no hacen daño, y una comprobacion que grita en lo correcto se acaba apagando (#437).
- * Marcar de censo las cinco primeras dejaria el defecto exacto que este trabajo existe para cerrar.
+ * Marcar de censo las seis primeras dejaria el defecto exacto que este trabajo existe para cerrar.
  *
  * <p>No hay lista de excepciones, y es deliberado: una excepcion para «entradas muertas» seria una
  * puerta abierta a justo el defecto. El remedio de una entrada sin sujeto es <b>borrarla</b>, o —si
@@ -79,7 +82,7 @@ public final class SujetosDeLaConfiguracion {
     }
 
     /**
-     * Las cinco listas que eximen o permiten, contrastadas contra las clases importadas.
+     * Las seis listas que eximen o permiten, contrastadas contra las clases importadas.
      *
      * <p>Se miran los DOS arboles —produccion y muestras—, que es exactamente lo que hace {@code
      * ReglasDeArquitectura.bajoLasDosRaices}: la exencion esta viva si cualquiera de los dos
@@ -157,6 +160,28 @@ public final class SujetosDeLaConfiguracion {
                                         + " escaner de ADR-0034 §3 no exime a nadie. Y esta lista"
                                         + " ES la lista de trabajo pendiente: una entrada que no"
                                         + " nombra nada la hace decir de mas"));
+            }
+        }
+
+        // 6. escritoresDeLaAutorizacionConMotivo(): exime de ADR-0039, y se nombra por el NOMBRE
+        // SIMPLE de la clase porque el escaner mira el nombre del archivo. `null` no es una lista
+        // vacia: es «este repositorio todavia no la declaro», y entonces no hay nada que
+        // contrastar — el motivo esta en el javadoc del metodo, con lo que cuesta escrito.
+        Set<String> escritores = config.escritoresDeLaAutorizacionConMotivo();
+        if (escritores != null) {
+            for (String entrada : ordenadas(escritores)) {
+                if (!simples.contains(entrada)) {
+                    sinSujeto.add(
+                            new EntradaSinSujeto(
+                                    "escritoresDeLaAutorizacionConMotivo",
+                                    entrada,
+                                    "no hay ninguna clase de produccion con ese nombre, asi que no"
+                                            + " exime a nadie de ADR-0039. Y esta lista es el trabajo"
+                                            + " pendiente de la etapa 4 con su fecha de fin: una"
+                                            + " entrada que no nombra nada la hace decir de mas, y el"
+                                            + " dia que nazca una clase con ese nombre podra escribir"
+                                            + " la autorizacion sin que nadie lo haya decidido"));
+                }
             }
         }
 

@@ -1376,6 +1376,186 @@ public abstract class ProhibicionesEnElCodigoFuenteTestBase {
                 .isEmpty();
     }
 
+    // ==================================================================
+    // ADR-0039 — la autorizacion es un sistema, y solo su dueño la escribe
+    // ==================================================================
+
+    @Test
+    @DisplayName("el escaner detecta la muestra que escribe la autorizacion, y no su javadoc")
+    void elEscanerDetectaLaMuestraQueEscribeLaAutorizacion() {
+        // Se llama a `revisarAutorizacion` DIRECTAMENTE, con la lista vacia, y no a
+        // `revisarAutorizacionSiSeDeclara`: mientras un repositorio no declare sus escritores la
+        // prohibicion no se revisa en el, asi que pasar por el interruptor dejaria esta
+        // demostracion en verde en los cinco y la regla quedaria escrita sin que nada comprobase
+        // que muerde. Lo que el interruptor hace se mide aparte, en `elInterruptorAbreYCierra`.
+        FuenteDeMuestra muestra =
+                FuenteDeMuestra.de(
+                        "infraestructura/MuestraDeRepositorioQueEscribeLaAutorizacion.java");
+
+        assertThat(muestra.texto())
+                .as("la muestra tiene que existir para poder detectarla")
+                .isNotBlank();
+
+        List<Hallazgo> hallazgos =
+                RevisorDeCodigoFuente.revisarAutorizacion(
+                        muestra.nombre(), muestra.texto(), java.util.Set.of());
+
+        assertThat(hallazgos)
+                .as(
+                        "las CINCO escrituras, y ninguna de las cuatro que su javadoc escribe en"
+                                + " prosa para explicarlas: una guarda que se dispara con el"
+                                + " comentario que la justifica es la que alguien acaba apagando"
+                                + " borrando el comentario (#42). El «ON CONFLICT … DO UPDATE SET»"
+                                + " no cuenta aparte: ahi el UPDATE no nombra tabla, la nombra su"
+                                + " INSERT, y ese ya esta marcado")
+                .hasSize(5);
+        assertThat(hallazgos.stream().map(Hallazgo::fragmento).toList())
+                .anySatisfy(f -> assertThat(f).containsIgnoringCase("insert into usuario"))
+                .anySatisfy(f -> assertThat(f).containsIgnoringCase("update grupo set"))
+                .anySatisfy(f -> assertThat(f).containsIgnoringCase("insert into permiso"))
+                // El SET en el literal siguiente, con las comillas y el + en medio.
+                .anySatisfy(f -> assertThat(f).containsIgnoringCase("update permiso\" + \" set"))
+                .anySatisfy(f -> assertThat(f).containsIgnoringCase("delete from miembro"))
+                .allSatisfy(f -> assertThat(f).startsWith("linea "));
+    }
+
+    @Test
+    @DisplayName("y el hallazgo nombra la LINEA, contada sobre el archivo sin descolocar")
+    void elHallazgoDeLaAutorizacionNombraLaLinea() {
+        // El comentario de bloque mide tres lineas. Borrarlo —que es lo que hace `soloCodigo`—
+        // subiria el INSERT tres lineas y el rojo mandaria a mirar donde no es, que es peor que no
+        // nombrar ninguna.
+        String fuente =
+                """
+                class Malo {
+                    /*
+                     * Aqui iba un INSERT INTO usuario, y ya no esta.
+                     */
+                    static final String SQL = "INSERT INTO usuario (cuenta) VALUES (?)";
+                }
+                """;
+
+        assertThat(
+                        RevisorDeCodigoFuente.revisarAutorizacion(
+                                "Malo.java", fuente, java.util.Set.of()))
+                .singleElement()
+                .extracting(Hallazgo::fragmento)
+                .asString()
+                .startsWith("linea 5:");
+    }
+
+    @Test
+    @DisplayName("la lista de escritores exime, y lo que decide es el nombre de la clase")
+    void laListaDeEscritoresDeLaAutorizacionExime() {
+        // La misma linea, byte a byte, en dos archivos: en uno es un hallazgo y en el otro no.
+        // La lista real la declara cada repositorio con su motivo y su fecha de fin, asi que aqui
+        // se usa un nombre cualquiera: lo que esta prueba demuestra es el MECANISMO, no el
+        // contenido. Que exime cada sistema es cosa suya y se comprueba en su subclase.
+        String fuente =
+                """
+                final class Sembrador {
+                    static final String SQL = "INSERT INTO permiso (grupo_id) VALUES (?)";
+                }
+                """;
+
+        assertThat(
+                        RevisorDeCodigoFuente.revisarAutorizacion(
+                                "Sembrador.java", fuente, java.util.Set.of()))
+                .as("fuera de la lista, escribir la autorizacion es un hallazgo")
+                .hasSize(1);
+        assertThat(
+                        RevisorDeCodigoFuente.revisarAutorizacion(
+                                "Sembrador.java", fuente, java.util.Set.of("Sembrador")))
+                .as("y declarado con su motivo, no lo es")
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("leer la autorizacion NO es escribirla, y las columnas homonimas tampoco cuentan")
+    void leerLaAutorizacionNoEsEscribirla() {
+        // El contraste que impide que esta regla muerda de mas. Si marcara la lectura, el
+        // `ComprobadorDeAccesoJdbc` de los cuatro satelites saldria rojo el primer dia sobre codigo
+        // correcto —leer la copia local para autorizar sin un viaje de red es D-N5— y una
+        // comprobacion que grita en lo correcto se acaba apagando (#437).
+        String fuente =
+                """
+                final class Bueno {
+                    static final String LEE =
+                            "SELECT p.privilegios FROM permiso p JOIN miembro m"
+                                    + " ON m.grupo_id = p.grupo_id WHERE m.usuario_id = ?";
+                    static final String OTRA_TABLA =
+                            "INSERT INTO usuario_externo (usuario_alta, grupo_origen) VALUES (?, ?)";
+                    static final String LA_SESION = "UPDATE sesion SET fin = now() WHERE id = ?";
+                }
+                """;
+
+        assertThat(
+                        RevisorDeCodigoFuente.revisarAutorizacion(
+                                "Bueno.java", fuente, java.util.Set.of()))
+                .as(
+                        "leer las cuatro es correcto en los cinco; «usuario_externo» y"
+                                + " «usuario_alta» no son ninguna de las cuatro —el guion bajo es"
+                                + " caracter de palabra—; y «sesion» es de cada sistema")
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("el interruptor abre y cierra: sin declarar nada, esta prohibicion no revisa")
+    void elInterruptorAbreYCierra() {
+        // Las dos posiciones, medidas. `null` no es «nadie puede escribirlas» sino «este
+        // repositorio todavia no lo ha declarado», y la diferencia es lo que impide que esta regla
+        // deje rojos los CINCO consumidores el dia que se mezcle (#437). Sin esta prueba, el
+        // interruptor podria quedarse pegado en «cerrado» y nadie lo notaria: la regla no se
+        // dispararia nunca y todo seguiria en verde.
+        String fuente =
+                """
+                final class Escribe {
+                    static final String SQL = "INSERT INTO grupo (nombre) VALUES (?)";
+                }
+                """;
+
+        assertThat(
+                        RevisorDeCodigoFuente.revisarAutorizacionSiSeDeclara(
+                                "Escribe.java", fuente, null))
+                .as(
+                        "sin declarar, no se revisa. Es un verde con fecha —la etapa 4 de"
+                                + " identidad#2— y no una puerta permanente, y por eso se IMPRIME"
+                                + " en cada corrida en vez de callarse (C-15/C-16)")
+                .isEmpty();
+        assertThat(
+                        RevisorDeCodigoFuente.revisarAutorizacionSiSeDeclara(
+                                "Escribe.java", fuente, java.util.Set.of()))
+                .as("declarado sin exenciones, se revisa todo")
+                .hasSize(1);
+    }
+
+    @Test
+    @DisplayName("y este repositorio dice si la vigila o no, en vez de callarlo")
+    void esteRepositorioDiceSiVigilaLaAutorizacion() {
+        // C-15/C-16: «no se hace» no es «esta bien». Mientras la configuracion de este repositorio
+        // no declare `escritoresDeLaAutorizacionConMotivo()`, ADR-0039 no le vigila nada, y eso
+        // tiene que verse en el registro de la corrida y no deducirse de que no salga ningun rojo.
+        //
+        // NO es un rojo a proposito: ponerlo rojo dejaria los cinco consumidores en rojo el dia que
+        // esta regla se mezclara, que es como una comprobacion se apaga en vez de arreglarse
+        // (#437). Es un censo, como el de las entradas sin sujeto de #27.
+        if (RevisorDeCodigoFuente.laAutorizacionSeVigila()) {
+            System.out.println(
+                    "[ADR-0039] la escritura de usuario/grupo/miembro/permiso SI se vigila aqui;"
+                            + " escritores declarados: "
+                            + ConfiguracionDeLasVerificaciones.actual()
+                                    .escritoresDeLaAutorizacionConMotivo());
+        } else {
+            System.out.println(
+                    "[ADR-0039] la escritura de usuario/grupo/miembro/permiso NO se vigila en este"
+                            + " repositorio: su configuracion no declara"
+                            + " escritoresDeLaAutorizacionConMotivo(), asi que la prohibicion esta"
+                            + " DESACTIVADA aqui. No es «no hay escrituras»: es «no se ha mirado»."
+                            + " Remedio: declararla con sus escritores, su motivo y su fecha de fin"
+                            + " (identidad#2, etapa 2).");
+        }
+    }
+
     /** Las migraciones de este repositorio, ordenadas por version. */
     private static List<Migracion> migracionesDelEsquema(Path raiz) throws IOException {
         try (Stream<Path> rutas = Files.walk(raiz)) {

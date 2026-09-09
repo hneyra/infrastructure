@@ -156,15 +156,21 @@ public abstract class ArquitecturaTestBase {
                                 + " las entradas muertas del mundo dentro")
                 .isNotEmpty();
 
+        // La sexta —`escritoresDeLaAutorizacionConMotivo`— solo cuenta si este repositorio la ha
+        // declarado: por omision devuelve `null`, que significa «la prohibicion de ADR-0039
+        // todavia no esta activa aqui» y no «no exime a nadie». Sumar `null` seria contarla como
+        // cero y esconder la diferencia entre las dos cosas.
+        Set<String> escritores = CONFIG.escritoresDeLaAutorizacionConMotivo();
         int examinadas =
                 CONFIG.envoltoriosDeDecimal().size()
                         + CONFIG.tiposAjenosQueFiscalizacionSoloLee().size()
                         + CONFIG.quienesPuedenMoverElContexto().size()
                         + CONFIG.escriturasSinUsuarioQueObserve().size()
-                        + CONFIG.busquedasDeTextoLibreConMotivo().size();
+                        + CONFIG.busquedasDeTextoLibreConMotivo().size()
+                        + (escritores == null ? 0 : escritores.size());
         assertThat(examinadas)
                 .as(
-                        "las cinco listas de exencion estan TODAS vacias: esta guarda se quedaria"
+                        "las listas de exencion estan TODAS vacias: esta guarda se quedaria"
                                 + " sin sujeto y se cumpliria sola. Dos de ellas tienen valor por"
                                 + " omision, asi que llegar a cero significa que algo mas se rompio")
                 .isGreaterThan(0);
@@ -206,14 +212,15 @@ public abstract class ArquitecturaTestBase {
         assertThat(
                         SujetosDeLaConfiguracion.exencionesSinSujeto(
                                 new ConfiguracionConEntradasMuertas(CONFIG), clases, muestras))
-                .as("las cinco listas de exencion, con una entrada muerta cada una")
+                .as("las seis listas de exencion, con una entrada muerta cada una")
                 .extracting(EntradaSinSujeto::lista)
                 .containsExactlyInAnyOrder(
                         "envoltoriosDeDecimal",
                         "tiposAjenosQueFiscalizacionSoloLee",
                         "quienesPuedenMoverElContexto",
                         "escriturasSinUsuarioQueObserve",
-                        "busquedasDeTextoLibreConMotivo");
+                        "busquedasDeTextoLibreConMotivo",
+                        "escritoresDeLaAutorizacionConMotivo");
 
         assertThat(
                         SujetosDeLaConfiguracion.declaracionesSinSujeto(
@@ -231,10 +238,10 @@ public abstract class ArquitecturaTestBase {
                                 clases,
                                 muestras))
                 .as(
-                        "y con las mismas cinco listas nombrando cosas que SI estan —cuatro de las"
-                                + " muestras y una clase de produccion de este repositorio— no"
-                                + " sobra ni una: una guarda que marcara todo tambien pasaria la"
-                                + " mitad de arriba")
+                        "y con las mismas seis listas nombrando cosas que SI estan —cuatro de las"
+                                + " muestras y dos veces una clase de produccion de este"
+                                + " repositorio— no sobra ni una: una guarda que marcara todo"
+                                + " tambien pasaria la mitad de arriba")
                 .isEmpty();
     }
 
@@ -267,6 +274,14 @@ public abstract class ArquitecturaTestBase {
         @Override
         public Set<String> busquedasDeTextoLibreConMotivo() {
             return Set.of("ClaseQueNoExisteEnNingunRepositorio");
+        }
+
+        @Override
+        public Set<String> escritoresDeLaAutorizacionConMotivo() {
+            // Declarada —o sea, la prohibicion de ADR-0039 activa— y con una entrada que no
+            // nombra ninguna clase. Con `null` no habria nada que contrastar y esta demostracion
+            // no cubriria la sexta lista.
+            return Set.of("OtraClaseQueNoExisteEnNingunRepositorio");
         }
 
         @Override
@@ -359,6 +374,13 @@ public abstract class ArquitecturaTestBase {
 
         @Override
         public Set<String> busquedasDeTextoLibreConMotivo() {
+            return Set.of(deProduccion.getSimpleName());
+        }
+
+        @Override
+        public Set<String> escritoresDeLaAutorizacionConMotivo() {
+            // Como la de arriba, y por lo mismo: el escaner de ADR-0039 compara contra el nombre
+            // del archivo, asi que la entrada viva tiene que ser una clase de PRODUCCION.
             return Set.of(deProduccion.getSimpleName());
         }
 

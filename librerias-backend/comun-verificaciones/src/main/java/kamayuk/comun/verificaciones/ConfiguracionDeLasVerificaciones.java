@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Lo que cambia de un sistema a otro, declarado por el repositorio que consume las barreras.
@@ -288,6 +289,64 @@ public interface ConfiguracionDeLasVerificaciones {
      */
     default Set<String> busquedasDeTextoLibreConMotivo() {
         return Set.of();
+    }
+
+    /**
+     * Quien puede ESCRIBIR las cuatro tablas de la autorizacion —{@code usuario}, {@code grupo},
+     * {@code miembro} y {@code permiso}—, cada uno por su nombre simple de clase y con su motivo.
+     *
+     * <p>Desde ADR-0039 la autorizacion es un <b>sistema</b> y su dueño es {@code identidad}. Las
+     * cuatro tablas siguen estando en los cinco baselines y los cinco las LEEN para autorizar sin
+     * un viaje de red (D-N5), asi que el reparto de tablas no las puede marcar de nadie: leerlas no
+     * es cruzar ninguna frontera. Lo que si es un cruce es escribirlas, y eso el reparto no lo
+     * distingue — lo distingue {@code RevisorDeCodigoFuente.revisarAutorizacion}, que mira {@code
+     * INSERT INTO}, {@code UPDATE … SET} y {@code DELETE FROM} sobre esas cuatro.
+     *
+     * <h2>Quien puede estar aqui, y hasta cuando</h2>
+     *
+     * <ul>
+     *   <li><b>{@code SembradorDeLaCopiaLocal}</b>, el sembrador de la copia local de cada satelite
+     *       ({@code catastro}, {@code normativa}, {@code caja}) — <b>hasta la etapa 5</b>, cuando
+     *       la copia local la escriba el consumidor del buzon y no una siembra propia.
+     *   <li><b>El consumidor del buzon</b> de cada satelite, cuando exista (<b>etapa 4</b>): recibe
+     *       los hechos que {@code identidad} publica y los aplica a la copia local. Escribe las
+     *       cuatro y tiene que poder hacerlo; lo que no puede es DECIDIR, y eso no lo ve un escaner
+     *       de texto.
+     *   <li><b>{@code AdministracionRepositoryJdbc} y {@code PermisoRepositoryJdbc} de {@code
+     *       identidad}</b>, <b>sin fecha de fin</b>: es el dueño. Ahi la escritura no es una
+     *       excepcion, es el sistema haciendo lo suyo.
+     *   <li><b>{@code AdministracionRepositoryJdbc} y {@code PermisoRepositoryJdbc} de {@code
+     *       rentas}</b>, <b>hasta la etapa 4 y no mas</b>. Son la administracion que hoy sigue
+     *       viviendo en {@code rentas} y que la etapa 4 traslada a {@code identidad}; el dia que se
+     *       traslade, estas dos entradas se quitan y el escaner las caza si alguien las deja.
+     * </ul>
+     *
+     * <h2>Por que {@code null} y no {@code Set.of()}: la regla nace DESACTIVADA</h2>
+     *
+     * <p><b>{@code null} significa «este repositorio todavia no lo ha declarado, asi que la
+     * prohibicion no se revisa».</b> Un {@code Set} —aunque este vacio— significa «declarado:
+     * revisa todo lo que no este aqui». No es un descuido de tipo: es la unica forma de que esta
+     * prohibicion pueda entrar en la libreria sin dejar rojos los CINCO consumidores el mismo dia,
+     * que es como una comprobacion se acaba apagando en vez de arreglandose (#437). Medido: con la
+     * lista declarada vacia, los cinco salen rojos —2, 4, 4, 4 y 2 escrituras— y ninguno de esos
+     * rojos es un defecto: son las escrituras legitimas de arriba, que cada repositorio tiene que
+     * declarar en SU {@code Configuracion…} con SU motivo, en su propio PR.
+     *
+     * <p><b>Y lo que cuesta se dice, porque es real</b>: mientras un repositorio no la declare,
+     * esta prohibicion <b>no le vigila nada</b>, en verde. Es un verde silencioso acotado y con
+     * fecha —la etapa 2 de {@code identidad#2}—, no una puerta permanente: {@code
+     * ProhibicionesEnElCodigoFuenteTestBase} lo IMPRIME en cada corrida en vez de callarlo, que es
+     * la doctrina de C-15/C-16 —«no se hace» no es «esta bien»—.
+     *
+     * <p><b>#27: censo cerrado, en cuanto se declara.</b> Se nombra por el NOMBRE SIMPLE de la
+     * clase, que es lo que el escaner compara contra el nombre del archivo; una entrada que no
+     * nombre ninguna clase de produccion no exime a nadie y ademas hace decir de mas a esta lista.
+     * Mientras devuelva {@code null} no hay nada que contrastar y {@link SujetosDeLaConfiguracion}
+     * la salta.
+     */
+    @Nullable
+    default Set<String> escritoresDeLaAutorizacionConMotivo() {
+        return null;
     }
 
     /**
