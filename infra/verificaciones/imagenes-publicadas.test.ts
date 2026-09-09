@@ -257,7 +257,16 @@ describe("quien puede traerse una imagen privada", () => {
     // `kamayuk-catastro`, `kamayuk-catastro-migrador` y `kamayuk-catastro-web`—. O sea que la
     // tercera nace con la MISMA condicion que las otras dos: hereda el hueco de D-23 en vez de
     // necesitar credencial, y hacerlas privadas las deja a las diecisiete en ImagePullBackOff.
-    expect(sin).toHaveLength(19);
+    //
+    // Y VEINTITRES desde la etapa 4 de ADR-0039 (identidad#4): los cuatro que suma son los
+    // cuatro `CronJob` consumidores del buzon de `identidad`, uno por satelite, cada uno con la
+    // MISMA imagen que su aplicacion en perfil `batch` (ADR-0003: un artefacto, dos perfiles).
+    // No traen una imagen nueva —`podsSinCredencial` cuenta CARGAS, no imagenes—, asi que el
+    // hueco no cambia de forma: hacer privadas las cuatro imagenes de los satelites deja
+    // ademas a sus consumidores sin poder arrancar, o sea la copia local de la autorizacion
+    // congelada en los cuatro sin que un `ImagePullBackOff` de un CronJob lo diga en ningun
+    // panel. `identidad` sigue en tres: sirve el buzon y no tiene CronJob.
+    expect(sin).toHaveLength(23);
     expect([...new Set(sin.map((p) => p.espacio))].sort()).toEqual([
       `kamayuk-caja-${ambiente}`,
       `kamayuk-catastro-${ambiente}`,

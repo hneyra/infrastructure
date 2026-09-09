@@ -327,11 +327,29 @@ describe("C-19 · el perfil de recursos de un ambiente no alcanza al otro", () =
    *     está escrito, y es la primera salida, es que **el nodo de `stg` NO está medido**: su
    *     propio `Pulumi.stg.yaml` lo dice —«a diferencia de `prod`, esto no está medido»— y lleva
    *     dentro el `kubectl` que lo mide. 7 936Mi entran en un nodo de 8Gi asignables.
+   *
+   * ## Y sube el PICO otra vez con la etapa 4 de ADR-0039 (identidad#4), y solo el pico
+   *
+   * Los cuatro satelites estrenan su `CronJob` consumidor del buzon de `identidad` —cada cinco
+   * minutos, con `RECURSOS_DE_ARRANQUE`: 50m / 256Mi—, y un `CronJob` que no nace suspendido
+   * pide su pod mientras los demas estan en pie, que es el mismo motivo por el que #21 conto el
+   * ingestor en el pico. Lo permanente no se mueve: ninguno de los cuatro es un `Deployment`.
+   *
+   * | | permanente | pico |
+   * |---|---|---|
+   * | con el quinto sistema y su recorte | 1540m / 5536Mi | 2160m / 8416Mi |
+   * | y con los cuatro consumidores (etapa 4) | **1540m / 5536Mi** | **2360m / 9440Mi** |
+   *
+   * O sea **+200m / +1024Mi en el pico y +0 permanentes**: cuatro veces 50m/256Mi, medido
+   * sumando uno a uno mientras los cuatro carriles aterrizaban —con tres dentro daba
+   * 2310m / 9184Mi—. **Ningun ambiente cambia de veredicto**: `prod` seguia sin caber y le
+   * faltan ahora 560m y 3712Mi; `stg` seguia sin caber desde la etapa 1 —faltaban 416Mi— y le
+   * faltan 1440Mi. No se declara brecha para `stg` desde aqui, por el mismo motivo de arriba.
    */
-  it("prod pide exactamente lo medido en `E`, mas el ingestor de #21 y el quinto sistema", () => {
+  it("prod pide exactamente lo medido en `E`, mas el ingestor de #21, el quinto sistema y sus cuatro consumidores", () => {
     const demanda = demandaDelStack(manifiestosDe("prod"));
     expect(demanda.permanente).toEqual({ cpuEnMili: 1540, memoriaEnMi: 5536 });
-    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 2160, memoriaEnMi: 8416 });
+    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 2360, memoriaEnMi: 9440 });
   });
 
   /** Y `prod` declara el perfil dimensionado, que es la tabla base. */

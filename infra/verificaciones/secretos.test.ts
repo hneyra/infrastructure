@@ -135,7 +135,14 @@ describe("C-17 §4 · lo que se declara es lo que se monta", () => {
     // con `emisor`, porque ese sistema no llama a ningun hermano y no tiene cliente confidencial.
     // La cifra se toca a mano a proposito: un sistema nuevo pasa por aqui, y con el la pregunta
     // de si alguna de sus claves es un valor NUEVO en vez de la copia de un rol del cluster.
-    expect(deSistemas).toHaveLength(13);
+    // Y DIECISIETE desde la etapa 4 de ADR-0039 (identidad#4): cada uno de los cuatro
+    // satelites declara `kamayuk-<s>-<amb>-identidad`, la clave con la que su consumidor del
+    // buzon pide el token, con `emisor: "keycloak"`. Ninguna es un valor nuevo: las cuatro son
+    // espejo de la clave del cliente `kamayuk-<s>-servicio-<ubigeo>`, que desde este trabajo es
+    // UNA por cliente —`claveDeServicio(sistema, ubigeo)`— y no una por par, porque `rentas`
+    // llama ahora a dos (`catastro` e `identidad`) con el mismo cliente. `identidad` sigue sin
+    // `emisor`: sirve el buzon y no llama a nadie.
+    expect(deSistemas).toHaveLength(17);
 
     // Trece de trece, y los dos que no son de un rol los anadio #21 AC-2: hasta entonces la credencial con la que el
     // ingestor pide el buzon de `catastro` era la unica que NO era espejo, porque no habia
@@ -144,7 +151,7 @@ describe("C-17 §4 · lo que se declara es lo que se monta", () => {
     // que un rol del motor: si se generaran por separado, quien llama mandaria una y el emisor
     // esperaria otra, y el destino contestaria 401 en la primera llamada.
     const espejos = deSistemas.filter((e) => e.espejoDe !== undefined);
-    expect(espejos).toHaveLength(13);
+    expect(espejos).toHaveLength(17);
     for (const e of espejos) {
       const origen = inventario.find(
         (o) => o.secreto === e.espejoDe?.secreto && o.clave === e.espejoDe.clave,

@@ -467,6 +467,31 @@ export const DIVERGENCIAS_DECLARADAS: readonly DivergenciaDeclarada[] = [
       "**Defecto vivo en CUATRO de cinco.** La otra mitad de `persistencia/OrdenSeguro.java`: es " +
       "quien escribe el cuerpo del 422 con «Se admiten: …». Sin las dos, el arreglo no llega.",
   },
+  {
+    pieza: "plataforma",
+    archivo: "plataforma/TokenDeServicioDeKeycloak.java",
+    grupos: "rentas",
+    clase: "solo-en-uno",
+    motivo:
+      "De la etapa 4 de ADR-0039 (identidad#4): `rentas` es el unico satelite con DOS procesos " +
+      "de lotes que piden un token de servicio —el ingestor de `catastro` (#21 AC-2) y el " +
+      "consumidor del buzon de `identidad`— y por eso subio el cliente de `client_credentials` " +
+      "de `nucleo.infraestructura.ingestor` a `plataforma`, para no tenerlo dos veces en el " +
+      "mismo repositorio. Los otros tres tienen el suyo, con el mismo nombre y el mismo " +
+      "algoritmo, en `seguridad.infraestructura.consumidor` (`catastro`, `normativa`) o en " +
+      "`nucleo.infraestructura` (`caja`): CUATRO copias del mismo cliente, cada una en un " +
+      "paquete distinto, y ninguna guarda que las compare porque solo la de `rentas` vive en " +
+      "una pieza compartida. Cierra: `kamayuk-lib` (ADR-0038).",
+  },
+  {
+    pieza: "plataforma",
+    archivo: "plataforma/CredencialDeServicio.java",
+    grupos: "rentas",
+    clase: "solo-en-uno",
+    motivo:
+      "La otra mitad de la entrada anterior: el par (cliente, clave) que `TokenDeServicioDeKeycloak` " +
+      "recibe, subido a `plataforma` con el. Mismo destino: `kamayuk-lib` (ADR-0038).",
+  },
 ];
 
 /**
