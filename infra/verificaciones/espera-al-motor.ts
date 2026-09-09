@@ -140,22 +140,18 @@ export function procesosQueHablanConElMotor(
  * una entrada que sigue sin espera pone rojo, y dejar una que ya la tiene, tambien — asi encoge
  * sola a medida que los cuatro clones aterrizan su mitad, y no puede encoger en silencio.
  *
- * Nace con **los diez dentro**, y eso es correcto: no hay ni un ejemplo de espera en el
- * repositorio, asi que hay que escribirla en los cuatro descriptores. La clave es el nombre SIN
- * el `sha`, porque el `sha` cambia con cada version y la deuda no.
+ * Nacio con **los diez dentro**, y eso era correcto: no habia ni un ejemplo de espera en el
+ * repositorio. **Hoy esta vacia**, y no porque los cuatro descriptores la hayan escrito sino
+ * porque la espera la pone la plataforma al componer (`componentes/espera-al-motor.ts`): el motor
+ * no es de ningun sistema, y una espera copiada cuatro veces depende de algo que ninguno de los
+ * cuatro controla.
+ *
+ * **Se deja declarada y vacia a proposito, no se borra.** Es el sitio donde entra el proceso que
+ * manana tenga que quedarse fuera con su motivo, y la prueba de «ninguna entrada rancia» sigue
+ * midiendo las dos direcciones sobre ella. La clave es el nombre SIN el `sha`, porque el `sha`
+ * cambia con cada version y la deuda no.
  */
-export const SIN_ESPERA_PENDIENTES: readonly string[] = [
-  "kamayuk-caja-implantacion",
-  "kamayuk-caja-migracion",
-  "kamayuk-catastro-implantacion",
-  "kamayuk-catastro-migracion",
-  "kamayuk-catastro-publicador",
-  "kamayuk-normativa-implantacion",
-  "kamayuk-normativa-migracion",
-  "kamayuk-rentas-implantacion",
-  "kamayuk-rentas-ingestor",
-  "kamayuk-rentas-migracion",
-];
+export const SIN_ESPERA_PENDIENTES: readonly string[] = [];
 
 /** `kamayuk-rentas-migracion-0fa7d0…` -> `kamayuk-rentas-migracion`. */
 export function sinLaVersion(nombre: string): string {
