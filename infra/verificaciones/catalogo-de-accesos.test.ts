@@ -46,10 +46,21 @@ describe("AC-4 — el catalogo unido de «identidad» y el catalogo real de cada
    * pantalla— y `identidad` paso de 6 a 7, con el catalogo unido de 160 a 161. Se comprobo
    * que esta en las dos puntas (su `CatalogoDelSistema` y su `identidad.json`) antes de mover
    * la cifra.
+   *
+   * Y la segunda vez es al reves, y es la etapa 4 (identidad#4 AC-4): `rentas` RETIRA cuatro
+   * opciones —`usuarios`, `grupos`, `miembros` y `permisos`, las de la administracion que se
+   * fue con su dueno— y pasa de 134 a 130, con el catalogo unido de 161 a 157. Aqui lo que
+   * hay que comprobar no es que la opcion nueva este en las dos puntas sino que la retirada
+   * haya salido de las dos: del `catalogo-de-opciones.md` de `rentas` (su generador, no a
+   * mano) y del `rentas.json` de `identidad` (regenerado con `derivar-catalogo-de-rentas.mjs`,
+   * que lo comprueba con `--comprobar`). Con solo una de las dos, este archivo sale rojo por
+   * el lado que corresponde, y es exactamente lo que hizo mientras los dos PR no estuvieron
+   * juntos. `modulos` y `accesos` se quedan en `rentas`: son lecturas de su copia local, no
+   * administracion.
    */
-  it("y los cinco catalogos suman 161 opciones, repartidas 134·16·1·3·7", () => {
+  it("y los cinco catalogos suman 157 opciones, repartidas 130·16·1·3·7", () => {
     expect(censoDeOpciones()).toEqual({
-      rentas: 134,
+      rentas: 130,
       catastro: 16,
       normativa: 1,
       caja: 3,
@@ -57,7 +68,7 @@ describe("AC-4 — el catalogo unido de «identidad» y el catalogo real de cada
     });
     expect(
       Object.values(censoDeOpciones()).reduce((total, cuantas) => total + cuantas, 0),
-    ).toBe(161);
+    ).toBe(157);
   });
 
   it("y el catalogo unido declara lo mismo, sistema a sistema", () => {
@@ -68,7 +79,7 @@ describe("AC-4 — el catalogo unido de «identidad» y el catalogo real de cada
       Object.fromEntries(
         SISTEMAS_DEL_PRODUCTO.map((sistema) => [sistema, opcionesDeclaradas(sistema).length]),
       ),
-    ).toEqual({ rentas: 134, catastro: 16, normativa: 1, caja: 3, identidad: 7 });
+    ).toEqual({ rentas: 130, catastro: 16, normativa: 1, caja: 3, identidad: 7 });
   });
 
   it("los cinco sistemas se derivan de SISTEMAS_DEL_PRODUCTO y no se escriben aqui", () => {
