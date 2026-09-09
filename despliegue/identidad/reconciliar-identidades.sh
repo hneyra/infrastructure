@@ -94,8 +94,15 @@ case "$CUAL" in
         REALM="${KC_REALM_CIUDADANO:-${KC_REALM:-sgtm}-ciudadano}"
         ARCHIVO_TSV="ciudadanos.tsv"
         ;;
+    servicios)
+        # Las cuentas de SERVICIO: un backend llamando a otro, sin persona detras (#21).
+        # Mismo realm que los funcionarios: lo que cambia es que aqui no hay persona.
+        REALM="${KC_REALM:-sgtm}"
+        ARCHIVO_TSV="servicios.tsv"
+        ;;
     *)
-        echo "FALLO: no se sabe reconciliar «$CUAL». Es «funcionarios» o «ciudadanos»." >&2
+        echo "FALLO: no se sabe reconciliar «$CUAL». Es «funcionarios», «ciudadanos» o" >&2
+        echo "«servicios»." >&2
         exit 1
         ;;
 esac
@@ -182,7 +189,29 @@ else
     fi
     TSV="$(mktemp)"; LIMPIAR_TSV=1
     trap '[ "$LIMPIAR_TSV" = 1 ] && rm -f "$TSV"' EXIT
-    if [ "$CUAL" = ciudadanos ]; then
+    if [ "$CUAL" = servicios ]; then
+        # Una linea por cuenta de servicio declarada:
+        #   SERVICIO  <sistema>  <llamaA>  <ubigeo>
+        python3 - "$FUENTE_DIR" "${UBIGEO:-}" >"$TSV" <<'PYSERV'
+import glob, json, os, sys
+
+carpeta = sys.argv[1]
+solo = sys.argv[2] if len(sys.argv) > 2 else ""
+archivos = sorted(glob.glob(os.path.join(carpeta, "*.json")))
+if solo:
+    archivos = [a for a in archivos if os.path.splitext(os.path.basename(a))[0] == solo]
+
+for ruta in archivos:
+    ubigeo = os.path.splitext(os.path.basename(ruta))[0]
+    with open(ruta, encoding="utf-8") as f:
+        datos = json.load(f)
+    for s in datos.get("servicios", []):
+        for campo in ("sistema", "llamaA"):
+            if not s.get(campo):
+                sys.exit(f"{ruta}: una entrada de `servicios` sin «{campo}»")
+        print("\t".join(("SERVICIO", s["sistema"], s["llamaA"], ubigeo)))
+PYSERV
+    elif [ "$CUAL" = ciudadanos ]; then
         python3 - "$FUENTE_DIR" "${UBIGEO:-}" >"$TSV" <<'PY'
 import glob, json, os, re, sys
 
@@ -310,6 +339,129 @@ for fila in filas:
 PY
     fi
     echo "Datos: $FUENTE_DIR/*.json (leidos con python3)"
+fi
+
+# ══ Modo `servicios`: los clientes de maquina a maquina (#21) ═════════════════
+#
+# ## Uno por (SISTEMA, MUNICIPALIDAD), y no uno por sistema
+#
+# ADR-0028 §2 dice que una corrida sin usuario «recibe al abrirse un token ACOTADO A ESA
+# MUNICIPALIDAD» y que «no hay un proceso con permiso sobre todas». Con `client_credentials`
+# el claim sale del atributo de la CUENTA DE SERVICIO, y una cuenta de servicio pertenece a
+# su cliente: un cliente por sistema daria UN token para todas, que es lo que esa frase
+# prohibe. El identificador lo fija `infrastructure` en `clienteDeServicio()`, y esta guarda
+# lo compara: `kamayuk-<sistema>-servicio-<ubigeo>`.
+#
+# ## Por que el cliente NO vive en el realm versionado
+#
+# Un cliente confidencial TIENE UNA CLAVE, y una clave no vive en git (ADR-0012). El realm
+# aporta la estructura —el ambito `kamayuk-servicio` con el mapeador que lleva
+# `municipalidad_id` al token de ACCESO— y los clientes los crea este guion, que es el mismo
+# mecanismo con el que ya nacen usuarios y ciudadanos.
+#
+# ## Lo que NO hace
+#
+# No lee ni escribe la clave en ningun sitio: la genera Keycloak, y llevarla al `Secret` del
+# cluster es de `bootstrap-secretos.sh`, que es quien tiene permiso para eso.
+if [ "$CUAL" = servicios ]; then
+
+    # El ambito viene del realm versionado. Sin el, el cliente naceria sin mapeador y su token
+    # NO llevaria `municipalidad_id`: el sistema llamado responderia 403 y el sintoma —«el
+    # token no trae municipalidad»— no se parece a su causa, que es un realm sin aplicar.
+    if ! kc get client-scopes -r "$REALM" --fields name 2>/dev/null | grep -q "kamayuk-servicio"; then
+        echo "FALLO: el realm «$REALM» no tiene el ambito «kamayuk-servicio»." >&2
+        echo "No falta un cliente: falta la ESTRUCTURA que el realm versionado declara." >&2
+        echo "Aplica el realm primero (reconciliar-realm.sh) y vuelve." >&2
+        exit 1
+    fi
+    AMBITO=$(kc get client-scopes -r "$REALM" -q "name=kamayuk-servicio" --fields id --format csv --noquotes 2>/dev/null | head -1)
+    [ -n "$AMBITO" ] || { echo "FALLO: no se pudo leer el id del ambito." >&2; exit 1; }
+
+    # Y QUE EL AMBITO LLEVE SU MAPEADOR, que es una comprobacion distinta y hace falta.
+    #
+    # Esto no estaba, y lo destapo ensayarlo contra un Keycloak de verdad: con el ambito
+    # creado SIN mapeador, todo sale bien —el cliente se crea, la cuenta lleva su atributo,
+    # la comprobacion final pasa, el token se emite y va firmado— y el token **no lleva
+    # `municipalidad_id`**. Medido: `scope: kamayuk-servicio profile email`,
+    # `azp: kamayuk-rentas-servicio-200101`, y el claim ausente.
+    #
+    # El sintoma llega despues y en otro sitio: el sistema llamado responde 403 «el token no
+    # trae municipalidad», que no se parece a «al ambito le falta un mapeador».
+    if ! kc get "client-scopes/$AMBITO/protocol-mappers/models" -r "$REALM" 2>/dev/null \
+            | tr -d ' \n' | grep -q '"claim.name":"municipalidad_id"'; then
+        echo "FALLO: el ambito «kamayuk-servicio» existe pero NO lleva un mapeador que emita" >&2
+        echo "«municipalidad_id». Un cliente creado asi obtiene un token valido y SIN el claim," >&2
+        echo "y el sistema llamado lo rechaza con un 403 que no dice esto. Aplica el realm." >&2
+        exit 1
+    fi
+
+    DECLARADOS=0
+    while IFS="$(printf '\t')" read -r clase sistema llamaA ubigeo; do
+        [ "$clase" = SERVICIO ] || continue
+        DECLARADOS=$((DECLARADOS + 1))
+        cliente="kamayuk-${sistema}-servicio-${ubigeo}"
+
+        id=$(kc get clients -r "$REALM" -q "clientId=$cliente" --fields id --format csv --noquotes 2>/dev/null | head -1)
+        if [ -z "$id" ]; then
+            kc create clients -r "$REALM" \
+                -s "clientId=$cliente" \
+                -s "enabled=true" \
+                -s "publicClient=false" \
+                -s "serviceAccountsEnabled=true" \
+                -s "standardFlowEnabled=false" \
+                -s "directAccessGrantsEnabled=false" \
+                -s "description=Cuenta de servicio de $sistema para llamar a $llamaA en $ubigeo" \
+                >/dev/null
+            id=$(kc get clients -r "$REALM" -q "clientId=$cliente" --fields id --format csv --noquotes 2>/dev/null | head -1)
+            [ -n "$id" ] || { echo "FALLO: no se pudo crear «$cliente»." >&2; exit 1; }
+            echo "  + $cliente"
+        else
+            echo "  = $cliente"
+        fi
+
+        # El ambito, SIEMPRE: es idempotente, y si el cliente existia sin el —creado antes de
+        # #21— esto lo arregla. Reconciliar es eso.
+        kc update "clients/$id/default-client-scopes/$AMBITO" -r "$REALM" >/dev/null 2>&1 || true
+
+        # Y el atributo de la CUENTA de servicio, que es de donde el mapeador lo toma.
+        cuenta=$(kc get "clients/$id/service-account-user" -r "$REALM" --fields id --format csv --noquotes 2>/dev/null | head -1)
+        [ -n "$cuenta" ] || { echo "FALLO: «$cliente» no tiene cuenta de servicio." >&2; exit 1; }
+        kc update "users/$cuenta" -r "$REALM" -s "attributes.municipalidad_id=$ubigeo" >/dev/null
+    done < "$TSV"
+
+    # Cero declaradas no es «todo bien»: es que el archivo no dice nada, y entonces esto no
+    # ha comprobado nada. Es la leccion de C-15/C-16.
+    if [ "$DECLARADOS" -eq 0 ]; then
+        echo "FALLO: ninguna municipalidad declara cuentas de servicio en su bloque" >&2
+        echo "«servicios». Este guion no ha comprobado nada, que NO es lo mismo que estar bien." >&2
+        exit 1
+    fi
+
+    # --- La comprobacion: crear no es haber creado -------------------------------
+    FALTAN=0
+    while IFS="$(printf '\t')" read -r clase sistema llamaA ubigeo; do
+        [ "$clase" = SERVICIO ] || continue
+        cliente="kamayuk-${sistema}-servicio-${ubigeo}"
+        id=$(kc get clients -r "$REALM" -q "clientId=$cliente" --fields id --format csv --noquotes 2>/dev/null | head -1)
+        if [ -z "$id" ]; then
+            echo "FALTA  $cliente" >&2
+            FALTAN=$((FALTAN + 1))
+            continue
+        fi
+        cuenta=$(kc get "clients/$id/service-account-user" -r "$REALM" --fields id --format csv --noquotes 2>/dev/null | head -1)
+        if ! kc get "users/$cuenta" -r "$REALM" 2>/dev/null | tr -d ' \n' | grep -q "\"municipalidad_id\":\[\"$ubigeo\"\]"; then
+            echo "FALTA  $cliente: su cuenta no lleva municipalidad_id=$ubigeo" >&2
+            FALTAN=$((FALTAN + 1))
+        fi
+    done < "$TSV"
+
+    echo
+    if [ "$FALTAN" -gt 0 ]; then
+        echo "FALLO: $FALTAN de $DECLARADOS cuenta(s) de servicio no quedaron listas." >&2
+        exit 1
+    fi
+    echo "Las $DECLARADOS cuenta(s) de servicio declaradas existen y llevan su municipalidad."
+    exit 0
 fi
 
 # --- 1 y 2: grupos, usuarios y ciudadanos -------------------------------------

@@ -303,11 +303,24 @@ interface UsuarioVersionado {
   correo: string;
   administrador?: boolean;
 }
+interface ServicioVersionado {
+  /** El sistema que LLAMA: de quien es la cuenta de servicio. */
+  sistema: string;
+  /** El sistema al que llama. Va en la descripcion del cliente, para que se pueda auditar. */
+  llamaA: string;
+  proposito?: string;
+}
+
 interface MunicipalidadVersionada {
   ubigeo: string;
   municipalidadId: number;
   grupo: string;
   usuarios: UsuarioVersionado[];
+  /**
+   * Las cuentas de servicio de esta municipalidad (#21). Opcional: una municipalidad puede no
+   * tener ninguna, y eso es «no hay ningun backend llamando a otro aqui», no un error.
+   */
+  servicios?: ServicioVersionado[];
 }
 
 /**
@@ -416,6 +429,16 @@ export interface DocumentosDeIdentidades {
   cuentas: string[];
   /** Las cuentas de ciudadano, ya derivadas del documento. */
   enrolados: string[];
+  /**
+   * Las cuentas de SERVICIO, una por linea (#21):
+   *
+   *   SERVICIO  <sistema>  <llamaA>  <ubigeo>
+   *
+   * Se deriva AQUI por lo mismo que los otros dos: **la imagen de Keycloak no trae python ni
+   * jq**, y el `Job` corre en modo «directo» dentro de ella. Un modo que leyera los `*.json`
+   * ahi no arrancaria, y su sintoma seria un `Job` que falla al desplegar y no al escribirlo.
+   */
+  servicios: string;
 }
 
 /**
@@ -512,6 +535,25 @@ export function documentosDeIdentidades(args: {
     grupo: m.grupo,
     cuentas: m.usuarios.map((u) => u.cuenta),
     enrolados: enrolados.cuentas,
+    // Las cuentas de servicio (#21). Puede venir VACIO —una municipalidad sin ningun backend
+    // llamando a otro—, y entonces el guion se para diciendolo: «cero declaradas» no es «todo
+    // bien». Se valida aqui porque una entrada a medias produce un cliente con un nombre
+    // incompleto, y el sintoma seria un 401 en el primer pago.
+    servicios: (m.servicios ?? [])
+      .map((sv) => {
+        for (const campo of ["sistema", "llamaA"] as const) {
+          if (!sv[campo] || sv[campo].includes("\t")) {
+            throw new Error(
+              `${args.ubigeo}.json: una entrada de «servicios» sin «${campo}» valido. De ahi ` +
+                "sale el clientId `kamayuk-<sistema>-servicio-<ubigeo>`, y a medias produce " +
+                "un cliente que no existe cuando alguien pide su token.",
+            );
+          }
+        }
+        return ["SERVICIO", sv.sistema, sv.llamaA, args.ubigeo].join("\t");
+      })
+      .map((linea) => `${linea}\n`)
+      .join(""),
   };
 }
 
@@ -701,6 +743,9 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
       // TSV que `documentosDeIdentidades` deriva del archivo versionado.
       "reconciliar-identidades.sh": reconciliarIdentidadesSh(),
       "identidades.tsv": identidades.tsv,
+      // Las cuentas de servicio, derivadas aqui por lo mismo que las personas: la
+      // imagen de Keycloak no trae python ni jq, y el `Job` corre dentro de ella (#21).
+      "servicios.tsv": identidades.servicios,
       // Y el enrolamiento del ciudadano (ADR-0020 §5, #415), en el mismo ConfigMap y con
       // el mismo guion: el realm es otro y la poblacion es otra, el procedimiento no.
       "ciudadanos.tsv": identidades.ciudadanos,
@@ -872,6 +917,10 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
           "/bin/bash",
           "-c",
           "/realm/reconciliar-realm.sh && /realm/reconciliar-identidades.sh" +
+            // Las cuentas de servicio van DESPUES del realm de funcionarios y antes del
+            // portal: necesitan el ambito `kamayuk-servicio` que ese realm declara, y no
+            // dependen de nada del ciudadano (#21).
+            " && /realm/reconciliar-identidades.sh servicios" +
             " && /realm/reconciliar-realm.sh ciudadano" +
             " && /realm/reconciliar-identidades.sh ciudadanos",
         ],
