@@ -2,6 +2,7 @@ import { auditarManifiestos, describirAuditoria } from "../auditoria";
 import { construirManifiestos } from "../componentes";
 import { componerOFallar } from "../descriptor";
 import { entornoPara, namespacesDelAmbiente } from "../descriptor/entorno";
+import { conEsperaAlMotor } from "../componentes/espera-al-motor";
 import { SISTEMAS } from "../descriptor/sistemas";
 import { secretos } from "../componentes/convenciones";
 import {
@@ -127,14 +128,25 @@ export function manifiestosDeLosSistemas(
   plataforma: Manifiesto[],
 ): Manifiesto[] {
   const entornoDe = entornoDelAmbiente(invariantes);
-  return componerOFallar(SISTEMAS, entornoDe, {
-    secretoDeOwner: secretos(invariantes.environment).owner,
-    basesDelClustre: SISTEMAS.map(
-      (s) => s.descriptor.baseDeDatos(entornoDe(s.descriptor.sistema)).nombre,
-    ),
-    manifiestosDeLaPlataforma: plataforma,
-    namespacesDelAmbiente: namespacesDelAmbiente(invariantes.environment),
-  });
+  // La espera al motor la pone la PLATAFORMA, despues de componer y auditar (#44). No la
+  // escribe cada descriptor porque el motor no es de ningun sistema: quien decide su estrategia
+  // de despliegue —`Recreate` con un PVC, o sea baja a cero y vuelve— es este repositorio, y una
+  // espera copiada en cuatro sitios depende de algo que ninguno de los cuatro controla.
+  //
+  // Va aqui y no en `manifiestosDelAmbiente` para que TODA la cadena la vea: `yarn capacidad`,
+  // la deriva y las guardas leen esta funcion, y una espera que solo apareciera al emitir seria
+  // una que las guardas no pueden medir.
+  return conEsperaAlMotor(
+    componerOFallar(SISTEMAS, entornoDe, {
+      secretoDeOwner: secretos(invariantes.environment).owner,
+      basesDelClustre: SISTEMAS.map(
+        (s) => s.descriptor.baseDeDatos(entornoDe(s.descriptor.sistema)).nombre,
+      ),
+      manifiestosDeLaPlataforma: plataforma,
+      namespacesDelAmbiente: namespacesDelAmbiente(invariantes.environment),
+    }),
+    invariantes.database.image,
+  );
 }
 
 /**

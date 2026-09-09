@@ -15,6 +15,7 @@ import {
 } from "../herramientas/emitir-manifiestos";
 import { namespacesDelAmbiente } from "../descriptor/entorno";
 import { SISTEMAS } from "../descriptor/sistemas";
+import { CONTENEDOR_DE_ESPERA } from "../componentes/espera-al-motor";
 import { REGISTRO_PROPIO } from "./imagenes-publicadas";
 import { prefijoDeLaImplantacion, variableDe } from "./prefijo-de-la-implantacion";
 import { correElBackend } from "./procesos-de-un-sistema";
@@ -378,11 +379,20 @@ describe("C-14 §4 · cada sistema implanta su municipalidad", () => {
     // Y el migrador de contenedor de inicializacion: un `Deployment` no sabe esperar a un `Job`
     // y Kubernetes no tiene `dependsOn`. Cuando este contenedor sale con exito, el esquema ESTA
     // —que es mas de lo que la espera del monolito puede afirmar—.
+    //
+    // Y delante de el, la espera al MOTOR que la plataforma inyecta (#44): el orden importa y no
+    // es intercambiable. El migrador es quien abre la conexion, asi que una espera puesta detras
+    // no protegeria a quien falla primero — en `caja` fue justo ese, y su Job murio con
+    // `Connection refused` sin ejecutar una sentencia.
+    expect(
+      iniciales.map((c) => c.name),
+      "el Job de implantacion no espera al motor antes de migrar (#44)",
+    ).toEqual([CONTENEDOR_DE_ESPERA, "migrador"]);
     expect(
       iniciales.map((c) => c.image),
       "el Job de implantacion no espera al esquema. Sin esto puede correr antes de que la " +
         "migracion termine, fallar, y agotar su `backoffLimit` sin implantar nada.",
-    ).toEqual([entorno.imagenDe(`${sistema}-migrador`)]);
+    ).toEqual([invariantesDe(AMBIENTE).database.image, entorno.imagenDe(`${sistema}-migrador`)]);
   });
 
   /**
