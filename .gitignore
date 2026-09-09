@@ -1,4 +1,11 @@
-node_modules/
+# `node_modules`, y SIN la barra final a proposito.
+#
+# Con `node_modules/` el patron solo casa DIRECTORIOS, asi que un `node_modules` que sea un
+# SIMBOLICO no lo ignora nadie y se puede versionar. No es hipotetico: `53107c8` versiono
+# `infra/node_modules` como un enlace simbolico **a si mismo**, y `git reset --hard` sobre ese
+# commit se lleva por delante el directorio de verdad y deja `yarn` con ELOOP —«Too many levels of
+# symbolic links»—. Sin barra casa las dos cosas.
+node_modules
 .idea/
 .DS_Store
 # El `.env` del compose. `despliegue/.env.ejemplo` afirma de si mismo que «`.env` esta en
