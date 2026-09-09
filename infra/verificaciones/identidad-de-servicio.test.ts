@@ -1,5 +1,11 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { claveDeServicio } from "../componentes/convenciones";
 import { raizDelRepositorio } from "../componentes/fuentes";
+import { inventarioDelAmbiente } from "../componentes/secretos";
+import type { Job } from "../componentes/tipos";
+import { manifiestosDelAmbiente } from "../herramientas/emitir-manifiestos";
 import { ENVIRONMENTS } from "../config";
 import { invariantesDe } from "./stacks";
 import {
@@ -82,4 +88,106 @@ describe("el inventario y la identidad declarativa dicen lo mismo (AC-6)", () =>
     // sale, con `KAMAYUK_CATASTRO_CREDENCIAL` declarada, generada y rechazada con 401.
     expect(credencialesDeServicio(invariantesDe(ambiente)).length).toBeGreaterThan(0);
   });
+});
+
+/**
+ * **El AC-2 por su lado declarativo: la clave que el emisor espera y la que el que llama manda
+ * son el MISMO valor, o no son nada.**
+ *
+ * Un cliente confidencial nace con una clave que Keycloak inventa. Con eso el cliente existe
+ * —que es AC-1— y no sirve: quien llama no puede adivinarla. Asi que la fuente de verdad pasa a
+ * ser el `Secret` de la plataforma, el `Job` de identidad se la FIJA a Keycloak, y el que llama
+ * la recibe por espejo en su propio namespace.
+ *
+ * Las tres piezas se comprueban **ejecutando**, no leyendo: el punto de montaje sale del
+ * manifiesto y la ruta que el guion busca sale del guion, y lo que se afirma es que coinciden.
+ * Dos literales iguales escritos en dos archivos es exactamente el defecto que C-17 encontro
+ * cinco veces.
+ */
+describe("la clave del cliente de servicio la pone el despliegue, no Keycloak (AC-2)", () => {
+  const guion = readFileSync(
+    join(RAIZ, "despliegue/identidad/reconciliar-identidades.sh"),
+    "utf8",
+  );
+
+  it.each(ENVIRONMENTS)(
+    "%s: cada cuenta declarada tiene su clave en el Secret de la plataforma",
+    (ambiente) => {
+      const inventario = inventarioDelAmbiente(invariantesDe(ambiente));
+      const enElSecreto = new Set(
+        inventario
+          .filter((e) => e.secreto === `kamayuk-${ambiente}-servicios-de-identidad`)
+          .map((e) => e.clave),
+      );
+      const declaradas = serviciosDeclarados(RAIZ).map((s) =>
+        claveDeServicio(s.sistema, s.llamaA, s.ubigeo),
+      );
+      expect(declaradas.length, "sin cuentas declaradas esto no mide nada").toBeGreaterThan(0);
+      expect(declaradas.filter((c) => !enElSecreto.has(c))).toEqual([]);
+      // Y la otra direccion: una clave que no reclama ninguna cuenta es una credencial que
+      // alguien tendria que rotar sin saber para que.
+      expect([...enElSecreto].filter((c) => !declaradas.includes(c))).toEqual([]);
+    },
+  );
+
+  it.each(ENVIRONMENTS)(
+    "%s: el que llama recibe por espejo la clave de SU municipalidad, no la de otra",
+    (ambiente) => {
+      const invariantes = invariantesDe(ambiente);
+      const inventario = inventarioDelAmbiente(invariantes);
+      const espejos = inventario.filter(
+        (e) => e.espejoDe?.secreto === `kamayuk-${ambiente}-servicios-de-identidad`,
+      );
+      expect(espejos.length, "ninguna credencial de emisor es espejo: AC-2 no esta").toBeGreaterThan(0);
+      for (const e of espejos) {
+        // El ubigeo implantado, y no cualquiera de los declarados: darle a un proceso la clave
+        // de otra municipalidad le deja pedir un token acotado a esa otra, que es deshacer con
+        // el secreto lo que el atributo de la cuenta acota (ADR-0028 §2).
+        expect(e.espejoDe?.clave.endsWith(`-${invariantes.implantacion.ubigeo}`), e.secreto).toBe(
+          true,
+        );
+      }
+    },
+  );
+
+  it("el guion FIJA la clave del cliente, en vez de quedarse con la que Keycloak genero", () => {
+    expect(guion).toMatch(/kc update "clients\/\$id" -r "\$REALM" -s "secret=/);
+  });
+
+  it("y se para nombrandola cuando falta, que es lo unico que impide un 401 silencioso", () => {
+    // Sin esto el guion se caeria al valor que Keycloak invento: cliente creado, `Secret` con un
+    // valor aleatorio, y 401 en la primera llamada — el estado exacto del que #21 sale, con el
+    // cliente ya creado para taparlo.
+    expect(guion).toMatch(/if \[ ! -s "\$archivo" \]; then/);
+    expect(guion).toContain("no esta la clave de");
+  });
+
+  it.each(ENVIRONMENTS)(
+    "%s: el Job monta ese Secret donde el guion lo busca, y las dos rutas se leen de su fuente",
+    (ambiente) => {
+      const manifiestos = manifiestosDelAmbiente(invariantesDe(ambiente));
+      // El Job del realm lleva la huella de su contenido en el nombre (`-realm-<huella>`), asi
+      // que se busca por prefijo: fijar el nombre entero aqui obligaria a reescribir esta prueba
+      // cada vez que cambie una linea del realm versionado.
+      const job = manifiestos.find(
+        (m): m is Job => m.kind === "Job" && m.metadata.name.startsWith(`kamayuk-${ambiente}-realm-`),
+      );
+      expect(job, "no hay Job de identidad que mirar").toBeDefined();
+      const pod = job!.spec.template.spec;
+      const volumen = pod.volumes?.find(
+        (v) => v.secret?.secretName === `kamayuk-${ambiente}-servicios-de-identidad`,
+      );
+      expect(volumen, "el Job no monta el Secret de las claves de servicio").toBeDefined();
+      const montaje = pod.containers
+        .flatMap((c) => c.volumeMounts ?? [])
+        .find((m) => m.name === volumen!.name);
+      expect(montaje, "el volumen esta declarado y no lo monta ningun contenedor").toBeDefined();
+
+      // La ruta que el guion busca, leida DEL GUION. Un literal escrito aqui seria el tercer
+      // sitio con la misma verdad, y el que se quedaria viejo.
+      const [, porOmision] = /: "\$\{CLAVES_DE_SERVICIO:=([^}]+)\}"/.exec(guion) ?? [];
+      expect(porOmision, "el guion ya no declara donde busca las claves").toBeDefined();
+      expect(montaje!.mountPath).toBe(porOmision);
+    },
+  );
 });

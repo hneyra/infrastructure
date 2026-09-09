@@ -5,6 +5,7 @@ import {
   BASE_DE_MANTENIMIENTO,
   BASE_DE_PARAMETROS,
   CLAVES,
+  claveDeServicio,
   ROL_DE_IDENTIDAD,
   servicioDeBaseDeDatos,
   servicioDeGrafana,
@@ -12,6 +13,7 @@ import {
 } from "./convenciones";
 import { namespaceName, type Environment, type Invariants } from "../config";
 import { SISTEMAS } from "../descriptor/sistemas";
+import { municipalidadesJson } from "./fuentes";
 import { entornoDelAmbiente } from "../herramientas/emitir-manifiestos";
 
 /**
@@ -127,6 +129,37 @@ export interface EntradaDeSecreto {
  * test.ts` lo exige contando entradas unicas por `secreto`+`clave`, y
  * `completar-secreto.ts` lo hace estructuralmente imposible de incumplir al generar.
  */
+/**
+ * Las cuentas de servicio que la identidad declarativa pide, leidas del repositorio.
+ *
+ * Se lee **el mismo archivo** del que `Identidad.ts` deriva `servicios.tsv`, y no una lista
+ * escrita aqui: dos sitios con la misma verdad se separan, y el que se quedaria viejo seria justo
+ * el que dice cuantas claves hay que generar — con el sintoma llegando como un 401 en el primer
+ * pago de una municipalidad nueva.
+ */
+export function serviciosDeIdentidadDeclarados(): {
+  sistema: string;
+  llamaA: string;
+  ubigeo: string;
+}[] {
+  return municipalidadesJson()
+    .flatMap((m) => {
+      const d = JSON.parse(m.contenido) as {
+        servicios?: { sistema: string; llamaA: string }[];
+      };
+      return (d.servicios ?? []).map((s) => ({
+        sistema: s.sistema,
+        llamaA: s.llamaA,
+        ubigeo: m.ubigeo,
+      }));
+    })
+    .sort((a, b) =>
+      claveDeServicio(a.sistema, a.llamaA, a.ubigeo).localeCompare(
+        claveDeServicio(b.sistema, b.llamaA, b.ubigeo),
+      ),
+    );
+}
+
 export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto[] {
   const nombres = nombresDeSecretos(environment);
   // Los once de la plataforma viven todos en su namespace. Los de los cuatro sistemas
@@ -310,6 +343,28 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       // «seguro», es un rol que nadie puede rotar ni auditar, y el dia que el proceso
       // aparezca su despliegue no deberia tener que tocar este archivo.
     },
+    // Una entrada por cliente confidencial de servicio (#21 AC-2), derivada de los archivos
+    // versionados de municipalidad y no escrita a mano.
+    //
+    // **Viven en el namespace de la PLATAFORMA aunque quien las use sea un sistema**, y ese es el
+    // punto entero: el `Job` que reconcilia la identidad corre aqui, y un `secretKeyRef` se
+    // resuelve en el namespace de su pod, asi que si el valor solo existiera en el namespace del
+    // que llama, Keycloak no podria recibirlo — y una clave de cliente que Keycloak genera y nadie
+    // mas conoce no sirve para pedir un token. El que llama lo recibe por `espejoDe`, que es el
+    // mismo mecanismo con el que un rol del motor publica su unica contrasena en cuatro sitios.
+    ...serviciosDeIdentidadDeclarados().map((s): EntradaDeSecreto => ({
+      rol: `servicio-${claveDeServicio(s.sistema, s.llamaA, s.ubigeo)}`,
+      namespace: enLaPlataforma,
+      secreto: nombres.serviciosDeIdentidad,
+      clave: claveDeServicio(s.sistema, s.llamaA, s.ubigeo),
+      consumidor:
+        `El cliente confidencial «kamayuk-${s.sistema}-servicio-${s.ubigeo}» de Keycloak, que se ` +
+        `la fija el Job de identidad, y el proceso de «${s.sistema}» que pide con ella un token ` +
+        `para llamar a «${s.llamaA}»`,
+      // Es una credencial de emisor, no un rol del motor: rotarla no exige `ALTER ROLE` ninguno,
+      // basta volver a correr el Job de identidad. Trimestral como las demas privilegiadas.
+      periodicidad: "trimestral",
+    })),
   ];
 }
 
@@ -339,7 +394,11 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
  * en `EntradaDeSecreto.espejoDe`.
  */
 export function inventarioDelAmbiente(invariantes: Invariants): EntradaDeSecreto[] {
+  const nombres = nombresDeSecretos(invariantes.environment);
   const plataforma = inventarioDeSecretos(invariantes.environment);
+  const clavesDeServicio = new Set(
+    plataforma.filter((e) => e.secreto === nombres.serviciosDeIdentidad).map((e) => e.clave),
+  );
   const porRol = new Map(
     plataforma.filter((e) => e.rolDePostgres !== undefined).map((e) => [e.rolDePostgres!, e]),
   );
@@ -349,6 +408,29 @@ export function inventarioDelAmbiente(invariantes: Invariants): EntradaDeSecreto
     const entorno = entornoDe(descriptor.sistema);
     return descriptor.claves(entorno).map((c): EntradaDeSecreto => {
       const origen = c.rol === undefined ? undefined : porRol.get(c.rol);
+      // Una credencial de emisor es espejo de la clave del cliente confidencial de SU
+      // municipalidad, que vive en el `Secret` de la plataforma (#21 AC-2). No se genera aparte:
+      // si se generara, Keycloak tendria una clave y el que llama otra, y el sintoma seria un 401
+      // en la primera llamada — indistinguible de «todavia no hay identidad de servicio».
+      const deEmisor =
+        c.emisor !== "keycloak"
+          ? undefined
+          : claveDeServicio(
+              descriptor.sistema,
+              c.nombre.slice(`kamayuk-${descriptor.sistema}-${invariantes.environment}-`.length),
+              entorno.implantacion.ubigeo,
+            );
+      if (deEmisor !== undefined && !clavesDeServicio.has(deEmisor)) {
+        throw new Error(
+          `[${descriptor.sistema}] la clave «${c.nombre}» declara \`emisor: "keycloak"\`, o sea ` +
+            "que su valor es la clave del cliente confidencial con el que ese proceso pide su " +
+            `token — y la identidad declarativa no tiene ninguna: falta «${deEmisor}» en ` +
+            `«${nombres.serviciosDeIdentidad}». Remedio: declarar esa cuenta de servicio en ` +
+            `despliegue/identidad/municipalidades/${entorno.implantacion.ubigeo}.json. ` +
+            "Sin ella el `Secret` existiria con un valor aleatorio que ningun emisor conoce, el " +
+            "pod arrancaria, y el destino contestaria 401 en la primera llamada.",
+        );
+      }
       if (c.rol !== undefined && origen === undefined) {
         throw new Error(
           `[${descriptor.sistema}] la clave «${c.nombre}» dice ser del rol «${c.rol}», y este ` +
@@ -371,6 +453,9 @@ export function inventarioDelAmbiente(invariantes: Invariants): EntradaDeSecreto
         ...(origen === undefined
           ? {}
           : { espejoDe: { secreto: origen.secreto, clave: origen.clave } }),
+        ...(deEmisor === undefined
+          ? {}
+          : { espejoDe: { secreto: nombres.serviciosDeIdentidad, clave: deEmisor } }),
       };
     });
   });

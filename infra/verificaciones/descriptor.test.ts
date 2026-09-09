@@ -50,6 +50,7 @@ const ENTORNO: EntornoDelDescriptor = {
     namespace: "kamayuk-stg",
     emisor: "https://stg.sgtm.example/keycloak/realms/sgtm",
     jwks: "http://kamayuk-stg-identidad.kamayuk-stg:8080/keycloak/realms/sgtm/protocol/openid-connect/certs",
+    token: "http://kamayuk-stg-identidad.kamayuk-stg:8080/keycloak/realms/sgtm/protocol/openid-connect/token",
     // Ya cruzando el namespace, como el JWKS y por lo mismo (C-17, punto 1).
     motor: "kamayuk-stg-postgres.kamayuk-stg:5432",
   },

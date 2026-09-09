@@ -968,7 +968,13 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
         ],
         securityContext: seguridadSinRoot(),
         resources: recursos.auxiliar,
-        volumeMounts: [{ name: "realm", mountPath: "/realm", readOnly: true }],
+        volumeMounts: [
+          { name: "realm", mountPath: "/realm", readOnly: true },
+          // Las claves de los clientes confidenciales de servicio (#21 AC-2). Montadas y no
+          // pasadas por `env`: un `env` de un pod lo lee cualquiera que pueda describirlo, y
+          // con una variable por cuenta el `Deployment` crece con cada municipalidad.
+          { name: "servicios", mountPath: "/servicios", readOnly: true },
+        ],
       },
     ],
     // 0o755 en decimal, igual que la inicializacion del motor (`BaseDeDatos.ts`). Los
@@ -980,6 +986,14 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
       {
         name: "realm",
         configMap: { name: configuracionDelRealm.metadata.name, defaultMode: 493 },
+      },
+      // El `Secret` con una clave por cliente de servicio. Vive en el namespace de la
+      // plataforma —que es este— porque un `secretKeyRef` se resuelve en el del pod, y quien
+      // tiene que FIJAR la clave en Keycloak es este Job; el que llama la recibe por espejo en
+      // el suyo (`secretos.ts`).
+      {
+        name: "servicios",
+        secret: { secretName: secreto.serviciosDeIdentidad },
       },
     ],
   };

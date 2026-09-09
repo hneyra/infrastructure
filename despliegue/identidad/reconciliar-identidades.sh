@@ -359,11 +359,24 @@ fi
 # `municipalidad_id` al token de ACCESO— y los clientes los crea este guion, que es el mismo
 # mecanismo con el que ya nacen usuarios y ciudadanos.
 #
-# ## Lo que NO hace
+# ## La clave del cliente la PONE este guion, y no la genera Keycloak (#21 AC-2)
 #
-# No lee ni escribe la clave en ningun sitio: la genera Keycloak, y llevarla al `Secret` del
-# cluster es de `bootstrap-secretos.sh`, que es quien tiene permiso para eso.
+# Un cliente confidencial nace con una clave que Keycloak inventa y que no conoce nadie mas.
+# Eso basta para que el cliente exista —que es AC-1— y no basta para que sirva: quien llama
+# tiene que mandar esa clave para pedir su token, y no puede adivinarla. Asi que la fuente de
+# verdad es el `Secret` del cluster, y aqui se FIJA.
+#
+# Las claves llegan como ficheros en `$CLAVES_DE_SERVICIO` —un `Secret` montado como volumen,
+# un fichero por clave, con el mismo nombre que la clave: `<sistema>-a-<llamaA>-<ubigeo>`—.
+# Se montan y no se pasan por variable de entorno porque un `env` de un pod lo lee cualquiera
+# que pueda describirlo, y porque con una variable por cuenta el `Deployment` crece con cada
+# municipalidad.
+#
+# Si falta la clave de una cuenta declarada, esto FALLA nombrandola. No se cae al valor que
+# Keycloak genero: eso dejaria un cliente que existe, un `Secret` con un valor aleatorio y un
+# 401 en la primera llamada, que es exactamente el estado del que #21 sale.
 if [ "$CUAL" = servicios ]; then
+    : "${CLAVES_DE_SERVICIO:=/servicios}"
 
     # El ambito viene del realm versionado. Sin el, el cliente naceria sin mapeador y su token
     # NO llevaria `municipalidad_id`: el sistema llamado responderia 403 y el sintoma —«el
@@ -427,6 +440,18 @@ if [ "$CUAL" = servicios ]; then
         cuenta=$(kc get "clients/$id/service-account-user" -r "$REALM" --fields id --format csv --noquotes 2>/dev/null | head -1)
         [ -n "$cuenta" ] || { echo "FALLO: «$cliente» no tiene cuenta de servicio." >&2; exit 1; }
         kc update "users/$cuenta" -r "$REALM" -s "attributes.municipalidad_id=$ubigeo" >/dev/null
+
+        # Y la CLAVE, que es lo que hace que el cliente sirva para algo (#21 AC-2).
+        archivo="$CLAVES_DE_SERVICIO/${sistema}-a-${llamaA}-${ubigeo}"
+        if [ ! -s "$archivo" ]; then
+            echo "FALLO: no esta la clave de «$cliente»." >&2
+            echo "Se busco en «$archivo», que es donde se monta «<amb>-servicios-de-identidad»." >&2
+            echo "Sin ella el cliente existe con la clave que Keycloak invento, que no conoce" >&2
+            echo "nadie mas: «$sistema» mandaria la suya y «$llamaA» contestaria 401 — el mismo" >&2
+            echo "estado del que #21 sale, y con el cliente ya creado para taparlo." >&2
+            exit 1
+        fi
+        kc update "clients/$id" -r "$REALM" -s "secret=$(cat "$archivo")" >/dev/null
     done < "$TSV"
 
     # Cero declaradas no es «todo bien»: es que el archivo no dice nada, y entonces esto no
@@ -451,6 +476,17 @@ if [ "$CUAL" = servicios ]; then
         cuenta=$(kc get "clients/$id/service-account-user" -r "$REALM" --fields id --format csv --noquotes 2>/dev/null | head -1)
         if ! kc get "users/$cuenta" -r "$REALM" 2>/dev/null | tr -d ' \n' | grep -q "\"municipalidad_id\":\[\"$ubigeo\"\]"; then
             echo "FALTA  $cliente: su cuenta no lleva municipalidad_id=$ubigeo" >&2
+            FALTAN=$((FALTAN + 1))
+        fi
+        # Y que la clave que quedo puesta sea la del `Secret`, que es distinto de haberla
+        # mandado: un `update` que Keycloak rechace sale por otro lado y aqui se veria igual.
+        # Se compara el valor, no se imprime: lo que se dice es «no coincide».
+        archivo="$CLAVES_DE_SERVICIO/${sistema}-a-${llamaA}-${ubigeo}"
+        puesta=$(kc get "clients/$id/client-secret" -r "$REALM" 2>/dev/null | tr -d ' \n' \
+            | sed -n 's/.*"value":"\([^"]*\)".*/\1/p')
+        if [ -z "$puesta" ] || [ "$puesta" != "$(cat "$archivo" 2>/dev/null)" ]; then
+            echo "FALTA  $cliente: su clave no es la del Secret. Quien llame mandara una y" >&2
+            echo "       el emisor esperara otra, y el destino contestara 401." >&2
             FALTAN=$((FALTAN + 1))
         fi
     done < "$TSV"

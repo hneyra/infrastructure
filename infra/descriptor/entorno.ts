@@ -15,6 +15,7 @@ import {
   anfitrionDelMotor,
   emisorPublico,
   jwksInterno,
+  tokenInterno,
   nombreDePrioridad,
   servicioDeIdentidad,
   SISTEMAS_DEL_PRODUCTO,
@@ -95,6 +96,11 @@ export function entornoPara(
       emisor: emisorPublico(dominio, realm),
       // Cruzando el namespace: el servicio vive en el de la plataforma, no en el del sistema.
       jwks: jwksInterno(ambiente, realm).replace(
+        `//${servicioDeIdentidad(ambiente)}:`,
+        `//${servicioDeIdentidad(ambiente)}.${namespaceName(ambiente)}:`,
+      ),
+      // El punto de emision, por la misma red interna y con el mismo argumento (#21 AC-2).
+      token: tokenInterno(ambiente, realm).replace(
         `//${servicioDeIdentidad(ambiente)}:`,
         `//${servicioDeIdentidad(ambiente)}.${namespaceName(ambiente)}:`,
       ),

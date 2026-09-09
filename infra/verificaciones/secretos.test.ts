@@ -132,24 +132,33 @@ describe("C-17 §4 · lo que se declara es lo que se monta", () => {
     const deSistemas = inventario.filter((e) => deLosSistemas.has(e.namespace));
     expect(deSistemas).toHaveLength(10);
 
+    // Diez de diez, y el decimo lo anadio #21 AC-2: hasta entonces la credencial con la que el
+    // ingestor pide el buzon de `catastro` era la unica que NO era espejo, porque no habia
+    // ningun valor del que fuera copia. Ahora lo hay —la clave del cliente confidencial que el
+    // Job de identidad le fija a Keycloak—, y tiene que ser el MISMO valor por el mismo motivo
+    // que un rol del motor: si se generaran por separado, quien llama mandaria una y el emisor
+    // esperaria otra, y el destino contestaria 401 en la primera llamada.
     const espejos = deSistemas.filter((e) => e.espejoDe !== undefined);
-    expect(espejos).toHaveLength(9);
+    expect(espejos).toHaveLength(10);
     for (const e of espejos) {
       const origen = inventario.find(
         (o) => o.secreto === e.espejoDe?.secreto && o.clave === e.espejoDe.clave,
       );
-      expect(origen?.rolDePostgres, `«${e.secreto}» copia de algo que no es un rol del motor`).toBeDefined();
+      expect(origen, `«${e.secreto}» copia de una entrada que no esta en el inventario`).toBeDefined();
+      // Un espejo copia de un rol del motor —una contrasena de PostgreSQL— o de una clave de
+      // cliente confidencial. Las dos son «un valor que existe en otro sitio y no se puede
+      // generar dos veces»; lo que no puede es copiar de algo que no es ni una cosa ni la otra.
+      const deEmisor = origen!.secreto === `kamayuk-${a}-servicios-de-identidad`;
+      expect(
+        origen!.rolDePostgres !== undefined || deEmisor,
+        `«${e.secreto}» copia de algo que no es ni un rol del motor ni una clave de emisor`,
+      ).toBe(true);
     }
 
-    /**
-     * Y el que NO es espejo: la credencial con que el ingestor pide el buzon de `catastro`. No es
-     * un rol del motor, asi que no hay ningun valor del que sea copia y se genera como cualquier
-     * otra. (Hoy no sirve: no hay identidad de servicio, ADR-0028 §2.)
-     */
+    // Y ya no queda ninguna que se genere por su cuenta. La lista se afirma vacia y no se omite
+    // la comprobacion: el dia que aparezca una credencial de sistema sin origen, esto la nombra.
     const propios = deSistemas.filter((e) => e.espejoDe === undefined);
-    expect(propios.map((e) => e.clave.length > 0 && e.secreto)).toEqual([
-      `kamayuk-rentas-${a}-catastro`,
-    ]);
+    expect(propios.map((e) => e.secreto)).toEqual([]);
   });
 
   /**
