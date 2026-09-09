@@ -63,12 +63,48 @@ que ADR-0039 §«Lo que cuesta» punto 2 exige que este **medido y escrito, no s
 | Que | Cifra |
 |---|---|
 | Periodo del `CronJob` | 5 min (`*/5 * * * *`, los cuatro) |
-| Duracion de una pasada | _**PENDIENTE DE MEDIR — AC-5 de `identidad`#4, lo mide el integrador con los cinco levantados**_ |
-| Peor caso medido: de conceder en `identidad` a verse en `permiso` del satelite | _**PENDIENTE DE MEDIR — AC-5**_ |
-| Lo que un funcionario NUEVO ve entre el alta en `identidad` y la primera pasada | 403 «no estas dado de alta aqui» en cada satelite, y despues 200 (AC-6, tambien del integrador) |
+| Duracion de una pasada | **1,1-1,4 s** con los 174 eventos de una implantacion entera; **1,9-2,3 s** con 400; **~1 s** con uno solo. En caliente, **~330 eventos/s** |
+| Peor caso medido: de conceder en `identidad` a verse en `permiso` del satelite | **5,7 / 7,3 / 7,9 / 10,0 s** (normativa, caja, catastro, rentas) **con el consumidor arrancando justo despues**: casi todo es levantar la JVM. Sumandole la espera al tick, **~2 min 36 s tipico y ~5 min 10 s en el peor caso** |
+| Lo que un funcionario NUEVO ve entre el alta en `identidad` y la primera pasada | 403 «no estas dado de alta aqui» en cada satelite, y despues 200. **Demostrado en los cuatro** (AC-6) |
 
-Cuando el integrador escriba la cifra, la fila del registro de `CLAUDE.md` de este repositorio
-y la de `identidad` tienen que decir lo mismo.
+### La ventana, escrita (medido el 2026-09-09)
+
+    ventana = T_espera + T_arranque + T_vuelta(N)
+
+    T_espera    = lo que falta hasta el proximo minuto multiplo de 5: de 0 a 300 s -> tipico 150 s, peor 300 s
+    T_arranque  = pod + JVM + Spring. MEDIDO AQUI: 3-8 s, y es SOLO JVM+Spring
+    T_vuelta(N) = ~1,3 s por los primeros 200 eventos + ~0,6 s por cada 200 mas
+
+    caso tipico (un permiso concedido en un momento cualquiera):  150 + 5 + 1     = ~156 s
+    peor caso con una implantacion entera por delante (174):      300 + 8 + 1,5   = ~310 s
+    peor caso con el tope de una corrida (50 x 200 = 10 000):     300 + 8 + 30,7  = ~339 s
+    mas de 10 000 pendientes: lo que sobra espera al tick siguiente (+300 s por cada 10 000)
+
+`Forbid` no anade nada mientras una corrida dure menos que el periodo, y con el tope de 50 vueltas
+una corrida no pasa de ~40 s; solo un pod colgado o un fallo con `backoffLimit: 1` empujan la
+ventana a **~600 s**. **Lo que ADR-0039 §«Lo que cuesta» punto 2 pide dejar escrito: peor caso
+5 min + arranque + vuelta = ~5 min 10 s con lo que hay hoy; caso tipico ~2 min 36 s.**
+
+**Como se midio, y que NO cubre esa cifra.** Las cinco aplicaciones levantadas **nativas** en una
+maquina de 4 CPU: PostgreSQL 16.13 con las cinco bases creadas por los tres guiones de la
+plataforma sin tocarles una linea, un emisor OIDC de mentira que firma `azp` y `municipalidad_id`,
+`identidad` implantada (161 accesos, 166 eventos) y los cuatro satelites migrados e implantados
+contra ella. El lado de `identidad` **no pesa**: `GET /eventos/pendientes?limite=200` contesta en
+**7-13 ms** sobre ~600 eventos. `T_arranque` es **solo JVM+Spring**: aqui no hay cluster, asi que
+programar el pod y traerse la imagen **no estan medidos** y se suman a la ventana en un despliegue
+de verdad. El `*/5` tampoco se ejercio con un planificador: el periodo es el declarado.
+
+**Y la ventana solo es esa si el evento se puede aplicar.** Un evento POSPUESTO —una afiliacion
+cuyo grupo la copia todavia no conoce— se resuelve **en la corrida siguiente** a que llegue su
+dependencia, medido en los cuatro. Mientras no llega, los cuatro se comportan **distinto**, y eso
+esta medido: dos siguen aplicando lo demas, uno **deja sin aplicar todo lo que va detras** (su copia
+deja de recibir cualquier cambio hasta que ese hecho se resuelva) y otro **sale con codigo 1** (un
+`Job` `Failed` cada cinco minutos). Y en ninguno de los cuatro **le llega nada al responsable**,
+que es lo que convierte «se pospuso» en «no llego y nadie lo sabe». La regla comun —un pospuesto
+no hace fallar la corrida, y un pospuesto de mas de tres ticks avisa a una persona con nombre— se
+cierra en los PR de los cuatro satelites de esta misma etapa, no aqui.
+
+La fila del registro de `CLAUDE.md` de este repositorio y la de `identidad` dicen esta misma cifra.
 
 **Lo que NO es la ventana**: no es una decision de negocio a discutir sino un coste medido. Una
 revocacion que tarde un dia seria un descuido con nombre; cinco minutos es lo que cuesta no tener
@@ -176,10 +212,31 @@ espejo de la misma. Lo que cuesta en un cluster ya desplegado: el `Secret`
 `bootstrap-secretos.sh` genera las que faltan, el `Job` de identidad fija la nueva en cada cliente
 y los espejos la copian, asi que tras un `pulumi up` completo los cuatro vuelven a coincidir.
 
+**Y crear el cliente en el emisor NO basta, medido: hoy falta el segundo paso y no lo da nadie.**
+`reconciliar-identidades.sh servicios` deja el cliente confidencial con su clave y su
+`municipalidad_id`, o sea que el consumidor **consigue su token**; pero el buzon lo sirve
+`identidad`, que autoriza contra su propia tabla `usuario`, y ahi la cuenta
+`service-account-kamayuk-<sistema>-servicio-<ubigeo>` **no existe**. Medido con las cinco
+aplicaciones levantadas: los cuatro consumidores reciben **403 `SIN_PRIVILEGIO`** —«La cuenta
+«service-account-kamayuk-normativa-servicio-200105» no esta dada de alta en este sistema»— y la
+pasada del consumidor de cada implantacion muere con `IdentidadNoContesta: identidad contesto 403
+al leer el buzon`. Para poder medir AC-5 y AC-6 hubo que darlas de alta **a mano**, con el token
+del administrador: `POST /identidad/api/v1/seguridad/usuarios` con esa cuenta y
+`POST /identidad/api/v1/seguridad/grupos/<grupo>/miembros` sobre «Consumidores del buzon», los
+cuatro. Ese grupo nace **sin miembros** desde la etapa 3 y su javadoc lo dice; lo que la medida
+anade es que **nada lo llena**, asi que en un despliegue de verdad la copia local de los cuatro
+se quedaria como la dejo su implantacion, sin un solo error que lo diga — que es exactamente el
+defecto que la etapa 4 existe para cerrar. **No se cierra desde aqui**: quien puede escribir en
+`usuario` de `identidad` es `identidad`, y el sitio es su implantacion, que ya conoce el ubigeo y
+los cuatro sistemas.
+
 ## 6. Lo que este runbook NO cubre
 
-- **AC-5 y AC-6** —la ventana medida y el 403→200 de un funcionario nuevo— los mide el integrador
-  con las cinco aplicaciones levantadas; aqui hay un hueco marcado y no una cifra supuesta.
+- **El arranque del pod**: la ventana del §2 esta medida con las cinco aplicaciones levantadas
+  NATIVAS, asi que programar el pod y traerse la imagen no estan dentro de `T_arranque` y se le
+  suman en un despliegue de verdad. Tampoco se ejercio el `*/5` con un planificador.
+- **Keycloak de verdad**: lo medido uso un emisor de mentira que firma `azp` y `municipalidad_id`;
+  que el realm emita esos claims lo vigila `identidad-de-servicio.test.ts`, no aquella medida.
 - **Que hace cada satelite con un evento que no sabe aplicar** es de su repositorio
   (`AplicarUnEventoDeIdentidad`, AC-1 de `identidad`#4).
 - **`rentas` deja de administrar** en esta misma etapa (AC-4): mientras su PR no aterrice hay
