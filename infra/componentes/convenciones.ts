@@ -122,9 +122,13 @@ export function secretos(environment: Environment): Secretos {
  * ademas de `catastro`— dejaban de coincidir, y de la peor manera: el cliente de Keycloak es UNO
  * (`kamayuk-<sistema>-servicio-<ubigeo>`, #21 AC-1) y `reconciliar-identidades.sh servicios` le
  * fija la clave una vez por linea del TSV, asi que con dos claves generadas por separado **la
- * ultima pisaba a la primera** y el proceso que llevaba la otra recibia 401 en su primera llamada
- * — «cero eventos pendientes» y «no me deja preguntar» indistinguibles desde fuera. Medido
- * leyendo el guion antes de escribir la primera cuenta hacia `identidad`.
+ * ultima pisaba a la primera**. Medido con un `kcadm` de mentira que anota cada `update` (la
+ * fila de identidad#4 en `CLAUDE.md`): el guion de #21 manda `secret=CLAVE-A` y despues
+ * `secret=CLAVE-B` al MISMO cliente, y su comprobacion final lo caza —«su clave no es la del
+ * Secret … el destino contestara 401», exit 1—, o sea que el `Job` de identidad falla en cada
+ * corrida mientras un sistema tenga dos destinos y el despliegue no termina. Ruidoso, que es
+ * mejor que el 401 silencioso que habria sin esa comprobacion; pero un despliegue que no puede
+ * terminar es un despliegue que no puede terminar.
  *
  * Los clientes son uno por municipalidad y no uno por sistema, y darles a todos la misma clave
  * dejaria que el proceso implantado en una municipalidad pidiera un token de otra — o sea,

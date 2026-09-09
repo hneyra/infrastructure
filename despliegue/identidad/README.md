@@ -154,8 +154,10 @@ mapeador, o una clave que no esta.
 **La clave es UNA por cliente, y hasta la etapa 4 el codigo hacia lo contrario.** El `Secret`
 `kamayuk-<amb>-servicios-de-identidad` guardaba una clave por cuenta declarada —`rentas-a-catastro-200105`— y
 este guion la fijaba en el cliente una vez por linea del TSV. Con un solo destino por sistema no se
-notaba; con el segundo destino de `rentas` la ultima linea habria pisado a la primera y el
-ingestor de `catastro` habria recibido 401 en su primera vuelta. Desde `identidad`#4 el fichero se
+notaba; con el segundo destino de `rentas` la ultima linea pisaba a la primera —medido con un
+`kcadm` de mentira que anota cada `update`: `secret=A` y despues `secret=B` al mismo cliente— y
+la comprobacion final de este mismo guion lo cazaba con «su clave no es la del Secret», `exit 1`,
+en **cada** corrida: el `Job` de identidad no podia terminar. Desde `identidad`#4 el fichero se
 llama `<sistema>-<ubigeo>` (`claveDeServicio` de `infra/componentes/convenciones.ts`), hay uno por
 cliente, y las dos credenciales de `rentas` son espejo de la misma clave. Lo que lo sujeta esta en
 `infra/verificaciones/identidad-de-servicio.test.ts` —las dos fuentes tienen que decir lo mismo,

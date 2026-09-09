@@ -198,10 +198,18 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
       // de mover el numero: una tabla (`identidad_evento_acuse`) con su clave primaria compuesta,
       // una foranea compuesta a `identidad_evento`, un `CHECK` de cuatro literales, su RLS
       // forzada y los GRANT. Ningun indice que pida extension. Sigue sin declarar ninguna.
+      // Y la etapa 4 de #52 (identidad#4) mueve a los CUATRO satelites a la vez, cada uno con su
+      // `V<n>__consumidor_de_identidad.sql`, leidas las tres que ya estan una a una antes de
+      // mover el numero —catastro 13 -> 14 (`V14`), normativa 1 -> 2 (`V2`), caja 2 -> 3
+      // (`V3`)—: dos tablas cada una (`identidad_evento_aplicado`, `identidad_evento_muerto`,
+      // con `cuerpo text` y no `jsonb`, la leccion de la `V12` de `rentas`), indices b-tree
+      // corrientes sobre `secuencia` y sobre lo apartado sin explicar, su RLS forzada y sus
+      // GRANT. Ni GiST, ni GIN, ni `EXCLUDE`, ni `text_pattern_ops`: ninguna declara una
+      // extension nueva y `crear-roles.sql` no se toca en ninguna de las tres.
       rentas: 15,
-      catastro: 13,
-      normativa: 1,
-      caja: 2,
+      catastro: 14,
+      normativa: 2,
+      caja: 3,
       identidad: 3,
     });
   });

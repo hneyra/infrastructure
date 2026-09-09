@@ -165,9 +165,11 @@ en [`despliegue/identidad/README.md` §«Las cuentas de servicio»](../../despli
 **Y la etapa 4 destapo un defecto de #21 que hubo que cerrar antes de declarar la primera.** El
 cliente de Keycloak es uno por (sistema, ubigeo) y tiene **una** clave; `#21 AC-2` guardaba la
 clave por (sistema, **destino**, ubigeo) —`rentas-a-catastro-200105`— y el guion la fijaba una vez
-por cuenta declarada. Con el segundo destino de `rentas` habria fijado `rentas-a-identidad-200105`
-encima de `rentas-a-catastro-200105`, y el ingestor de `catastro` habria recibido 401 en su
-primera vuelta sin que nada lo dijera. Desde esta etapa la clave es **por cliente**
+por cuenta declarada. Con el segundo destino de `rentas` fijaba `rentas-a-identidad-200105`
+encima de `rentas-a-catastro-200105` —medido con un `kcadm` de mentira: dos `update … secret=`
+con valores distintos sobre el mismo cliente— y su propia comprobacion final lo cazaba, «su clave
+no es la del Secret … el destino contestara 401», `exit 1`: el `Job` de identidad **fallaba en
+cada corrida** y el despliegue no terminaba. Desde esta etapa la clave es **por cliente**
 (`claveDeServicio(sistema, ubigeo)` → `rentas-200105`) y las dos credenciales de `rentas` son
 espejo de la misma. Lo que cuesta en un cluster ya desplegado: el `Secret`
 `kamayuk-<amb>-servicios-de-identidad` gana las claves nuevas y conserva las viejas como basura;
