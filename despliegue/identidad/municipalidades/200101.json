@@ -4,6 +4,11 @@
   "grupo": "200101 - Municipalidad Provincial de Sullana",
   "servicios": [
     {
+      "sistema": "caja",
+      "llamaA": "rentas",
+      "proposito": "entregarle a `rentas` el evento de cada pago; sin esto el primer cobro muere al primer intento con un 401 (ADR-0026 §3, #21)"
+    },
+    {
       "sistema": "rentas",
       "llamaA": "catastro",
       "proposito": "traer el buzon de hechos del territorio; sin esto el ingestor nace suspendido (C-8, #21)"

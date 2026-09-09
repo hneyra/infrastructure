@@ -130,16 +130,16 @@ describe("C-17 §4 · lo que se declara es lo que se monta", () => {
     // coincidencia entre dos nombres que ya no existe.
     const deLosSistemas = new Set(SISTEMAS_DEL_PRODUCTO.map((s) => namespaceDelSistema(a, s)));
     const deSistemas = inventario.filter((e) => deLosSistemas.has(e.namespace));
-    expect(deSistemas).toHaveLength(10);
+    expect(deSistemas).toHaveLength(11);
 
-    // Diez de diez, y el decimo lo anadio #21 AC-2: hasta entonces la credencial con la que el
+    // Once de once, y los dos ultimos los anadio #21 AC-2: hasta entonces la credencial con la que el
     // ingestor pide el buzon de `catastro` era la unica que NO era espejo, porque no habia
     // ningun valor del que fuera copia. Ahora lo hay —la clave del cliente confidencial que el
     // Job de identidad le fija a Keycloak—, y tiene que ser el MISMO valor por el mismo motivo
     // que un rol del motor: si se generaran por separado, quien llama mandaria una y el emisor
     // esperaria otra, y el destino contestaria 401 en la primera llamada.
     const espejos = deSistemas.filter((e) => e.espejoDe !== undefined);
-    expect(espejos).toHaveLength(10);
+    expect(espejos).toHaveLength(11);
     for (const e of espejos) {
       const origen = inventario.find(
         (o) => o.secreto === e.espejoDe?.secreto && o.clave === e.espejoDe.clave,
