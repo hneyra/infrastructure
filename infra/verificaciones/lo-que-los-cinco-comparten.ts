@@ -224,6 +224,33 @@ export const DIVERGENCIAS_DECLARADAS: readonly DivergenciaDeclarada[] = [
   },
   {
     pieza: "plataforma",
+    archivo: "autorizacion/ComprobadorDeAcceso.java",
+    grupos: "caja, catastro, normativa | rentas",
+    clase: "codigo",
+    motivo:
+      "De #29 §8, y la divergencia es **inherente y no trabajo pendiente**: los tres sistemas que " +
+      "no administran la seguridad ganan `conoceAlUsuario(String)` para poder separar «no tienes " +
+      "el privilegio» de «no estas dado de alta AQUI», que llegaban al funcionario como el mismo " +
+      "403. `rentas` no lo necesita ni lo puede necesitar: las nueve escrituras de administracion " +
+      "de seguridad viven alli (ADR-0030 §3), asi que en `rentas` la segunda causa se arregla " +
+      "dando de alta al usuario y no hay nada que distinguir. Unificarlo seria darle a `rentas` " +
+      "un metodo cuyo `false` no puede ocurrir. **No cierra ninguna libreria de #22.**",
+  },
+  {
+    pieza: "plataforma",
+    archivo: "autorizacion/GuardiaDeAcceso.java",
+    grupos: "caja, catastro, normativa | rentas",
+    clase: "codigo",
+    motivo:
+      "La otra mitad de la anterior: el `if (!comprobador.conoceAlUsuario(usuario))` que lanza " +
+      "nombrando la causa antes de decir «no tiene el privilegio». Mismo motivo, misma direccion, " +
+      "y el mismo argumento para no unificarlo. **Los tres se dejaron identicos a proposito** " +
+      "—`caja`#52 y `normativa`#27 movieron el comentario que #29 §8 dejo huerfano—: hasta " +
+      "entonces esta guarda veia TRES grupos y el tercero era un comentario de sitio, que es " +
+      "exactamente el ruido que hace que una lista de divergencias deje de leerse.",
+  },
+  {
+    pieza: "plataforma",
     archivo: "auditoria/AuditoriaJdbc.java",
     grupos: "caja, normativa, rentas | catastro",
     clase: "codigo",
