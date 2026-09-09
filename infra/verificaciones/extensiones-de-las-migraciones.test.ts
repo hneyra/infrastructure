@@ -190,11 +190,15 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
       // ninguna extension** —trece tablas, ni una columna geografica, ni un indice GiST, ni un
       // `EXCLUDE`, ni una busqueda por aproximacion—, y su `crear-roles.sql` no declara ninguna;
       // las dos direcciones cuadran y lo dicen las otras pruebas de este archivo.
+      // identidad 2: la etapa 2 de #52 trae `V2__buzon_de_identidad.sql`, y se leyo entera antes
+      // de mover el numero: una tabla (`identidad_evento`), un indice b-tree corriente sobre
+      // `(municipalidad_id, id)`, su politica de RLS forzada y los GRANT. Ni GiST, ni GIN, ni
+      // `EXCLUDE`, ni `text_pattern_ops` siquiera. Sigue sin declarar ninguna extension.
       rentas: 15,
       catastro: 13,
       normativa: 1,
       caja: 2,
-      identidad: 1,
+      identidad: 2,
     });
   });
 

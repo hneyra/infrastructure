@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join, resolve, sep } from "node:path";
 import { raizDelRepositorio } from "../componentes/fuentes";
 
 /**
@@ -55,7 +55,9 @@ export function prefijoDeLaImplantacion(sistema: string): string {
     );
   }
   const fuente = readFileSync(ruta, "utf8");
-  const prefijo = /@ConfigurationProperties\(\s*"([^"]+)"\s*\)/.exec(fuente)?.[1];
+  const prefijo = /@ConfigurationProperties\(\s*"([^"]+)"\s*\)/.exec(
+    fuente,
+  )?.[1];
   if (prefijo === undefined) {
     throw new Error(
       `«${ruta}» no declara ningun \`@ConfigurationProperties("...")\` literal. Esta ` +
@@ -67,16 +69,66 @@ export function prefijoDeLaImplantacion(sistema: string): string {
   return prefijo;
 }
 
-/** Donde vive el `DatosDeImplantacion` de un sistema, en su clon hermano. */
+/**
+ * Donde vive el `DatosDeImplantacion` de un sistema, en su clon hermano.
+ *
+ * Se BUSCA en el clon y no se compone: hasta la etapa 2 de #52 esta funcion escribia
+ * `kamayuk-<sistema>-seguridad/…/seguridad/aplicacion/`, que es donde lo tienen los cuatro del
+ * corte, e `identidad` —que ES la seguridad y no tiene un modulo llamado asi— lo puso en su
+ * `nucleo`. Con la ruta escrita a mano, seis pruebas salian rojas diciendo «git clone
+ * https://github.com/hneyra/identidad» sobre un clon que estaba: un rojo que no habla de lo que
+ * la guarda vigila. Lo que se afirma es que en `src/main` de ese clon hay EXACTAMENTE un
+ * archivo con ese nombre; cero o dos se dicen, porque leer el equivocado —o ninguno— es
+ * justo el verde silencioso que esta guarda existe para impedir.
+ */
 export function rutaDeDatosDeImplantacion(sistema: string): string {
-  return join(
-    resolve(raizDelRepositorio(), "..", sistema),
-    "backend",
-    `kamayuk-${sistema}-seguridad`,
-    "src/main/java/kamayuk",
-    sistema,
-    "seguridad/aplicacion/DatosDeImplantacion.java",
+  const backend = join(resolve(raizDelRepositorio(), "..", sistema), "backend");
+  const candidatos = existsSync(backend)
+    ? datosDeImplantacionBajo(backend)
+    : [];
+  if (candidatos.length === 1) {
+    return candidatos[0]!;
+  }
+  if (candidatos.length === 0) {
+    // La ruta de los cuatro del corte, para que el rojo nombre un sitio concreto.
+    return join(
+      backend,
+      `kamayuk-${sistema}-seguridad`,
+      "src/main/java/kamayuk",
+      sistema,
+      "seguridad/aplicacion/DatosDeImplantacion.java",
+    );
+  }
+  throw new Error(
+    `«${sistema}» tiene ${candidatos.length} \`DatosDeImplantacion.java\` en su src/main y esta ` +
+      "guarda no sabe cual lee el Job de implantacion: " +
+      candidatos.map((c) => c.replace(`${backend}/`, "")).join(", "),
   );
+}
+
+/** Los `DatosDeImplantacion.java` de produccion bajo un `backend/`, sin entrar en `build/`. */
+function datosDeImplantacionBajo(backend: string): string[] {
+  const encontrados: string[] = [];
+  const recorrer = (dir: string): void => {
+    for (const entrada of readdirSync(dir, { withFileTypes: true })) {
+      if (entrada.isDirectory()) {
+        if (
+          entrada.name !== "build" &&
+          entrada.name !== "node_modules" &&
+          !entrada.name.startsWith(".")
+        ) {
+          recorrer(join(dir, entrada.name));
+        }
+      } else if (
+        entrada.name === "DatosDeImplantacion.java" &&
+        dir.includes(`${sep}src${sep}main${sep}`)
+      ) {
+        encontrados.push(join(dir, entrada.name));
+      }
+    }
+  };
+  recorrer(backend);
+  return encontrados.sort();
 }
 
 /**

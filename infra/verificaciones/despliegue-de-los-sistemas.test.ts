@@ -572,7 +572,8 @@ describe("C-14 · el egreso declarado ES el que se aplica", () => {
  * | C-14, lo que estaba escrito | 950m / 4864Mi | — |
  * | medido antes de #21 | 950m / **4480Mi** | la CPU seguia exacta; **la memoria se habia aflojado 384Mi** y nadie la remidio |
  * | medido con #21 AC-4 | **1000m** / **4736Mi** | el `CronJob` del ingestor de `rentas` deja de nacer suspendido: **+50m / +256Mi** |
- * | medido con el quinto sistema (ADR-0039) | **1200m** / **5760Mi** | `identidad` entra con su `Deployment` web y sus dos `Job`: **+200m / +1024Mi** |
+ * | medido con el quinto sistema (ADR-0039) | **1200m** / 5760Mi | `identidad` entra con su `Deployment` web y sus dos `Job`: **+200m / +1024Mi** |
+ * | remedido con `identidad`#7 | 1200m / **5248Mi** | `identidad` pide la mitad de memoria —web 256Mi, cada `Job` 128Mi—: **-512Mi**, la CPU no se mueve |
  *
  * O sea que **el techo de memoria llevaba desde C-14 dejando crecer 384Mi en silencio**, que es
  * justo lo que esta guarda existe para impedir. Se reescribe con la cifra medida y no con la
@@ -585,7 +586,7 @@ describe("C-14 · el egreso declarado ES el que se aplica", () => {
  * descriptor de `identidad`, no de aqui. Lo que cuesta en el NODO —donde ademas esta la
  * plataforma— lo dice `yarn capacidad`, y esta la mide la fila del registro.
  */
-const TECHO_DE_LOS_SISTEMAS = { cpuEnMili: 1200, memoriaEnMi: 5760 };
+const TECHO_DE_LOS_SISTEMAS = { cpuEnMili: 1200, memoriaEnMi: 5248 };
 
 describe("C-14 · lo que los cinco sistemas anaden al nodo", () => {
   it.each(ENVIRONMENTS)("en «%s» no crece en silencio", (ambiente) => {
