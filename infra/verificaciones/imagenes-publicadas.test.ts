@@ -33,9 +33,11 @@ describe("las imagenes que el ambiente pide las publica alguien", () => {
     expect(loQueNadiePublica(ambiente).join("\n")).toBe("");
   });
 
-  it.each(ENVIRONMENTS)("«%s» pide las OCHO del corte, y con etiqueta propia", (ambiente) => {
+  it.each(ENVIRONMENTS)("«%s» pide las DIEZ de los cinco, y con etiqueta propia", (ambiente) => {
     const nombres = imagenesPedidas(ambiente).map((i) => i.nombre);
-    for (const sistema of ["rentas", "catastro", "normativa", "caja"]) {
+    // Eran las ocho del corte; `identidad` (ADR-0039) trae las suyas dos, con el mismo par
+    // aplicacion/migrador y por el mismo motivo (C-14 §1).
+    for (const sistema of ["rentas", "catastro", "normativa", "caja", "identidad"]) {
       expect(nombres, `falta la aplicacion de ${sistema}`).toContain(`kamayuk-${sistema}`);
       expect(nombres, `falta el migrador de ${sistema}`).toContain(`kamayuk-${sistema}-migrador`);
     }
@@ -110,10 +112,10 @@ jobs:
   });
 
   /**
-   * Los cuatro clones del corte publican de verdad sus dos imagenes. Esta prueba estaba ROJA
-   * hasta el 2026-09-05: ninguno de los cinco repositorios tenia un flujo que publicara nada.
+   * Los cinco clones publican de verdad sus dos imagenes. Esta prueba estaba ROJA
+   * hasta el 2026-09-05: ninguno de los repositorios tenia un flujo que publicara nada.
    */
-  it.each(["rentas", "catastro", "normativa", "caja"])(
+  it.each(["rentas", "catastro", "normativa", "caja", "identidad"])(
     "«%s» publica EXACTAMENTE las imagenes que su descriptor declara",
     (sistema) => {
       const suyos = publicadores().hallados.filter((p) => p.clon === sistema);
@@ -176,7 +178,7 @@ describe("la lista de sistemas con version declarada es la de los descriptores",
    * `versionDe<Sistema>` la pone roja **nombrandolo**, en vez de heredar en silencio la etiqueta
    * de otro o —peor— la del monolito.
    */
-  it("los mismos cuatro, y en el mismo conjunto", () => {
+  it("los mismos cinco, y en el mismo conjunto", () => {
     expect([...SISTEMAS_CON_IMAGEN].sort()).toEqual(
       SISTEMAS.map(({ descriptor }) => descriptor.sistema).sort(),
     );
@@ -188,6 +190,9 @@ describe("la lista de sistemas con version declarada es la de los descriptores",
       "versionDeCatastro",
       "versionDeNormativa",
       "versionDeCaja",
+      // El quinto (ADR-0039), y esta prueba es lo que impide que se componga sin su clave: sin
+      // ella `readInvariants` no se repliega a nada, lanza nombrandola, que es lo que se quiere.
+      "versionDeIdentidad",
     ]);
   });
 });
@@ -204,20 +209,41 @@ describe("quien puede traerse una imagen privada", () => {
   });
 
   /**
-   * Y la otra mitad, que es el hueco: los cuatro sistemas viven en el suyo desde ADR-0031, y ni
-   * el `Secret` ni el parche llegan alli. Hoy funciona porque sus paquetes son publicos; hacerlos
-   * privados —que es lo que deberian ser— deja sus DIECISEIS cargas en `ImagePullBackOff`.
+   * Y la otra mitad, que es el hueco: los sistemas viven en el suyo desde ADR-0031, y ni
+   * el `Secret` ni el parche llegan alli. Hasta ADR-0039 esto funcionaba porque sus paquetes son
+   * publicos; hacerlos privados —que es lo que deberian ser— deja sus cargas en
+   * `ImagePullBackOff`.
+   *
+   * **Y con `identidad` el hueco deja de ser hipotetico, y esto se MIDIO en vez de suponerse.**
+   * El 2026-09-09, con un token ANONIMO de `ghcr.io/token`:
+   *
+   *   - `kamayuk-caja:5db1db30…` y `kamayuk-rentas:0fa7d034…` contestan **200**;
+   *   - `kamayuk-caja` con una etiqueta que no existe contesta **404**;
+   *   - `kamayuk-identidad` y `kamayuk-identidad-migrador`, con el `sha` que los dos stacks
+   *     declaran **y** con `latest`, contestan **403**.
+   *
+   * Y **403 no permite concluir que sean privadas**: un nombre de paquete que no existe
+   * (`kamayuk-esto-no-existe-jamas`) contesta 403 tambien, igual que los tres del monolito. Es el
+   * tercer desenlace que D-23 dejo escrito. Lo que si se puede afirmar es lo que decide si el pod
+   * arranca: **hoy esas dos NO se pueden bajar sin credencial**, al reves que las de los otros
+   * cuatro, y `hneyra/identidad` es ademas un repositorio PRIVADO, asi que sus paquetes nacen
+   * privados por omision. Quien lo cierra es `yarn imagenes --ambiente <amb>` con
+   * `REGISTRY_PULL_TOKEN` —el PAT que el NODO usa—, que es la unica pregunta que vale: «¿la puede
+   * bajar quien va a bajarla?».
    *
    * Esta prueba NO fosiliza el estado: exige que, mientras ningun pod de un sistema declare
    * credencial propia, el manifiesto no contenga ninguna — de modo que quien la anada tenga que
    * venir aqui y decidir si el hueco queda cerrado.
    */
-  it.each(ENVIRONMENTS)("y a ninguno de los cuatro sistemas, en «%s»", (ambiente) => {
+  it.each(ENVIRONMENTS)("y a ninguno de los cinco sistemas, en «%s»", (ambiente) => {
     const sin = podsSinCredencial(ambiente);
-    // Las DIECISEIS cargas de los cuatro sistemas: SEIS Deployment, ocho Job y dos CronJob. Eran
+    // Las DIECINUEVE cargas de los cinco sistemas: SIETE Deployment, diez Job y dos CronJob.
+    // Las tres que suma `identidad` (ADR-0039) son su `Deployment` web y sus dos `Job` —de
+    // migracion y de implantacion—; no tiene interfaz ni ningun `CronJob`, y eso es una
+    // afirmacion de su descriptor y no una casilla vacia. Eran DIECISEIS y antes de eso
     // catorce hasta que `caja` estreno su interfaz de ventanilla (#16) y quince hasta que
     // `rentas` estreno la suya (I-44) — y su imagen es tan privada-o-publica como las otras, asi
-    // que el hueco crece con cada una en vez de quedarse quieto.
+    // que el hueco crece con cada sistema y con cada interfaz en vez de quedarse quieto.
     //
     // Esta cifra es el censo de lo que costaria cerrar el hueco, y por eso se toca a mano: cada
     // interfaz nueva pasa por aqui y por la decision de si sigue abierto.
@@ -231,10 +257,11 @@ describe("quien puede traerse una imagen privada", () => {
     // `kamayuk-catastro`, `kamayuk-catastro-migrador` y `kamayuk-catastro-web`—. O sea que la
     // tercera nace con la MISMA condicion que las otras dos: hereda el hueco de D-23 en vez de
     // necesitar credencial, y hacerlas privadas las deja a las diecisiete en ImagePullBackOff.
-    expect(sin).toHaveLength(16);
+    expect(sin).toHaveLength(19);
     expect([...new Set(sin.map((p) => p.espacio))].sort()).toEqual([
       `kamayuk-caja-${ambiente}`,
       `kamayuk-catastro-${ambiente}`,
+      `kamayuk-identidad-${ambiente}`,
       `kamayuk-normativa-${ambiente}`,
       `kamayuk-rentas-${ambiente}`,
     ]);

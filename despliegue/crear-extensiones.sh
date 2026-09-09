@@ -55,8 +55,8 @@
 #     con un comodin sobre el nombre del modulo: `../<sistema>/backend/*/src/main/...`. Si
 #     hay cero o mas de uno, se dice; adivinar es lo que hace que una guarda mienta.
 #   - la base **es el nombre del sistema** en los cinco. No hay tabla que mantener:
-#     `05-crear-bases.sh` crea `rentas`, `catastro`, `normativa` y `caja` con ese nombre, y
-#     la del monolito se llama `sgtm`.
+#     `05-crear-bases.sh` crea `rentas`, `catastro`, `normativa`, `caja` e `identidad` con ese
+#     nombre, y la del monolito se llama `sgtm`.
 #   - las extensiones salen de `extensiones_declaradas`, la misma funcion que usa
 #     `05-crear-bases.sh`. Dos copias del patron son dos sitios donde dejar de ver una.
 #
@@ -98,7 +98,8 @@ RAIZ=$(cd "$AQUI/.." && pwd)
 # shellcheck source=inicializacion-del-motor/lib-extensiones.sh
 . "$AQUI/inicializacion-del-motor/lib-extensiones.sh"
 
-# Los cuatro sistemas del corte (ADR-0031), para `--todos`.
+# Los CINCO sistemas del producto —los cuatro del corte (ADR-0031) mas `identidad`
+# (ADR-0039)—, para `--todos`.
 #
 # Se escribe aqui y no en quien llama —`infra.yml` lo invoca en `aplicar-stg` y en
 # `aplicar-prod`— porque una lista en el YAML seria un segundo sitio que mantener de acuerdo,
@@ -106,14 +107,14 @@ RAIZ=$(cd "$AQUI/.." && pwd)
 # fuente lo comprueba `el-monolito-fuera.test.ts` EJECUTANDO esta asignacion, igual que hace
 # con la de `verificar-el-ambiente.sh`: una prueba que solo mirara que el guion los nombra
 # pasaria con la lista rota (la leccion de M10 de C-19).
-SISTEMAS_DEL_PRODUCTO="rentas catastro normativa caja"
+SISTEMAS_DEL_PRODUCTO="rentas catastro normativa caja identidad"
 
-# `--todos` recorre los cuatro, que es lo que necesita un motor YA CREADO: ahi
+# `--todos` recorre los cinco, que es lo que necesita un motor YA CREADO: ahi
 # `docker-entrypoint-initdb.d` no vuelve a correr, asi que las extensiones que cada
 # `crear-roles.sql` declara hay que crearlas una base a una.
 if [ -n "$TODOS" ]; then
     [ -z "$SISTEMA" ] || {
-        echo "--todos y --sistema son excluyentes: o uno, o los cuatro." >&2
+        echo "--todos y --sistema son excluyentes: o uno, o todos." >&2
         exit 2
     }
     for uno in $SISTEMAS_DEL_PRODUCTO; do
@@ -128,16 +129,17 @@ if [ -n "$TODOS" ]; then
 fi
 
 # Desde `E` no hay valor por omision: el monolito era el unico sistema que vivia en ESTE
-# repositorio, y con el fuera todo `--sistema` es uno de los cuatro clones hermanos. Sin
+# repositorio, y con el fuera todo `--sistema` es uno de los cinco clones hermanos. Sin
 # esta guarda, olvidarlo se leeria como «el de siempre» y crearia extensiones en la base
 # equivocada.
 [ -n "$SISTEMA" ] || {
-    echo "Falta --sistema (o --todos). Los que hay son los cuatro de ADR-0031: rentas," >&2
-    echo "catastro, normativa, caja. Cada uno declara sus extensiones en SU crear-roles.sql." >&2
+    echo "Falta --sistema (o --todos). Los que hay son los cinco del producto: rentas," >&2
+    echo "catastro, normativa, caja, identidad. Cada uno declara sus extensiones en SU" >&2
+    echo "crear-roles.sql." >&2
     exit 2
 }
 
-# La base es el nombre del sistema: `05-crear-bases.sh` crea las cuatro con ese nombre.
+# La base es el nombre del sistema: `05-crear-bases.sh` crea las cinco con ese nombre.
 # Una tabla aqui seria un sitio mas que mantener de acuerdo.
 BASE="$SISTEMA"
 
@@ -178,9 +180,10 @@ fi
 
 # Cero extensiones NO es un error, y hasta C-13 aqui se trataba como tal.
 #
-# `caja` no declara ninguna a proposito (P5D) y `normativa` tampoco desde C-13: para esos
-# dos no hay nada que crear ni nada que comprobar, y salir con codigo 1 diciendo «no
-# declara ninguna extension» convertiria la decision correcta en un despliegue rojo.
+# `caja` no declara ninguna a proposito (P5D), `normativa` tampoco desde C-13 e `identidad`
+# tampoco desde ADR-0039: para esos tres no hay nada que crear ni nada que comprobar, y salir
+# con codigo 1 diciendo «no declara ninguna extension» convertiria la decision correcta en un
+# despliegue rojo.
 if [ -z "$extensiones" ]; then
     echo "«${SISTEMA}» no declara ninguna extension: no hay nada que crear en «${BASE}»."
     exit 0

@@ -363,13 +363,18 @@ const VALORES_MINIMOS = {
   backupBucket: "sgtm-prod-respaldos",
   keycloakImage: "quay.io/keycloak/keycloak:26.0",
   applicationImageRepository: "ghcr.io/hneyra/sgtm",
-  // Una por sistema, y las cuatro obligatorias: `readInvariants` no admite que falte ninguna,
+  // Una por sistema, y todas obligatorias: `readInvariants` no admite que falte ninguna,
   // porque un valor por omision haria que olvidarse de declarar la version de un sistema se
   // leyera igual que declararla — y lo que decide es que imagen baja el nodo.
+  //
+  // Son CINCO desde ADR-0039, y no se escriben a mano una a una por gusto: la prueba de abajo
+  // recorre las claves de este objeto, asi que un sistema que entrara en `SISTEMAS_CON_IMAGEN`
+  // y no aqui dejaria su clave sin el caso «falta «...»» y nadie lo notaria.
   versionDeRentas: "1111111111111111111111111111111111111111",
   versionDeCatastro: "2222222222222222222222222222222222222222",
   versionDeNormativa: "3333333333333333333333333333333333333333",
   versionDeCaja: "4444444444444444444444444444444444444444",
+  versionDeIdentidad: "5555555555555555555555555555555555555555",
   ubigeo: "200101",
   municipalidad: "Municipalidad Provincial de Sullana",
   administrador: "administrador",

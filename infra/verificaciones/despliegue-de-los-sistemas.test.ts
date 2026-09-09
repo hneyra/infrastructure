@@ -488,7 +488,7 @@ describe("C-14 §3 · los CronJob del emisor y del ingestor", () => {
    * El contraste. Sin el, «todo sistema declara un CronJob» podria satisfacerse dandole uno a
    * quien no tiene ningun proceso periodico, y una lista vacia dejaria de significar algo.
    */
-  it.each(["normativa", "caja"])("«%s» no declara ninguno, y es una afirmacion", (sistema) => {
+  it.each(["normativa", "caja", "identidad"])("«%s» no declara ninguno, y es una afirmacion", (sistema) => {
     expect(delSistema(AMBIENTE, sistema).filter((m) => m.kind === "CronJob")).toEqual([]);
   });
 
@@ -555,7 +555,7 @@ describe("C-14 · el egreso declarado ES el que se aplica", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * El censo de lo que los cuatro sistemas piden.
+ * El censo de lo que los CINCO sistemas piden.
  *
  * **`yarn capacidad` no los ve**, y eso es un hueco declarado de C-14 (§6): compone solo la
  * plataforma. Lo que esta guarda hace es lo unico que se puede hacer sin decidir antes si el
@@ -567,20 +567,27 @@ describe("C-14 · el egreso declarado ES el que se aplica", () => {
  *
  * ## Remedido en #21, y las dos mitades se movieron por motivos distintos
  *
- * | | pico de los cuatro | por que |
+ * | | pico de los sistemas | por que |
  * |---|---|---|
  * | C-14, lo que estaba escrito | 950m / 4864Mi | — |
  * | medido antes de #21 | 950m / **4480Mi** | la CPU seguia exacta; **la memoria se habia aflojado 384Mi** y nadie la remidio |
  * | medido con #21 AC-4 | **1000m** / **4736Mi** | el `CronJob` del ingestor de `rentas` deja de nacer suspendido: **+50m / +256Mi** |
+ * | medido con el quinto sistema (ADR-0039) | **1200m** / **5760Mi** | `identidad` entra con su `Deployment` web y sus dos `Job`: **+200m / +1024Mi** |
  *
  * O sea que **el techo de memoria llevaba desde C-14 dejando crecer 384Mi en silencio**, que es
  * justo lo que esta guarda existe para impedir. Se reescribe con la cifra medida y no con la
  * vieja mas lo que suba #21: un techo que no es la medida no es un techo, es un margen que
  * nadie decidio.
+ *
+ * **Y el salto de ADR-0039 es un cambio de DEMANDA y no un ajuste de prueba**, que es lo que
+ * este docblock manda escribir asi: son exactamente los `requests` de un sistema mas —web
+ * 100m/512Mi, migracion 50m/256Mi, implantacion 50m/256Mi— y las tres cifras salen del
+ * descriptor de `identidad`, no de aqui. Lo que cuesta en el NODO —donde ademas esta la
+ * plataforma— lo dice `yarn capacidad`, y esta la mide la fila del registro.
  */
-const TECHO_DE_LOS_SISTEMAS = { cpuEnMili: 1000, memoriaEnMi: 4736 };
+const TECHO_DE_LOS_SISTEMAS = { cpuEnMili: 1200, memoriaEnMi: 5760 };
 
-describe("C-14 · lo que los cuatro sistemas anaden al nodo", () => {
+describe("C-14 · lo que los cinco sistemas anaden al nodo", () => {
   it.each(ENVIRONMENTS)("en «%s» no crece en silencio", (ambiente) => {
     const plataforma = construirManifiestos(invariantesDe(ambiente));
     const demanda = demandaDelStack([...manifiestosDeLosSistemas(invariantesDe(ambiente), plataforma)]);
@@ -773,8 +780,8 @@ describe("C-17 §5 · ningun `Deployment` de un sistema corre un perfil que term
  *     variables, y lo que aqui se fija es que corra desde una que habla de esto. Lo que no se hace
  *     es venderlo como una guarda independiente: no lo es.
  */
-describe("el stack entero se compone y se audita, con los cuatro sistemas dentro", () => {
-  it.each(ENVIRONMENTS)("«%s» compone los cinco espacios de nombres", (ambiente) => {
+describe("el stack entero se compone y se audita, con los cinco sistemas dentro", () => {
+  it.each(ENVIRONMENTS)("«%s» compone los seis espacios de nombres", (ambiente) => {
     const todos = manifiestosDelAmbiente(invariantesDe(ambiente));
 
     const espacios = [

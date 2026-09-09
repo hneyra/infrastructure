@@ -1,15 +1,20 @@
 #!/bin/bash
 #
-# Las CUATRO bases del producto, una por sistema (ADR-0029, ADR-0032).
+# Las CINCO bases del producto, una por sistema (ADR-0029, ADR-0032, ADR-0039).
 #
 # Corre en `docker-entrypoint-initdb.d`, ANTES que `10-crear-roles.sql`, y una sola vez:
 # cuando el volumen esta vacio. El numero delante es lo unico que ordena estos guiones.
 #
-# POR QUE CUATRO Y NO UNA CON CUATRO ESQUEMAS
+# POR QUE UNA POR SISTEMA Y NO UNA CON CINCO ESQUEMAS
 # Cada sistema tiene su base y su historia de migraciones (ADR-0032 §1). Una base con
-# cuatro esquemas seria una base compartida con cuatro despliegues encima —lo que ADR-0029
+# cinco esquemas seria una base compartida con cinco despliegues encima —lo que ADR-0029
 # descarta como «lo peor de los dos mundos»— y una migracion de esquema podria romper un
 # sistema que nadie toco.
+#
+# **Este guion NO lleva la lista escrita**: la deriva de los `crear-roles.sql` que el compose
+# monta, asi que el quinto sistema (ADR-0039) entro anadiendo su montaje y nada mas. Que el
+# montaje este es lo que mide la mutacion (M3) de esa etapa: sin el, la base `identidad` no se
+# crea y su migrador muere con «database "identidad" does not exist».
 #
 # LAS EXTENSIONES LAS DECIDE CADA SISTEMA, Y ESTE GUION LAS DERIVA (C-10)
 # Van en cada base y no en `template1`: son de la BASE, no del cluster, y una instalada en
@@ -82,8 +87,9 @@ for archivo in "${ARCHIVOS[@]}"; do
 
     extensiones=$(extensiones_declaradas "$archivo")
     if [ -z "$extensiones" ]; then
-        # No es un caso raro ni un error: es la decision de `caja` (P5D) y la de
-        # `normativa` (C-13). Se dice, para que se vea en el registro del arranque.
+        # No es un caso raro ni un error: es la decision de `caja` (P5D), la de
+        # `normativa` (C-13) y la de `identidad` (ADR-0039). Se dice, para que se vea en el
+        # registro del arranque.
         echo "  «${base}» no declara ninguna extension"
         continue
     fi

@@ -95,19 +95,54 @@ export interface LoQueElDescriptorDice {
 }
 
 /**
+ * El servicio del BACKEND de un sistema cuyo nombre chocaria con uno de la plataforma.
+ *
+ * **Una sola entrada, con nombre y motivo, y no un mapa generico.** Un mapa por sistema haria
+ * que la regla —«el servicio del backend se llama como el sistema»— dejara de ser una regla, y
+ * el siguiente que la incumpliera entraria sin que nadie tuviera que escribir por que.
+ *
+ * `identidad` (ADR-0039) es el unico caso, y no es una preferencia de nombres: **el compose de
+ * la plataforma ya tiene un servicio llamado `identidad`, y es Keycloak**
+ * (`despliegue/plataforma.compose.yaml`). Los cinco composes de sistema comparten con el la red
+ * externa `kamayuk-plataforma`, donde Compose le da a cada servicio un alias con su nombre, asi
+ * que con el backend de ese sistema llamado igual **ese alias lo registran DOS contenedores** y
+ * el DNS interno de Docker reparte entre los dos. Lo que se rompe entonces no es ese sistema: es
+ * que los CINCO backends —el suyo incluido— piden su JWKS a `http://identidad:8080/...`, de modo
+ * que la mitad de las veces se lo pedirian a un backend de Spring, que contesta 404, y **todo
+ * token seria invalido de forma intermitente**.
+ *
+ * Es la misma colision que `grafoDeEgreso` resuelve en `descriptor/sistemas.ts` y la que hace
+ * que sus pods lleven `componente: identidad-sistema`; esta es la tercera cara, y la unica de
+ * las tres que produce un defecto EN EJECUCION en vez de en un grafo.
+ *
+ * Los otros dos procesos —`identidad-migraciones` e `identidad-implantacion`— **no chocan con
+ * nada** y conservan el nombre que compone la regla: la excepcion es del backend y solo del
+ * backend. `compose-de-los-sistemas.test.ts` lo fija en las dos direcciones: que `identidad` la
+ * tenga, y que **ningun otro sistema** tenga excepcion ninguna.
+ */
+const BACKEND_QUE_CHOCA_CON_LA_PLATAFORMA: Readonly<Record<string, string>> = {
+  identidad: "identidad-sistema",
+};
+
+/**
  * Como se llama en el compose el servicio de cada proceso.
  *
- * **El del backend se llama como el sistema, y no `aplicacion`.** No es estilo: los cuatro
+ * **El del backend se llama como el sistema, y no `aplicacion`.** No es estilo: los cinco
  * composes comparten la red `kamayuk-plataforma` y Compose le da a cada servicio un alias de red
- * con su nombre, asi que cuatro servicios llamados `aplicacion` dejarian ese alias resolviendo a
- * uno cualquiera de los cuatro. Ademas es el nombre que la propia aplicacion da por hecho: el
+ * con su nombre, asi que cinco servicios llamados `aplicacion` dejarian ese alias resolviendo a
+ * uno cualquiera de los cinco. Ademas es el nombre que la propia aplicacion da por hecho: el
  * valor por omision de `kamayuk.caja.origenes` es `http://rentas:8080/rentas/api/v1`.
+ *
+ * La unica excepcion, con su motivo entero, es {@link BACKEND_QUE_CHOCA_CON_LA_PLATAFORMA}.
  */
 export function servicioDe(sistema: string, proceso: string): string {
-  if (proceso === "web") return sistema;
+  if (proceso === "web") return BACKEND_QUE_CHOCA_CON_LA_PLATAFORMA[sistema] ?? sistema;
   if (proceso === "migrador") return `${sistema}-migraciones`;
   return `${sistema}-implantacion`;
 }
+
+/** Los sistemas cuyo backend NO se llama como ellos, para que una prueba pueda fijarlos. */
+export const BACKENDS_CON_NOMBRE_PROPIO = BACKEND_QUE_CHOCA_CON_LA_PLATAFORMA;
 
 /** El nombre de la base al final de una URL JDBC, o `undefined` si no lo es. */
 export function baseDeLaUrl(valor: string): string | undefined {

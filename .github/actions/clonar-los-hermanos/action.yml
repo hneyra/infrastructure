@@ -37,13 +37,13 @@
 # use, y que ese `path: infrastructure` este puesto.
 name: Clonar los repositorios hermanos
 description: >-
-  Los cuatro sistemas del corte, clonados como hermanos de `infrastructure` dentro del
-  espacio de trabajo.
+  Los CINCO sistemas —los cuatro del corte (ADR-0031) mas `identidad` (ADR-0039)—, clonados
+  como hermanos de `infrastructure` dentro del espacio de trabajo.
 
 inputs:
   token:
     description: >-
-      Credencial de lectura sobre los CUATRO sistemas, que son repositorios PRIVADOS.
+      Credencial de lectura sobre los CINCO sistemas, que son repositorios PRIVADOS.
       El `GITHUB_TOKEN` de un flujo solo alcanza al repositorio que lo ejecuta, asi que
       sin credencial estos checkouts mueren con un `404 Not Found` al buscar la rama por
       omision — medido en la corrida `33950853560`, donde `infrastructure` y `sgtm`
@@ -59,7 +59,7 @@ inputs:
     required: true
   historial-completo:
     description: >-
-      `si` para traer los cuatro con `fetch-depth: 0`. Lo necesita **un solo trabajo**,
+      `si` para traer los cinco con `fetch-depth: 0`. Lo necesita **un solo trabajo**,
       `verificar`, porque `deriva-de-migraciones.test.ts` cuenta migraciones en el arbol de
       git de DOS revisiones de cada sistema —la que el stack declara y `origin/main`— y con
       el checkout superficial ninguna de las dos esta en el clon: la comprobacion **no
@@ -70,7 +70,7 @@ inputs:
       y **este flujo ya no clona `sgtm` en ningun trabajo**: no queda nada suyo que leer.
 
       Los otros trabajos van con `fetch-depth: 1`, que es lo barato y lo que necesitan: de
-      los cuatro solo leen archivos del arbol de trabajo —el `src/descriptor` que
+      los cinco solo leen archivos del arbol de trabajo —el `src/descriptor` que
       `descriptor/sistemas.ts` importa y el `crear-roles.sql` que
       `extensiones-de-las-migraciones.ts` lee—.
 
@@ -110,5 +110,15 @@ runs:
       with:
         repository: hneyra/caja
         path: caja
+        token: ${{ inputs.token }}
+        fetch-depth: ${{ inputs.historial-completo == 'si' && '0' || '1' }}
+
+    # El quinto (ADR-0039). Igual que los otros cuatro y con la MISMA credencial: aqui no
+    # hay nada que decidir por sistema, y un checkout que se saliera del patron seria el
+    # sitio por donde vuelve el defecto que C-20 cerro.
+    - uses: actions/checkout@v4
+      with:
+        repository: hneyra/identidad
+        path: identidad
         token: ${{ inputs.token }}
         fetch-depth: ${{ inputs.historial-completo == 'si' && '0' || '1' }}

@@ -215,12 +215,15 @@ describe("#149 · la base de datos", () => {
    * (C-10)— y aplicarlos **cada uno contra su base**: ejecutados contra `postgres` crearian ahi
    * las extensiones de todos y ninguna donde toca.
    */
-  it("y monta los cuatro `crear-roles.sql` FUERA de initdb.d, identicos a los de su clon", () => {
+  it("y monta los cinco `crear-roles.sql` FUERA de initdb.d, identicos a los de su clon", () => {
     const configuracion = buscar(ms, "ConfigMap", "postgres-roles-de-los-sistemas") as {
       metadata: { name: string };
       data: Record<string, string>;
     };
-    const sistemas = ["rentas", "catastro", "normativa", "caja"];
+    // Escritos aqui a proposito: es el contraste de `SISTEMAS_DEL_PRODUCTO`, y derivarlo de la
+    // misma lista que se comprueba dejaria la afirmacion cierta pase lo que pase. El quinto
+    // (ADR-0039) entra aqui a mano, que es lo que obliga a mirar su `crear-roles.sql`.
+    const sistemas = ["rentas", "catastro", "normativa", "caja", "identidad"];
 
     for (const sistema of sistemas) {
       const enSuClon = join(
@@ -270,7 +273,7 @@ describe("#149 · la base de datos", () => {
     expect(montaje?.mountPath).toBe("/etc/kamayuk");
     expect(
       montaje?.mountPath,
-      "si esto cayera en `docker-entrypoint-initdb.d`, el entrypoint EJECUTARIA los cuatro " +
+      "si esto cayera en `docker-entrypoint-initdb.d`, el entrypoint EJECUTARIA los cinco " +
         "contra la base por omision: las extensiones de todos en `postgres` y ninguna donde toca.",
     ).not.toContain("initdb");
   });
@@ -281,11 +284,13 @@ describe("#149 · la base de datos", () => {
    * **Se leen de los cuatro `crear-roles.sql` de los sistemas** (`E`). Hasta el 2026-09-06
    * se leian del `10-crear-roles.sql` del monolito, que era el que los creaba; con el fuera,
    * quien los crea es `06-roles-de-los-sistemas.sh` aplicando el archivo de cada sistema, y
-   * los cuatro los declaran con `IF NOT EXISTS`. Se exige de **cada uno**: bastaría con que
-   * uno los creara, y por eso mismo comprobar uno solo dejaria que los otros tres se
-   * quedaran sin `NOSUPERUSER` sin que nada lo dijera.
+   * los cinco los declaran con `IF NOT EXISTS`. Se exige de **cada uno**: bastaría con que
+   * uno los creara, y por eso mismo comprobar uno solo dejaria que los demas se
+   * quedaran sin `NOSUPERUSER` sin que nada lo dijera. `identidad` entra con ADR-0039, y no
+   * como formalidad: los roles son del CLUSTER, asi que su archivo tambien los crea y tambien
+   * puede aflojarlos para todos.
    */
-  it.each(["rentas", "catastro", "normativa", "caja"])(
+  it.each(["rentas", "catastro", "normativa", "caja", "identidad"])(
     "«%s» crea los cuatro roles del cluster, y ninguno es superusuario",
     (sistema) => {
       const configuracion = buscar(ms, "ConfigMap", "postgres-roles-de-los-sistemas") as {
@@ -1204,11 +1209,11 @@ describe("#415 · enrolamiento del ciudadano", () => {
    *
    * Hasta `E` el contraste era **uno**: `backend/sgtm-dominio-compartido`, el unico Java
    * que este repositorio llevaba, del monolito. Se fue con el, y su enumerado esta hoy en
-   * los cuatro clones —`kamayuk/<sistema>/dominio/TipoDocumento.java`—. Se leen **los
-   * cuatro** y no uno: elegir uno dejaria que los otros tres divergieran sin que nada lo
+   * los clones —`kamayuk/<sistema>/dominio/TipoDocumento.java`—. Se leen **los
+   * cinco** y no uno: elegir uno dejaria que los otros divergieran sin que nada lo
    * dijera, y la cuenta que valida el documento del ciudadano es la misma para todos.
    */
-  it.each(["rentas", "catastro", "normativa", "caja"])(
+  it.each(["rentas", "catastro", "normativa", "caja", "identidad"])(
     "la tabla de formas de documento es la del enumerado del dominio de «%s»",
     (sistema) => {
       const java = readFileSync(
@@ -1427,17 +1432,19 @@ describe("#152 · sondas y limites de la plataforma", () => {
   /**
    * La JVM tiene su `startupProbe`, para que la sonda de vida no la mate arrancando.
    *
-   * Se mide sobre los `web` de los cuatro sistemas (`E`): la unica JVM de la plataforma era
-   * la del monolito, y se fue con el. Se exige de **los cuatro** y no de uno, por lo mismo
-   * que la tabla de tipos de documento: comprobar uno dejaria que los otros tres perdieran su
+   * Se mide sobre los `web` de los cinco sistemas (`E`, ADR-0039): la unica JVM de la
+   * plataforma era la del monolito, y se fue con el. Se exige de **todos** y no de uno, por lo
+   * mismo que la tabla de tipos de documento: comprobar uno dejaria que los demas perdieran su
    * sonda de arranque sin que nada lo dijera, y el sintoma —el kubelet matando un pod que
    * todavia arranca— es un `CrashLoopBackOff` que no se parece a su causa.
    */
-  it("los cuatro `web` tienen su `startupProbe` de JVM", () => {
+  it("los cinco `web` tienen su `startupProbe` de JVM", () => {
     const todos = manifiestosDelAmbiente(invariantesDe(AMBIENTE)).filter(
       (m) => m.kind === "Deployment" && m.metadata.name.endsWith("-web"),
     );
-    expect(todos.length, "ningun Deployment web: la prueba no mide nada").toBe(4);
+    // Cinco desde ADR-0039. No se deriva de `SISTEMAS_DEL_PRODUCTO`: la cifra es el contraste
+    // —«la prueba no mide nada»— y derivarla de la lista cuyo efecto se mide la haria trivial.
+    expect(todos.length, "ningun Deployment web: la prueba no mide nada").toBe(5);
     for (const web of todos) {
       const contenedor = (web as unknown as { spec: { template: { spec: { containers: Contenedor[] } } } })
         .spec.template.spec.containers[0] as Contenedor;

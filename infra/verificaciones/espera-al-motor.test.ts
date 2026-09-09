@@ -81,7 +81,7 @@ describe("#44 · quien habla con el motor, y quien lo espera", () => {
   });
 
   /**
-   * Y el censo de hoy, escrito: **diez de diez esperando**.
+   * Y el censo de hoy, escrito: **doce de doce esperando**.
    *
    * Nacio al reves —diez de diez SIN esperar—, y esa cifra era correcta: no habia ni un ejemplo
    * dentro del repositorio. Lo que la dio la vuelta no fue escribirla cuatro veces en cuatro
@@ -93,10 +93,14 @@ describe("#44 · quien habla con el motor, y quien lo espera", () => {
    * afirmaciones en verde sin haber mirado nada — que es la leccion de C-15/C-16 y la que #10
    * volvio a pagar.
    */
-  it.each(ENVIRONMENTS)("«%s»: los diez esperan, y son diez", (ambiente) => {
+  it.each(ENVIRONMENTS)("«%s»: los doce esperan, y son doce", (ambiente) => {
     const procesos = procesosQueHablanConElMotor(ambiente);
     expect(procesos.filter((p) => !p.espera).map((p) => p.nombre)).toEqual([]);
-    expect(procesos.length).toBe(10);
+    // Eran DIEZ hasta ADR-0039: los dos que suma `identidad` son sus dos `Job` —migracion e
+    // implantacion—, y no hace falta tocar ni una linea de su descriptor para que esperen,
+    // porque la espera la INYECTA la plataforma al componer. Que la cifra se toque a mano es lo
+    // que hace que un sistema nuevo pase por aqui en vez de entrar sin que nadie lo cuente.
+    expect(procesos.length).toBe(12);
   });
 
   /** Y el `sha` no ensucia la clave: la deuda es del proceso, no de su version. */

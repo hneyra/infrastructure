@@ -44,7 +44,7 @@ describe("lo que Pulumi aplica es todo el ambiente", () => {
 
   it.each(ENVIRONMENTS)("«%s»: cada sistema aporta objetos propios", (ambiente: Environment) => {
     const todo = manifiestosDelAmbiente(invariantesDe(ambiente)).map(IDENTIDAD);
-    for (const sistema of ["rentas", "catastro", "normativa", "caja"]) {
+    for (const sistema of ["rentas", "catastro", "normativa", "caja", "identidad"]) {
       const suyos = todo.filter((o) => o.includes(`kamayuk-${sistema}-${ambiente}`));
       expect(
         suyos.length,

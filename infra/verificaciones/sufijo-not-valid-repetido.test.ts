@@ -29,11 +29,12 @@ describe("C-3 — ninguna migracion repite el sufijo ` NOT VALID`", () => {
     expect(sufijosRepetidos().map(descripcionDelSufijo)).toEqual([]);
   });
 
-  it("mide las cuatro copias del esquema, y ninguna se queda sin mirar", () => {
+  it("mide las cinco copias del esquema, y ninguna se queda sin mirar", () => {
     // Sin esto, un `esquemas()` que devolviera la lista vacia dejaria la comprobacion
     // de arriba en verde sin haber abierto un archivo — el modo de fallo que #675
     // escribio primero.
-    expect(esquemas().length).toBe(4);
+    // Cinco desde ADR-0039: el censo deriva de `SISTEMAS`, asi que el quinto entro solo.
+    expect(esquemas().length).toBe(5);
     expect(esquemas().map((e) => e.nombre)).toContain("rentas");
     expect(esquemas().map((e) => e.nombre)).toContain("caja");
   });

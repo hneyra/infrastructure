@@ -2,7 +2,7 @@
 #
 # Los roles y los privilegios de cada sistema, EN SU PROPIA BASE (C-14, punto 2).
 #
-# Corre en `docker-entrypoint-initdb.d` justo detras de `05-crear-bases.sh` —que crea las cuatro
+# Corre en `docker-entrypoint-initdb.d` justo detras de `05-crear-bases.sh` —que crea las cinco
 # bases y sus extensiones— y delante de `10-crear-roles.sql`, que es el del monolito y va contra
 # la base `postgres`. El numero delante es lo unico que ordena estos guiones.
 #
@@ -72,4 +72,4 @@ for archivo in "${ARCHIVOS[@]}"; do
         --file "$archivo"
 done
 
-echo "los roles de los cuatro sistemas estan aplicados, cada uno en su base"
+echo "los roles de los sistemas del producto estan aplicados, cada uno en su base"

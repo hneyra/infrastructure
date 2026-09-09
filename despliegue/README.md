@@ -4,7 +4,7 @@ Desde ADR-0031 §4 hay **dos composes**, y la diferencia no es de tamaño:
 
 | Archivo | Qué levanta | Quién lo usa |
 |---|---|---|
-| [`plataforma.compose.yaml`](plataforma.compose.yaml) | PostgreSQL con **las cuatro bases**, Keycloak con **sus dos realms**, el buzón de correo y Traefik con el enrutado por prefijo | **Todo el mundo, siempre.** Es el suelo |
+| [`plataforma.compose.yaml`](plataforma.compose.yaml) | PostgreSQL con **las cinco bases** —una por sistema; `identidad` es la quinta desde [ADR-0039](../docs/30-arquitectura/adr/ADR-0039-la-identidad-es-un-sistema.md)—, Keycloak con **sus dos realms**, el buzón de correo y Traefik con el enrutado por prefijo | **Todo el mundo, siempre.** Es el suelo |
 | [`compose.yaml`](compose.yaml) | Lo anterior más la migración, la implantación, la aplicación y la interfaz | **El perfil `todo`**: pruebas de integración y CI |
 
 ```bash
@@ -15,7 +15,7 @@ docker compose -f despliegue/plataforma.compose.yaml up -d
 cd despliegue && docker compose up --build --wait aplicacion interfaz correo
 ```
 
-**Por qué partirlo.** Levantar los cuatro backends —y, cuando existan, sus cuatro frontends—
+**Por qué partirlo.** Levantar los cinco backends —y, cuando existan, sus frontends—
 junto con Keycloak y PostgreSQL en un portátil es pesado, y la respuesta correcta no es un compose más grande. El desarrollador de
 catastro no necesita rentas arriba salvo para las pantallas que cruzan — **y que lo necesite
 para trabajar en catastro es una señal de que la frontera está mal puesta**, no una molestia.
@@ -88,14 +88,14 @@ tiene ventana horaria.
 ## La trampa que esto hereda, y que sigue sin resolverse
 
 ADR-0011 anotó el riesgo de **dos formas de levantar el sistema**: que se separen, que una
-variable nueva entre en el clúster y no en el compose. Con dos composes y cuatro sistemas se
+variable nueva entre en el clúster y no en el compose. Con dos composes y cinco sistemas se
 multiplica. La mitigación escrita sigue siendo la buena y no ha cambiado: que las comprobaciones
 de `despliegue.yml` se trasladen al clúster en vez de duplicarse.
 
 Lo que sí hay son **dos** guardas que leen los archivos y comparan.
 
 `infra/verificaciones/plataforma-compose.test.ts` exige que el motor sea la misma imagen en los
-dos composes de aquí, que las cuatro bases estén declaradas, que el guion que las crea corra
+dos composes de aquí, que las cinco bases estén declaradas, que el guion que las crea corra
 **antes** que el de los roles, que los dos realms se siembren, y que los dos composes **no
 compartan volumen** —los guiones de `initdb` sólo corren con el volumen vacío, así que compartirlo
 dejaría al segundo sin ejecutarlos, y el síntoma sería una base que falta y ningún error—.

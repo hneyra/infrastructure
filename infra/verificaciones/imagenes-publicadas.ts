@@ -63,13 +63,18 @@ export const REGISTRO_PROPIO = "ghcr.io/hneyra/";
 /**
  * Los clones hermanos que pueden publicar algo.
  *
- * Eran cinco: el quinto era `sgtm`, que publicaba las tres imagenes del monolito. Se fue con
+ * Eran cinco con `sgtm`, que publicaba las tres imagenes del monolito. Se fue con
  * el en `E`, y con el la unica razon por la que este repositorio clonaba el archivo historico
  * en CI — `clonar-los-hermanos` ya no lo trae—. Dejarlo aqui pondria rojo el inventario
  * nombrando un clon que nadie pide: `publicadores()` **no se repliega** cuando falta uno, y
  * ese rojo seria por un motivo que no es el que se mide.
+ *
+ * Y vuelven a ser cinco con `identidad` (ADR-0039), que publica sus dos con el mismo
+ * `publicar-imagenes.yml` que los otros cuatro: **sin esta entrada, las dos imagenes que sus dos
+ * `Job` y su `Deployment` piden no las publicaria nadie a los ojos de esta guarda**, y el rojo
+ * diria la verdad sobre un repositorio que si las publica.
  */
-export const CLONES = ["rentas", "catastro", "normativa", "caja"] as const;
+export const CLONES = ["rentas", "catastro", "normativa", "caja", "identidad"] as const;
 
 /**
  * Las imagenes DEL PRODUCTO que un ambiente pide, sin repetir.

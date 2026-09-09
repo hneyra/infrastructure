@@ -152,11 +152,11 @@ done
 # «42501 permission denied for schema public»; con el, «Successfully applied 5 migrations».
 #
 # Y el `REVOKE CONNECT ... FROM PUBLIC` de ese mismo archivo, que es la otra mitad: PostgreSQL
-# concede `CONNECT` a PUBLIC al crear una base, los roles son del CLUSTER, y los cuatro sistemas
+# concede `CONNECT` a PUBLIC al crear una base, los roles son del CLUSTER, y los cinco sistemas
 # lo comparten. Sin el, la credencial de cualquiera abre una sesion contra la base de cualquier
 # otro (C-7 §2.6).
-echo "· Las cuatro bases del producto, con sus roles"
-for base in rentas catastro normativa caja; do
+echo "· Las cinco bases del producto, con sus roles"
+for base in rentas catastro normativa caja identidad; do
     [ "$(comoSuperusuario "SELECT 1 FROM pg_database WHERE datname='$base'" postgres)" = "1" ] \
         || { echo "FALLO: la base «${base}» no existe. La crea 05-crear-bases.sh, de la lista de archivos de roles que el ConfigMap monta en /etc/kamayuk/roles" >&2; exit 1; }
     [ "$(comoSuperusuario "SELECT has_schema_privilege('kamayuk_owner','public','CREATE')" "$base")" = "t" ] \
@@ -167,12 +167,16 @@ for base in rentas catastro normativa caja; do
 done
 # Y las extensiones, cada una donde su sistema la declara (C-10). `caja` no declara ninguna a
 # proposito —«la ventanilla tiene que poder correr en el motor mas simple que exista»— y esa
-# frase solo la ejercita alguien si se comprueba.
+# frase solo la ejercita alguien si se comprueba. `identidad` tampoco declara ninguna
+# (ADR-0039) y por el mismo motivo se comprueba aqui: una declaracion de mas se propaga a la
+# lista de excepciones de su prueba de aislamiento.
 [ "$(comoSuperusuario "SELECT 1 FROM pg_extension WHERE extname='postgis'" catastro)" = "1" ] \
     || { echo "FALLO: catastro no tiene PostGIS, y la usa desde V61" >&2; exit 1; }
 [ -z "$(comoSuperusuario "SELECT extname FROM pg_extension WHERE extname <> 'plpgsql'" caja)" ] \
     || { echo "FALLO: la base de caja tiene extensiones. No declara ninguna a proposito (P5D)" >&2; exit 1; }
-echo "  catastro tiene PostGIS; caja, ninguna extension"
+[ -z "$(comoSuperusuario "SELECT extname FROM pg_extension WHERE extname <> 'plpgsql'" identidad)" ] \
+    || { echo "FALLO: la base de identidad tiene extensiones. No declara ninguna a proposito (ADR-0039)" >&2; exit 1; }
+echo "  catastro tiene PostGIS; caja e identidad, ninguna extension"
 
 # ── 5b. El rol de carga no llega a la base de Keycloak ───────────────────────
 #
@@ -360,10 +364,10 @@ if [ "$CON_AISLAMIENTO" = "si" ]; then
 
     HUELLA_ANTES=$(huellaDeLosRoles)
 
-    for sistema in rentas catastro normativa caja; do
+    for sistema in rentas catastro normativa caja identidad; do
         arbol="$INFRA/../../$sistema/backend"
         [ -x "$arbol/gradlew" ] || {
-            echo "FALLO: no esta «$arbol/gradlew». Este trabajo necesita los cuatro clones" >&2
+            echo "FALLO: no esta «$arbol/gradlew». Este trabajo necesita los cinco clones" >&2
             echo 'hermanos; en CI los pone .github/actions/clonar-los-hermanos (C-20).' >&2
             exit 1
         }

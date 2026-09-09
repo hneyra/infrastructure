@@ -13,7 +13,7 @@ import {
 } from "./lo-que-los-cinco-comparten";
 
 /**
- * El censo de lo que los cuatro sistemas comparten no puede crecer en silencio (#22, AC-1).
+ * El censo de lo que los CINCO sistemas comparten no puede crecer en silencio (#22, AC-1).
  *
  * ## El rojo con el que nacio, y por que esta en la fila del registro y no aqui
  *
@@ -21,7 +21,7 @@ import {
  * `RUTAS_DE_CODIGO`; ese rojo es el criterio». Se produjo antes de escribir
  * {@link DIVERGENCIAS_DECLARADAS}, corriendo el censo con la lista **vacia**, y el rojo literal
  * —diecisiete desajustes, con sus grupos y su clase— esta en la fila del registro de
- * `CLAUDE.md`. Una guarda que nace verde sobre el defecto que existe para cazar no ha demostrado
+ * `CLAUDE.md`. Con `identidad` dentro (ADR-0039) son **veinticuatro** y 515 comparaciones. Una guarda que nace verde sobre el defecto que existe para cazar no ha demostrado
  * nada, y esa leccion la tiene este repositorio escrita dos veces (C-19 §M6, `E` §2).
  *
  * Lo que queda aqui es la lista declarada, **con las dos direcciones cerradas**: quitarle una
@@ -32,12 +32,12 @@ import {
  *
  * ## Lo que NO se hace aqui
  *
- * No se arregla ni una de las diecisiete. Tres son defectos vivos en tres de los cuatro clones
+ * No se arregla ni una. Tres son defectos vivos en CUATRO de los cinco clones
  * —la observacion ausente que contesta 500, el 422 que no dice por que campos se puede ordenar, y
  * el JSON compuesto a mano en una columna `jsonb`— y este repositorio no puede tocar el `src/main`
  * de ninguno de ellos. Lo que hace la guarda es que dejen de ser invisibles.
  */
-describe("lo que los cuatro sistemas comparten (#22 AC-1)", () => {
+describe("lo que los cinco sistemas comparten (#22 AC-1)", () => {
   const clave = (d: Desajuste | DivergenciaDeclarada): string =>
     `${d.pieza}/${d.archivo} :: ${d.grupos} :: ${d.clase}`;
 
@@ -49,11 +49,11 @@ describe("lo que los cuatro sistemas comparten (#22 AC-1)", () => {
    * recorrer una— dejaria la bateria entera en verde sin comparar un solo archivo. Es la misma
    * guarda que `catastro` puso en `mirar.mjs` y en `errores.mjs`, y por el mismo motivo.
    *
-   * La cifra medida el 2026-09-07 sobre `origin/main` es **412** pares archivo x clon; el piso se
-   * pone holgado a proposito, porque lo que se vigila es que el recorrido ocurra, no cuantos
-   * archivos tengan hoy los cuatro clones.
+   * La cifra medida el 2026-09-07 sobre `origin/main` era **412** pares archivo x clon; con
+   * `identidad` dentro (ADR-0039) son **515**. El piso se pone holgado a proposito, porque lo que
+   * se vigila es que el recorrido ocurra, no cuantos archivos tengan hoy los cinco clones.
    */
-  it("compara los cuatro clones de verdad, y no el conjunto vacio", () => {
+  it("compara los cinco clones de verdad, y no el conjunto vacio", () => {
     divergencias();
     expect(comparacionesHechas()).toBeGreaterThan(300);
   });
@@ -61,12 +61,12 @@ describe("lo que los cuatro sistemas comparten (#22 AC-1)", () => {
   /**
    * Y que hayan aportado **las cuatro** piezas, que es lo que la cifra global no dice.
    *
-   * Con solo el total, quitar `checkstyle` —tres comparaciones— no se nota, y quitar `buildSrc`
-   * —veintiuna— tampoco: el numero seguiria por encima del piso. Aqui cada una responde por si
-   * misma, y ademas se comprueba en los cuatro clones, que es donde `archivosDe` lanza si la ruta
+   * Con solo el total, quitar `checkstyle` —cinco comparaciones— no se nota, y quitar `buildSrc`
+   * tampoco: el numero seguiria por encima del piso. Aqui cada una responde por si
+   * misma, y ademas se comprueba en los cinco clones, que es donde `archivosDe` lanza si la ruta
    * dejo de resolver.
    */
-  it.each(PIEZAS_COMPARTIDAS.map((p) => p.nombre))("la pieza «%s» tiene archivos en los cuatro", (nombre) => {
+  it.each(PIEZAS_COMPARTIDAS.map((p) => p.nombre))("la pieza «%s» tiene archivos en los cinco", (nombre) => {
     const pieza = PIEZAS_COMPARTIDAS.find((p) => p.nombre === nombre);
     expect(pieza).toBeDefined();
     for (const sistema of SISTEMAS) {
@@ -77,10 +77,10 @@ describe("lo que los cuatro sistemas comparten (#22 AC-1)", () => {
   /**
    * **El AC-1.** Ninguna divergencia sin declarar.
    *
-   * El dia que alguien copie un archivo a tres de los cuatro, o arregle un defecto en uno solo,
+   * El dia que alguien copie un archivo a cuatro de los cinco, o arregle un defecto en uno solo,
    * esto sale rojo nombrando el archivo y **los grupos de clones que coinciden entre si** —no
    * «difiere de `rentas`»: elegir un clon de referencia lo haria el correcto por construccion, y
-   * en tres de los cuatro casos medidos hoy el que va solo es justamente el que tiene el arreglo—.
+   * en tres de los casos medidos hoy el que va solo es justamente el que tiene el arreglo—.
    */
   it("ninguna divergencia sin declarar", () => {
     const declaradas = new Set(DIVERGENCIAS_DECLARADAS.map(clave));
@@ -148,7 +148,7 @@ describe("lo que los cuatro sistemas comparten (#22 AC-1)", () => {
    * **Se ejecuta el regex, no se lee la lista** (C-19 §M10): las cinco listas son distintas y dos
    * de las diferencias son legitimas —`infrastructure` no tiene `backend/` ni `frontend/`, y el
    * `despliegue/` de `caja` lo anadio su #39—, asi que compararlas como copias daria dos rojos
-   * correctos. Lo que si es una propiedad de los cuatro es esta.
+   * correctos. Lo que si es una propiedad de los cinco es esta.
    *
    * Fue el segundo rojo que el AC-1 nombra y **se cerro solo mientras esto se escribia**:
    * `rentas`#55 (`39389e1`, 2026-09-07) le anadio `/^infrastructure\/src\//`. Hasta ese commit

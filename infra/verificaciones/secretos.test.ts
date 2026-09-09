@@ -130,16 +130,21 @@ describe("C-17 §4 · lo que se declara es lo que se monta", () => {
     // coincidencia entre dos nombres que ya no existe.
     const deLosSistemas = new Set(SISTEMAS_DEL_PRODUCTO.map((s) => namespaceDelSistema(a, s)));
     const deSistemas = inventario.filter((e) => deLosSistemas.has(e.namespace));
-    expect(deSistemas).toHaveLength(11);
+    // TRECE desde ADR-0039. Eran once —dos por sistema, `app` y `owner`, mas la credencial del
+    // ingestor de `rentas` y su espejo—; `identidad` suma las suyas: `app` y `owner`, y ninguna
+    // con `emisor`, porque ese sistema no llama a ningun hermano y no tiene cliente confidencial.
+    // La cifra se toca a mano a proposito: un sistema nuevo pasa por aqui, y con el la pregunta
+    // de si alguna de sus claves es un valor NUEVO en vez de la copia de un rol del cluster.
+    expect(deSistemas).toHaveLength(13);
 
-    // Once de once, y los dos ultimos los anadio #21 AC-2: hasta entonces la credencial con la que el
+    // Trece de trece, y los dos que no son de un rol los anadio #21 AC-2: hasta entonces la credencial con la que el
     // ingestor pide el buzon de `catastro` era la unica que NO era espejo, porque no habia
     // ningun valor del que fuera copia. Ahora lo hay —la clave del cliente confidencial que el
     // Job de identidad le fija a Keycloak—, y tiene que ser el MISMO valor por el mismo motivo
     // que un rol del motor: si se generaran por separado, quien llama mandaria una y el emisor
     // esperaria otra, y el destino contestaria 401 en la primera llamada.
     const espejos = deSistemas.filter((e) => e.espejoDe !== undefined);
-    expect(espejos).toHaveLength(11);
+    expect(espejos).toHaveLength(13);
     for (const e of espejos) {
       const origen = inventario.find(
         (o) => o.secreto === e.espejoDe?.secreto && o.clave === e.espejoDe.clave,
@@ -165,7 +170,7 @@ describe("C-17 §4 · lo que se declara es lo que se monta", () => {
    * Ningun espejo lleva `rolDePostgres`, y eso es lo que hace correcto a `asignar-claves.sh`.
    *
    * Ese guion recorre las entradas con `rolDePostgres` y hace un `ALTER ROLE`. Con los espejos
-   * dentro haria cinco sobre `kamayuk_app` —uno por copia— con valores que tienen que ser el mismo,
+   * dentro haria uno por copia sobre `kamayuk_app` con valores que tienen que ser el mismo,
    * y el ultimo decidiria. Quien manda es el `Secret` de la plataforma.
    */
   it("un espejo no es una credencial que asignar: no lleva rol de PostgreSQL", () => {

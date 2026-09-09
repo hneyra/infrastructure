@@ -1,7 +1,7 @@
 # ============================================================================
 #  LA PLATAFORMA — lo que todo el mundo levanta, siempre (ADR-0031 §4)
 #
-#  PostgreSQL con las CUATRO bases, Keycloak con sus DOS realms sembrados, y
+#  PostgreSQL con las CINCO bases, Keycloak con sus DOS realms sembrados, y
 #  Traefik con el enrutado por prefijo. Nada de esto es de ningun sistema: es el
 #  suelo sobre el que cada repositorio levanta lo suyo.
 #
@@ -39,8 +39,8 @@ services:
     # imagen sino QUE BASE recibe la extension: hoy solo la de `catastro`.
     image: postgis/postgis:16-3.4-alpine
     environment:
-      # `postgres` y no `sgtm`: aqui no hay una base del producto, hay CUATRO, y
-      # las crea `05-crear-bases.sh`. Dejar `POSTGRES_DB: sgtm` crearia una quinta
+      # `postgres` y no `sgtm`: aqui no hay una base del producto, hay CINCO, y
+      # las crea `05-crear-bases.sh`. Dejar `POSTGRES_DB: sgtm` crearia una sexta
       # que no es de nadie.
       POSTGRES_DB: postgres
       POSTGRES_USER: postgres
@@ -54,13 +54,13 @@ services:
       # `public`, y necesita que las bases ya esten.
       - ./inicializacion-del-motor/05-crear-bases.sh:/docker-entrypoint-initdb.d/05-crear-bases.sh:ro
       # Y los roles y privilegios de cada sistema, EN SU PROPIA BASE (C-14, punto 2).
-      # Hasta C-14 esto no lo hacia nadie —era el hueco 4 de C-10—: las cuatro bases
+      # Hasta C-14 esto no lo hacia nadie —era el hueco 4 de C-10—: las bases
       # recibian sus extensiones y NO los `GRANT` sobre `public` que su propio
       # `crear-roles.sql` declara, de modo que `kamayuk_owner` no podia migrarlas. Medido
       # contra PostgreSQL 16.15: sin este guion la migracion de `catastro` muere en la
       # primera sentencia con «42501 permission denied for schema public».
       - ./inicializacion-del-motor/06-roles-de-los-sistemas.sh:/docker-entrypoint-initdb.d/06-roles-de-los-sistemas.sh:ro
-      # LOS CUATRO `crear-roles.sql`, y por que van montados (C-10).
+      # LOS CINCO `crear-roles.sql`, y por que van montados (C-10).
       #
       # `05-crear-bases.sh` ya no lleva la lista de extensiones escrita a mano: la
       # DERIVA de estos archivos, que son donde cada sistema la decide. Con eso, la
@@ -80,6 +80,11 @@ services:
       - ../../catastro/backend/kamayuk-catastro-esquema/src/main/resources/db/roles/crear-roles.sql:/etc/kamayuk/roles/catastro.sql:ro
       - ../../normativa/backend/kamayuk-normativa-esquema/src/main/resources/db/roles/crear-roles.sql:/etc/kamayuk/roles/normativa.sql:ro
       - ../../caja/backend/kamayuk-caja-esquema/src/main/resources/db/roles/crear-roles.sql:/etc/kamayuk/roles/caja.sql:ro
+      # El quinto (ADR-0039). Su base no declara NINGUNA extension, como `caja` y
+      # `normativa`: guarda quien puede hacer que, y sus trece tablas no tienen una
+      # sola columna geografica ni una busqueda por aproximacion. Cero extensiones es
+      # una respuesta legitima aqui y `lib-extensiones.sh` ya lo contempla.
+      - ../../identidad/backend/kamayuk-identidad-esquema/src/main/resources/db/roles/crear-roles.sql:/etc/kamayuk/roles/identidad.sql:ro
       - ./inicializacion-del-motor/20-asignar-claves.sh:/docker-entrypoint-initdb.d/20-asignar-claves.sh:ro
       - datos-plataforma:/var/lib/postgresql/data
     ports:
@@ -173,7 +178,7 @@ networks:
 
 volumes:
   # Nombre propio: no comparte volumen con `compose.yaml`, y es deliberado. Los dos
-  # crean bases distintas en su primer arranque —uno `sgtm`, este las cuatro— y un
+  # crean bases distintas en su primer arranque —uno `sgtm`, este las cinco— y un
   # volumen compartido dejaria los guiones de `initdb` sin correr en el segundo,
   # porque solo corren con el volumen VACIO. El sintoma seria una base que falta y
   # ningun error.
