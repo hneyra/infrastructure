@@ -40,18 +40,24 @@ describe("AC-4 — el catalogo unido de «identidad» y el catalogo real de cada
    * censos que I-44 movio): el dia que un sistema estrene una pantalla, esto sale rojo y lo
    * que hay que hacer NO es actualizar el numero — es comprobar que la opcion nueva esta en
    * las dos puntas, que es justo lo que este archivo existe para exigir.
+   *
+   * Ya paso una vez, el mismo dia que nacio: la etapa 3 (identidad#9, `a0866be`) anadio la
+   * opcion `eventos` —la que autoriza a leer y acusar el buzon servido, que no es una
+   * pantalla— y `identidad` paso de 6 a 7, con el catalogo unido de 160 a 161. Se comprobo
+   * que esta en las dos puntas (su `CatalogoDelSistema` y su `identidad.json`) antes de mover
+   * la cifra.
    */
-  it("y los cinco catalogos suman 160 opciones, repartidas 134·16·1·3·6", () => {
+  it("y los cinco catalogos suman 161 opciones, repartidas 134·16·1·3·7", () => {
     expect(censoDeOpciones()).toEqual({
       rentas: 134,
       catastro: 16,
       normativa: 1,
       caja: 3,
-      identidad: 6,
+      identidad: 7,
     });
     expect(
       Object.values(censoDeOpciones()).reduce((total, cuantas) => total + cuantas, 0),
-    ).toBe(160);
+    ).toBe(161);
   });
 
   it("y el catalogo unido declara lo mismo, sistema a sistema", () => {
@@ -62,7 +68,7 @@ describe("AC-4 — el catalogo unido de «identidad» y el catalogo real de cada
       Object.fromEntries(
         SISTEMAS_DEL_PRODUCTO.map((sistema) => [sistema, opcionesDeclaradas(sistema).length]),
       ),
-    ).toEqual({ rentas: 134, catastro: 16, normativa: 1, caja: 3, identidad: 6 });
+    ).toEqual({ rentas: 134, catastro: 16, normativa: 1, caja: 3, identidad: 7 });
   });
 
   it("los cinco sistemas se derivan de SISTEMAS_DEL_PRODUCTO y no se escriben aqui", () => {
