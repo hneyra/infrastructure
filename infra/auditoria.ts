@@ -270,11 +270,17 @@ function auditarRecursos(
 /**
  * El endurecimiento de `INF-01` §4 que no admite excepcion (issue #157): sin
  * escalada de privilegios, y sin ninguna capacidad Linux de mas. `runAsNonRoot`
- * queda fuera a proposito —lo audita `verificaciones/componentes.test.ts`, no
- * aqui, porque su ausencia es una decision nombrada de un puñado de contenedores
+ * queda fuera a proposito —lo audita `verificaciones/usuario-de-los-contenedores.test.ts`,
+ * no aqui, porque su ausencia es una decision nombrada de un puñado de contenedores
  * (el motor de PostgreSQL, `respaldo-base`) y no un olvido: convertirla en un
  * incumplimiento bloqueante rompe exactamente los dos casos donde faltar es
  * correcto.
+ *
+ * Y hay algo que esta auditoria NO puede ver, y conviene decirlo aqui: la espera al
+ * motor (#44) se INYECTA despues de componer y auditar, asi que ningun contenedor
+ * `espera-al-motor` pasa nunca por estas reglas. El unico que no audita nadie fue el
+ * que dejo al ambiente sin poder desplegarse; quien lo mira es la guarda de arriba,
+ * que lee los manifiestos ya emitidos.
  */
 /** El bit de ejecucion, en el `defaultMode` de un volumen proyectado. */
 const BIT_DE_EJECUCION = 0o111;

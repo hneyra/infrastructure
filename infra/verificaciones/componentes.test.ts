@@ -2106,66 +2106,13 @@ describe("#157 · endurecimiento", () => {
     }
   });
 
-  it("ningun contenedor corre como root, salvo los dos nombrados por su motivo", () => {
-    const SIN_RUNASNONROOT = new Set([
-      // El entrypoint de la imagen oficial de PostgreSQL arranca como root a
-      // proposito (ver `BaseDeDatos.ts`).
-      "postgres",
-      // Lee PGDATA de solo lectura con el permiso que la propia imagen le dio al
-      // motor; forzar un UID sin verificarlo contra un clúster real cambia un
-      // guion que funciona por uno que no (ver `Respaldo.ts`).
-      "respaldo-base",
-    ]);
-    const sinNonRoot = contenedoresDeTodo(ms).filter(
-      ({ c }) => !SIN_RUNASNONROOT.has(c.name) && c.securityContext?.runAsNonRoot !== true,
-    );
-    expect(sinNonRoot.map(({ donde, c }) => `${donde}/${c.name}`)).toEqual([]);
-  });
-
-  it("todo contenedor endurecido fija su `runAsUser`, salvo si su imagen ya lo fija por numero", () => {
-    // Encontrado en CI dos veces, y la segunda porque esta prueba estaba escrita al
-    // reves. Con `runAsNonRoot: true` y sin `runAsUser`, quien decide si el pod arranca
-    // es la imagen: si fija su usuario por NOMBRE —"nobody", "nginx"— o no lo fija en
-    // absoluto, el kubelet no puede comprobar sin ejecutarla que ese usuario no es root,
-    // y rechaza el contenedor con `CreateContainerConfigError`.
-    //
-    // La version anterior llevaba la lista COMPLEMENTARIA: enumeraba los contenedores
-    // que SI debian declarar `runAsUser`. Una lista asi solo protege a lo que ya esta en
-    // ella —un contenedor nuevo nace exento y nadie se entera—, y es exactamente lo que
-    // paso con `mailpit` (#268): su imagen no declara `USER`, corria como root, y `yarn
-    // verificar` no dijo nada mientras `pulumi up` esperaba 600 s por un Deployment que
-    // nunca iba a quedar Ready. Invertida, el que nace exento es nadie: o el contenedor
-    // fija su UID, o alguien escribe aqui por que no hace falta, y eso se ve en el diff.
-    //
-    // Cada exencion es un `USER` numerico LEIDO del Dockerfile de esa imagen, no una
-    // suposicion. Si no se puede leer, no es exencion: es un `runAsUser`.
-    const IMAGEN_CON_UID_NUMERICO = new Set([
-      // ghcr.io/hneyra/sgtm-aplicacion — `USER 10001` (backend/Dockerfile).
-      "aplicacion",
-      "implantacion",
-      "lote",
-      // ghcr.io/hneyra/sgtm-migrador — `USER 10002` (backend/Dockerfile).
-      "migrador",
-      // quay.io/keycloak/keycloak:26.0 — `USER 1000` (quarkus/container/Dockerfile).
-      "keycloak",
-      "reconciliar-realm",
-      // grafana/grafana:11.3.0 — `USER "$GF_UID"`, con `ARG GF_UID="472"`.
-      "grafana",
-    ]);
-
-    // Sobre los DOS ambientes, no solo sobre `prod`: `mailpit` vive unicamente en `stg`,
-    // asi que una comprobacion que solo mire `prod` no lo veria ni estando bien escrita.
-    // Es la segunda mitad de por que se colo.
-    for (const ambiente of ENVIRONMENTS) {
-      const sinRunAsUser = contenedoresDeTodo(manifiestosDe(ambiente)).filter(
-        ({ c }) =>
-          c.securityContext?.runAsNonRoot === true &&
-          c.securityContext.runAsUser === undefined &&
-          !IMAGEN_CON_UID_NUMERICO.has(c.name),
-      );
-      expect(sinRunAsUser.map(({ donde, c }) => `${ambiente} ${donde}/${c.name}`)).toEqual([]);
-    }
-  });
+  // Las dos comprobaciones del USUARIO de cada contenedor —«ninguno corre como root» y «el que
+  // se endurece fija un UID que el kubelet pueda verificar»— **se mudaron** a
+  // `verificaciones/usuario-de-los-contenedores.test.ts`, y no es una reorganizacion: leian
+  // `manifiestosDe`, o sea `construirManifiestos`, o sea LA PLATAFORMA. Desde ADR-0031 eso son 12
+  // contenedores de los 56 del ambiente, y lo que se les escapaba era `espera-al-motor` (#44),
+  // que dejo al ambiente entero sin poder desplegarse. Alli miran los dos ambientes enteros y la
+  // exencion va por IMAGEN y no por nombre de contenedor.
 
   it("el motor re-concede las capacidades que su entrypoint necesita para tomar posesion de PGDATA", () => {
     // Encontrado en CI (issue #157): `capabilities: { drop: ["ALL"] }` deja a "root"
