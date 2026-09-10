@@ -1,7 +1,7 @@
 # Viola: un `actions/checkout` que escribe FUERA del espacio de trabajo.
 #
 # Es el estado exacto en que la primera publicacion de `infrastructure` fallo en 9
-# segundos: `path: ../sgtm` resuelve a `/home/runner/work/infrastructure/sgtm`, que no
+# segundos: `path: ../un-hermano` resuelve a `/home/runner/work/infrastructure/un-hermano`, que no
 # esta bajo `/home/runner/work/infrastructure/infrastructure`, y `actions/checkout` se
 # niega.
 #
@@ -20,8 +20,8 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          repository: hneyra/sgtm
-          path: ../sgtm
+          repository: hneyra/un-hermano
+          path: ../un-hermano
           fetch-depth: 0
 
       - uses: actions/setup-node@v4

@@ -167,9 +167,11 @@ describe("toda etiqueta identifica una revision", () => {
     expect(etiquetasQueNoIdentifican(imagenesPedidas(ambiente)).join("\n")).toBe("");
   });
 
-  it("la interfaz del monolito lleva el ambiente delante del sha, y aun asi identifica", () => {
+  it("una interfaz lleva el ambiente delante del sha, y aun asi identifica", () => {
     expect(shaDeLaEtiqueta(`prod-${UN_SHA}`)).toBe(UN_SHA);
-    expect(etiquetasQueNoIdentifican([imagen("sgtm-interfaz", `prod-${UN_SHA}`)])).toEqual([]);
+      expect(
+        etiquetasQueNoIdentifican([imagen("kamayuk-rentas-interfaz", `prod-${UN_SHA}`)]),
+      ).toEqual([]);
   });
 
   it("una etiqueta movil se nombra", () => {

@@ -96,25 +96,25 @@ describe("la traduccion de propiedad a variable, y que la guarda muerde", () => 
     // El prefijo del monolito, que ya no lee ningun Java de los cuatro. Se conserva aqui a
     // proposito: es el que hace de «ajeno» en la mutacion de abajo, y tenerlo escrito una vez es
     // lo que impide que esta guarda se vuelva a quedar comparando el nombre viejo consigo mismo.
-    expect(variableDe("sgtm.implantacion")).toBe("SGTM_IMPLANTACION_");
+    expect(variableDe("heredado.implantacion")).toBe("HEREDADO_IMPLANTACION_");
   });
 
   it("el defecto que C-18 encontro sale nombrado, variable a variable", () => {
     // La mutacion es la de C-18 con los papeles cambiados por R-A/B: entonces el descriptor de
-    // `rentas` ponia `KAMAYUK_IMPLANTACION_*` y su Java leia `sgtm.implantacion`; ahora los cuatro
-    // leen `kamayuk.implantacion` y lo ajeno es el nombre del monolito. El defecto es el mismo y
+    // `rentas` ponia `KAMAYUK_IMPLANTACION_*` y su Java leia otro prefijo; ahora los cinco
+    // leen `kamayuk.implantacion` y lo ajeno es cualquier otro. El defecto es el mismo y
     // es mudo por el mismo motivo: el runner no se registra y el Job sale con codigo 0.
-    const conElPrefijoDelMonolito = [
+    const conUnPrefijoAjeno = [
       "SPRING_PROFILES_ACTIVE",
       "KAMAYUK_DB_URL",
-      "SGTM_IMPLANTACION_UBIGEO",
-      "SGTM_IMPLANTACION_NOMBRE",
-      "SGTM_IMPLANTACION_OWNERCLAVE",
+      "HEREDADO_IMPLANTACION_UBIGEO",
+      "HEREDADO_IMPLANTACION_NOMBRE",
+      "HEREDADO_IMPLANTACION_OWNERCLAVE",
     ];
-    expect(variablesConElPrefijoAjeno(conElPrefijoDelMonolito, "kamayuk.implantacion")).toEqual([
-      "SGTM_IMPLANTACION_NOMBRE",
-      "SGTM_IMPLANTACION_OWNERCLAVE",
-      "SGTM_IMPLANTACION_UBIGEO",
+    expect(variablesConElPrefijoAjeno(conUnPrefijoAjeno, "kamayuk.implantacion")).toEqual([
+      "HEREDADO_IMPLANTACION_NOMBRE",
+      "HEREDADO_IMPLANTACION_OWNERCLAVE",
+      "HEREDADO_IMPLANTACION_UBIGEO",
     ]);
   });
 

@@ -275,11 +275,25 @@ describe("E · `verificar-el-ambiente.sh` mide los cuatro sistemas", () => {
       .split("\n")
       .filter((linea) => !linea.trim().startsWith("#"))
       .join("\n");
-    expect(
-      sentencias,
-      "vuelve a haber un `-d sgtm` o un `--dbname=sgtm`: esa base existe y no tiene ni una " +
-        "tabla del producto, asi que la comprobacion pasaria sin medir nada",
-    ).not.toMatch(/(-d|--dbname=)\s*sgtm\b/);
+      // No se prohibe UN nombre: se exige que toda base que el guion nombre sea una de las que
+      // este cluster crea. Negar una sola dejaba pasar cualquier otra con la misma consecuencia:
+      // una comprobacion que pasa sin medir nada, porque la base existe y esta vacia.
+      const permitidas = [
+        ...SISTEMAS_DEL_PRODUCTO,
+        BASE_DE_MANTENIMIENTO,
+        BASE_DE_IDENTIDAD,
+      ] as readonly string[];
+      // `-d` tiene que ser una BANDERA suelta: sin el limite de palabra, `--depth` casaba y
+      // la guarda señalaba «epth» —medido al escribirla—.
+      const nombradas = [
+        ...sentencias.matchAll(/(?:^|\s)(?:-d\s+|--dbname[= ])([a-z_][a-z0-9_]*)/gm),
+      ].map(
+        (m) => m[1]!,
+      );
+      expect(
+        [...new Set(nombradas)].filter((b) => !permitidas.includes(b)),
+        `el guion consulta una base que este cluster no crea. Crea: ${permitidas.join(", ")}`,
+      ).toEqual([]);
   });
 });
 

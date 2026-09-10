@@ -153,7 +153,7 @@ kind: Job
 metadata:
   name: $RECURSO
   labels:
-    proyecto: sgtm
+    proyecto: kamayuk
     ambiente: $AMBIENTE
     componente: publicacion-parametros
 spec:
@@ -161,7 +161,7 @@ spec:
   template:
     metadata:
       labels:
-        proyecto: sgtm
+        proyecto: kamayuk
         ambiente: $AMBIENTE
         # La etiqueta que DECIDE es «componente», y es la del sistema: es el
         # `podSelector` de la politica `kamayuk-<sistema>-egreso`, que es la que deja

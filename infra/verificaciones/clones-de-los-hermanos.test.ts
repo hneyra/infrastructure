@@ -77,7 +77,10 @@ describe("lo que necesita los descriptores se DERIVA", () => {
   it("la accion compuesta clona exactamente los hermanos que el descriptor importa", () => {
     const accion = readFileSync(join(raizDelRepositorio(), ACCION, "action.yml"), "utf8");
     const clonados = [...accion.matchAll(/^\s+path:\s*(\S+)\s*$/gm)].map((m) => m[1]!);
-    expect(clonados.filter((c) => c !== "sgtm").sort()).toEqual(
+    // Se comparan TODOS, sin filtrar ninguno. Habia un filtro que apartaba el clon del
+    // monolito, y desde que la accion dejo de clonarlo era codigo muerto que ademas
+    // dejaba pasar cualquier OTRO clon de mas.
+    expect(clonados.sort()).toEqual(
       hermanosQueImportaElDescriptor(raizDeInfra()),
     );
   });

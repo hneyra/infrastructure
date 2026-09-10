@@ -64,7 +64,7 @@ describe("ningun actions/checkout escribe fuera del espacio de trabajo", () => {
   /**
    * Y desde C-20 se mira tambien **dentro de las acciones locales**, que es donde viven
    * ahora los cinco `actions/checkout` de los hermanos. Con `flujosDe` limitada a
-   * `workflows/`, un `path: ../sgtm` escrito ahi no lo habria visto nadie.
+   * `workflows/`, un `path: ../un-hermano` escrito ahi no lo habria visto nadie.
    */
   it("las acciones compuestas de este repositorio tambien se miran", () => {
     expect(flujosDe(raizDelRepositorio())).toContain(
@@ -87,13 +87,13 @@ describe("ningun actions/checkout escribe fuera del espacio de trabajo", () => {
 });
 
 describe("la guarda muerde", () => {
-  it("marca el `path: ../sgtm` con su archivo y su linea", () => {
+  it("marca el `path: ../un-hermano` con su archivo y su linea", () => {
     const hallazgos = checkoutsQueEscapan(
       muestra("flujo-que-lo-viola.yml"),
       "muestras/flujo-que-lo-viola.yml",
     );
     expect(hallazgos).toEqual([
-      { archivo: "muestras/flujo-que-lo-viola.yml", linea: 24, ruta: "../sgtm" },
+      { archivo: "muestras/flujo-que-lo-viola.yml", linea: 24, ruta: "../un-hermano" },
     ]);
   });
 
@@ -132,12 +132,12 @@ describe("y no muerde de mas", () => {
 
   it("un `path` relativo hacia dentro no escapa, y uno hacia fuera si", () => {
     expect(saleDelEspacioDeTrabajo("infrastructure")).toBe(false);
-    expect(saleDelEspacioDeTrabajo("clones/sgtm")).toBe(false);
-    expect(saleDelEspacioDeTrabajo("./sgtm")).toBe(false);
+    expect(saleDelEspacioDeTrabajo("clones/un-hermano")).toBe(false);
+    expect(saleDelEspacioDeTrabajo("./un-hermano")).toBe(false);
     expect(saleDelEspacioDeTrabajo("a/../b")).toBe(false);
-    expect(saleDelEspacioDeTrabajo("../sgtm")).toBe(true);
-    expect(saleDelEspacioDeTrabajo("a/../../sgtm")).toBe(true);
-    expect(saleDelEspacioDeTrabajo("/tmp/sgtm")).toBe(true);
+    expect(saleDelEspacioDeTrabajo("../un-hermano")).toBe(true);
+    expect(saleDelEspacioDeTrabajo("a/../../un-hermano")).toBe(true);
+    expect(saleDelEspacioDeTrabajo("/tmp/un-hermano")).toBe(true);
   });
 });
 
