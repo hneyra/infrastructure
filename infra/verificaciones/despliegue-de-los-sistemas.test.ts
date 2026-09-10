@@ -487,9 +487,27 @@ describe("C-14 §3 · los CronJob del emisor y del ingestor", () => {
   /**
    * El contraste. Sin el, «todo sistema declara un CronJob» podria satisfacerse dandole uno a
    * quien no tiene ningun proceso periodico, y una lista vacia dejaria de significar algo.
+   *
+   * Hasta la etapa 4 de ADR-0039 eran tres —`normativa`, `caja` e `identidad`—. Desde ella los
+   * cuatro que no son `identidad` corren el consumidor de la autorizacion cada cinco minutos
+   * (`consumidor-de-identidad.test.ts` mide que exista, que no nazca suspendido y que su
+   * credencial tenga cuenta), asi que el unico sin ningun `CronJob` es el dueno: **no se consume
+   * a si mismo**, y sirve el buzon en vez de empujarlo.
    */
-  it.each(["normativa", "caja", "identidad"])("«%s» no declara ninguno, y es una afirmacion", (sistema) => {
+  it.each(["identidad"])("«%s» no declara ninguno, y es una afirmacion", (sistema) => {
     expect(delSistema(AMBIENTE, sistema).filter((m) => m.kind === "CronJob")).toEqual([]);
+  });
+
+  it.each(["normativa", "caja"])("«%s» declara UNO desde la etapa 4, y es su consumidor de la autorizacion", (sistema) => {
+    // Hasta entonces «no declara ninguno» era la afirmacion de estos dos; ahora la afirmacion
+    // es la contraria y hay que sostenerla por este lado tambien: un consumidor que
+    // desaparezca del descriptor deja el contraste de arriba en verde por accidente.
+    const cronjobs = delSistema(AMBIENTE, sistema).filter((m) => m.kind === "CronJob");
+    expect(
+      cronjobs.map((m) => m.metadata.name),
+      `«${sistema}» sin su consumidor: la copia local de la autorizacion se queda como la dejo ` +
+        "la implantacion (identidad#4 AC-3)",
+    ).toHaveLength(1);
   });
 
   /**
@@ -574,6 +592,7 @@ describe("C-14 · el egreso declarado ES el que se aplica", () => {
  * | medido con #21 AC-4 | **1000m** / **4736Mi** | el `CronJob` del ingestor de `rentas` deja de nacer suspendido: **+50m / +256Mi** |
  * | medido con el quinto sistema (ADR-0039) | **1200m** / 5760Mi | `identidad` entra con su `Deployment` web y sus dos `Job`: **+200m / +1024Mi** |
  * | remedido con `identidad`#7 | 1200m / **5248Mi** | `identidad` pide la mitad de memoria —web 256Mi, cada `Job` 128Mi—: **-512Mi**, la CPU no se mueve |
+ * | medido con la etapa 4 de ADR-0039 (identidad#4) | **1400m** / **0Mi** | los cuatro satelites estrenan su `CronJob` consumidor del buzon de `identidad`, 50m/256Mi cada uno: **+200m / +1024Mi**, contados uno a uno mientras aterrizaban (con tres dentro, 1350m) |
  *
  * O sea que **el techo de memoria llevaba desde C-14 dejando crecer 384Mi en silencio**, que es
  * justo lo que esta guarda existe para impedir. Se reescribe con la cifra medida y no con la
@@ -586,7 +605,7 @@ describe("C-14 · el egreso declarado ES el que se aplica", () => {
  * descriptor de `identidad`, no de aqui. Lo que cuesta en el NODO —donde ademas esta la
  * plataforma— lo dice `yarn capacidad`, y esta la mide la fila del registro.
  */
-const TECHO_DE_LOS_SISTEMAS = { cpuEnMili: 1200, memoriaEnMi: 5248 };
+const TECHO_DE_LOS_SISTEMAS = { cpuEnMili: 1400, memoriaEnMi: 6272 };
 
 describe("C-14 · lo que los cinco sistemas anaden al nodo", () => {
   it.each(ENVIRONMENTS)("en «%s» no crece en silencio", (ambiente) => {
@@ -730,8 +749,13 @@ describe("C-17 §5 · ningun `Deployment` de un sistema corre un perfil que term
     ).toEqual([]);
   });
 
-  /** Y el contraste: el perfil `batch` sigue existiendo donde le toca. */
-  it("`rentas` sigue corriendo el perfil `batch` en su Job y en su CronJob", () => {
+  /**
+   * Y el contraste: el perfil `batch` sigue existiendo donde le toca. Desde la etapa 4 de
+   * ADR-0039 (identidad#4) `rentas` tiene DOS `CronJob` en `batch` —el ingestor de `catastro` y
+   * el consumidor del buzon de `identidad`— y no uno; la cifra se toca a mano porque un
+   * `CronJob` mas es exactamente lo que esta guarda existe para ver.
+   */
+  it("`rentas` sigue corriendo el perfil `batch` en su Job y en sus dos CronJob", () => {
     const suyos = delSistema(AMBIENTE, "rentas");
     const enBatch = suyos
       .flatMap((m) => podsDe(m).map((p) => ({ m, pod: p.pod })))
@@ -739,7 +763,7 @@ describe("C-17 §5 · ningun `Deployment` de un sistema corre un perfil que term
         pod.containers.some((c) => valorDe(c, "SPRING_PROFILES_ACTIVE") === "batch"),
       )
       .map(({ m }) => m.kind);
-    expect(enBatch.sort()).toEqual(["CronJob", "Job"]);
+    expect(enBatch.sort()).toEqual(["CronJob", "CronJob", "Job"]);
   });
 });
 

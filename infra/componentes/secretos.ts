@@ -154,10 +154,36 @@ export function serviciosDeIdentidadDeclarados(): {
       }));
     })
     .sort((a, b) =>
-      claveDeServicio(a.sistema, a.llamaA, a.ubigeo).localeCompare(
-        claveDeServicio(b.sistema, b.llamaA, b.ubigeo),
-      ),
+      `${a.sistema}-a-${a.llamaA}-${a.ubigeo}`.localeCompare(`${b.sistema}-a-${b.llamaA}-${b.ubigeo}`),
     );
+}
+
+/**
+ * Los CLIENTES confidenciales que la identidad declarativa exige: uno por (sistema, ubigeo), y
+ * no uno por cuenta declarada.
+ *
+ * Una municipalidad declara una cuenta por PAR (origen, destino) —`rentas` llama a `catastro` y
+ * a `identidad`, son dos entradas— y las dos las sirve el MISMO cliente de Keycloak,
+ * `kamayuk-rentas-servicio-<ubigeo>`, que tiene UNA clave. Hasta la etapa 4 de ADR-0039 cada
+ * entrada producia su propia clave en el inventario, y con dos destinos por sistema el `Job` de
+ * identidad fijaba la segunda encima de la primera (ver `claveDeServicio`). Se agrupa aqui, y
+ * `destinos` se conserva para que el inventario diga para que sirve cada clave.
+ */
+export function clientesDeServicioDeclarados(): {
+  sistema: string;
+  ubigeo: string;
+  destinos: string[];
+}[] {
+  const porCliente = new Map<string, { sistema: string; ubigeo: string; destinos: string[] }>();
+  for (const s of serviciosDeIdentidadDeclarados()) {
+    const clave = claveDeServicio(s.sistema, s.ubigeo);
+    const cliente = porCliente.get(clave) ?? { sistema: s.sistema, ubigeo: s.ubigeo, destinos: [] };
+    if (!cliente.destinos.includes(s.llamaA)) cliente.destinos.push(s.llamaA);
+    porCliente.set(clave, cliente);
+  }
+  return [...porCliente.values()].sort((a, b) =>
+    claveDeServicio(a.sistema, a.ubigeo).localeCompare(claveDeServicio(b.sistema, b.ubigeo)),
+  );
 }
 
 export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto[] {
@@ -352,15 +378,19 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
     // que llama, Keycloak no podria recibirlo — y una clave de cliente que Keycloak genera y nadie
     // mas conoce no sirve para pedir un token. El que llama lo recibe por `espejoDe`, que es el
     // mismo mecanismo con el que un rol del motor publica su unica contrasena en cuatro sitios.
-    ...serviciosDeIdentidadDeclarados().map((s): EntradaDeSecreto => ({
-      rol: `servicio-${claveDeServicio(s.sistema, s.llamaA, s.ubigeo)}`,
+    //
+    // **Una por CLIENTE y no una por cuenta declarada** (etapa 4 de ADR-0039): `rentas` declara
+    // dos cuentas —hacia `catastro` y hacia `identidad`— y las dos las sirve el mismo cliente
+    // con la misma clave. Ver `clientesDeServicioDeclarados` y `claveDeServicio`.
+    ...clientesDeServicioDeclarados().map((s): EntradaDeSecreto => ({
+      rol: `servicio-${claveDeServicio(s.sistema, s.ubigeo)}`,
       namespace: enLaPlataforma,
       secreto: nombres.serviciosDeIdentidad,
-      clave: claveDeServicio(s.sistema, s.llamaA, s.ubigeo),
+      clave: claveDeServicio(s.sistema, s.ubigeo),
       consumidor:
         `El cliente confidencial «kamayuk-${s.sistema}-servicio-${s.ubigeo}» de Keycloak, que se ` +
-        `la fija el Job de identidad, y el proceso de «${s.sistema}» que pide con ella un token ` +
-        `para llamar a «${s.llamaA}»`,
+        `la fija el Job de identidad, y los procesos de «${s.sistema}» que piden con ella un token ` +
+        `para llamar a «${s.destinos.join("», «")}»`,
       // Es una credencial de emisor, no un rol del motor: rotarla no exige `ALTER ROLE` ninguno,
       // basta volver a correr el Job de identidad. Trimestral como las demas privilegiadas.
       periodicidad: "trimestral",
@@ -412,14 +442,14 @@ export function inventarioDelAmbiente(invariantes: Invariants): EntradaDeSecreto
       // municipalidad, que vive en el `Secret` de la plataforma (#21 AC-2). No se genera aparte:
       // si se generara, Keycloak tendria una clave y el que llama otra, y el sintoma seria un 401
       // en la primera llamada — indistinguible de «todavia no hay identidad de servicio».
+      //
+      // Y es la clave del CLIENTE, no del par: dos credenciales de emisor del mismo sistema
+      // —`rentas` hacia `catastro` y hacia `identidad`— son espejo de la MISMA clave, porque el
+      // cliente `kamayuk-rentas-servicio-<ubigeo>` es uno y tiene una (etapa 4 de ADR-0039).
       const deEmisor =
         c.emisor !== "keycloak"
           ? undefined
-          : claveDeServicio(
-              descriptor.sistema,
-              c.nombre.slice(`kamayuk-${descriptor.sistema}-${invariantes.environment}-`.length),
-              entorno.implantacion.ubigeo,
-            );
+          : claveDeServicio(descriptor.sistema, entorno.implantacion.ubigeo);
       if (deEmisor !== undefined && !clavesDeServicio.has(deEmisor)) {
         throw new Error(
           `[${descriptor.sistema}] la clave «${c.nombre}» declara \`emisor: "keycloak"\`, o sea ` +

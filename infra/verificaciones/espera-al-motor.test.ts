@@ -93,14 +93,19 @@ describe("#44 · quien habla con el motor, y quien lo espera", () => {
    * afirmaciones en verde sin haber mirado nada — que es la leccion de C-15/C-16 y la que #10
    * volvio a pagar.
    */
-  it.each(ENVIRONMENTS)("«%s»: los doce esperan, y son doce", (ambiente) => {
+  it.each(ENVIRONMENTS)("«%s»: los dieciseis esperan, y son dieciseis", (ambiente) => {
     const procesos = procesosQueHablanConElMotor(ambiente);
     expect(procesos.filter((p) => !p.espera).map((p) => p.nombre)).toEqual([]);
     // Eran DIEZ hasta ADR-0039: los dos que suma `identidad` son sus dos `Job` —migracion e
     // implantacion—, y no hace falta tocar ni una linea de su descriptor para que esperen,
     // porque la espera la INYECTA la plataforma al componer. Que la cifra se toque a mano es lo
     // que hace que un sistema nuevo pase por aqui en vez de entrar sin que nadie lo cuente.
-    expect(procesos.length).toBe(12);
+    // Y DIECISEIS desde la etapa 4 de ADR-0039 (identidad#4): los cuatro que suma son los
+    // cuatro `CronJob` consumidores del buzon de `identidad` —uno por satelite, `rentas`,
+    // `catastro`, `normativa` y `caja`—, que escriben la copia local de la autorizacion en su
+    // propia base y por eso declaran `KAMAYUK_DB_URL`. Tampoco hubo que tocar sus descriptores
+    // para que esperen: la plataforma los encuentra por la URL, igual que a los otros doce.
+    expect(procesos.length).toBe(16);
   });
 
   /** Y el `sha` no ensucia la clave: la deuda es del proceso, no de su version. */

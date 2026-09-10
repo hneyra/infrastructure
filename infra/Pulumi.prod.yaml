@@ -160,10 +160,10 @@ config:
   # (ADR-0011 §5, `ignoreChanges`), pero **no es inerte**: el `Job` de migracion de ese sistema
   # lleva la version en el nombre, asi que un valor nuevo no modifica un Job — crea otro, y ese
   # Job aplica las migraciones de esa version.
-  kamayuk:versionDeRentas: 0fa7d034d185842012f8a8282eb513d6aa12ccd9
-  kamayuk:versionDeCatastro: 37cc08b25712db92a72c3b375d76158665c3a418
-  kamayuk:versionDeNormativa: b364c22b0fa667b31af47061dd827980391ffb46
-  kamayuk:versionDeCaja: 5db1db30f464aa2ce4cd3511c39317513d4e0f96
+  kamayuk:versionDeRentas: 66ebe547a3ee547598711e02267a1ecfea8aae14
+  kamayuk:versionDeCatastro: ac1239a26fd538c852fdc0d204dafa3d8b69cda9
+  kamayuk:versionDeNormativa: e1cdad5a3e4fdfd508144a67eaa569aa9488b80f
+  kamayuk:versionDeCaja: 0772e2515a68d4e659b129c057067eb88f254370
   # El quinto (ADR-0039). Es el `sha` de `main` de `hneyra/identidad` —su etapa 1 se integro
   # como `89eca30`—, medido con `git -C ../identidad rev-parse origin/main` y no tecleado:
   # cuarenta caracteres hexadecimales inventados pasan la comprobacion de forma, y lo que

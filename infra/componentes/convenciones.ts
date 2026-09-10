@@ -112,19 +112,31 @@ export function secretos(environment: Environment): Secretos {
 }
 
 /**
- * La clave, dentro de `servicios-de-identidad`, de un par (origen, destino) y su municipalidad.
+ * La clave, dentro de `servicios-de-identidad`, del cliente confidencial de un sistema en una
+ * municipalidad.
  *
- * **Una por cliente confidencial y no una por par**, que es lo que cuesta y lo que se decide
- * aqui: los clientes son `kamayuk-<sistema>-servicio-<ubigeo>` (#21 AC-1), uno por municipalidad,
- * y darles a todos la misma clave dejaria que el proceso implantado en una municipalidad pidiera
- * un token de otra — o sea, deshacer con el secreto lo que el atributo de la cuenta de servicio
- * acota (ADR-0028 §2).
+ * **Una por cliente confidencial y no una por par (origen, destino)**, y hasta la etapa 4 de
+ * ADR-0039 este docblock lo decia mientras el codigo hacia lo contrario: se llamaba
+ * `claveDeServicio(sistema, llamaA, ubigeo)` y componia `<sistema>-a-<llamaA>-<ubigeo>`. Con un
+ * destino por sistema las dos cosas coincidian; con el segundo destino de `rentas` —`identidad`,
+ * ademas de `catastro`— dejaban de coincidir, y de la peor manera: el cliente de Keycloak es UNO
+ * (`kamayuk-<sistema>-servicio-<ubigeo>`, #21 AC-1) y `reconciliar-identidades.sh servicios` le
+ * fija la clave una vez por linea del TSV, asi que con dos claves generadas por separado **la
+ * ultima pisaba a la primera**. Medido con un `kcadm` de mentira que anota cada `update` (la
+ * fila de identidad#4 en `CLAUDE.md`): el guion de #21 manda `secret=CLAVE-A` y despues
+ * `secret=CLAVE-B` al MISMO cliente, y su comprobacion final lo caza —«su clave no es la del
+ * Secret … el destino contestara 401», exit 1—, o sea que el `Job` de identidad falla en cada
+ * corrida mientras un sistema tenga dos destinos y el despliegue no termina. Ruidoso, que es
+ * mejor que el 401 silencioso que habria sin esa comprobacion; pero un despliegue que no puede
+ * terminar es un despliegue que no puede terminar.
  *
- * El nombre lleva `-a-` en medio porque los tres trozos son nombres de sistema y de ubigeo, y
- * `rentas-catastro-200101` no dice cual llama a cual.
+ * Los clientes son uno por municipalidad y no uno por sistema, y darles a todos la misma clave
+ * dejaria que el proceso implantado en una municipalidad pidiera un token de otra — o sea,
+ * deshacer con el secreto lo que el atributo de la cuenta de servicio acota (ADR-0028 §2). Por
+ * eso el ubigeo sigue dentro del nombre.
  */
-export function claveDeServicio(sistema: string, llamaA: string, ubigeo: string): string {
-  return `${sistema}-a-${llamaA}-${ubigeo}`;
+export function claveDeServicio(sistema: string, ubigeo: string): string {
+  return `${sistema}-${ubigeo}`;
 }
 
 /** Las claves dentro de cada `Secret`. Se nombran una vez y se citan desde todas partes. */

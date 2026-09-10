@@ -122,18 +122,31 @@ describe("AC-7 · el grafo se lee por namespace de destino, no por nombre de eti
       SISTEMAS.map(({ descriptor }) => descriptor.sistema).sort(),
     );
     expect(grafo).toHaveProperty("identidad");
-    // Vacio, y es una AFIRMACION: en la etapa 1 este sistema no llama a ningun hermano, y las
-    // aristas que traera la etapa 4 apareceran en los descriptores de los CUATRO, no en el suyo.
+    // Vacio, y es una AFIRMACION que la etapa 4 CONFIRMA: este sistema SIRVE el buzon y no lo
+    // empuja (ADR-0028 §3), asi que las cuatro aristas de la etapa 4 estan en los descriptores
+    // de los CUATRO consumidores y ninguna en el suyo. Empujar obligaria a conocer cuatro
+    // direcciones, pedir cuatro credenciales y reintentar cuatro veces — o sea, a que el dueno
+    // de la autorizacion dependa de que los cuatro esten arriba.
     expect(grafo["identidad"]).toEqual([]);
   });
 
-  /** Y el de los otros cuatro no se movio: el criterio nuevo no reescribe el grafo, lo sostiene. */
-  it("el grafo de los otros cuatro es el mismo de ARQ-01", () => {
+  /**
+   * Y el de los otros cuatro es el de ARQ-01 **mas la arista hacia `identidad` que la etapa 4
+   * de ADR-0039 trae a cada uno** (`identidad`#4 AC-2): el consumidor de la autorizacion corre
+   * en el namespace de cada sistema y lee el buzon en el de `identidad`, asi que los cuatro
+   * declaran esa salida. Es la arista que este archivo existia para poder ver: con el criterio
+   * por nombre estas cuatro se filtrarian como Keycloak y el grafo diria que a `identidad` no
+   * lo llama nadie.
+   *
+   * Hasta la etapa 4: `rentas → caja, catastro, normativa`; `catastro → normativa, rentas`;
+   * `caja → rentas`; `normativa → (ninguno)`. Seis aristas; ahora diez.
+   */
+  it("el grafo de los otros cuatro es el de ARQ-01 mas la arista hacia `identidad` de la etapa 4", () => {
     const grafo = grafoDeEgreso(entornoDe);
-    expect(grafo["rentas"]).toEqual(["caja", "catastro", "normativa"]);
-    expect(grafo["catastro"]).toEqual(["normativa", "rentas"]);
-    expect(grafo["caja"]).toEqual(["rentas"]);
-    expect(grafo["normativa"]).toEqual([]);
+    expect(grafo["rentas"]).toEqual(["caja", "catastro", "identidad", "normativa"]);
+    expect(grafo["catastro"]).toEqual(["identidad", "normativa", "rentas"]);
+    expect(grafo["caja"]).toEqual(["identidad", "rentas"]);
+    expect(grafo["normativa"]).toEqual(["identidad"]);
   });
 
   /**
@@ -178,27 +191,51 @@ describe("AC-7 · el grafo se lee por namespace de destino, no por nombre de eti
     }
     // `identidad` de la PLATAFORMA es Keycloak, y los cinco salen hacia el. Como nodo del grafo
     // solo puede estar el SISTEMA, y su unica forma de aparecer como destino es que alguien
-    // declare una arista hacia SU namespace — cosa que hoy no hace nadie.
-    expect(Object.values(grafo).flat()).not.toContain("identidad");
+    // declare una arista hacia SU namespace — que desde la etapa 4 hacen los cuatro. Lo que
+    // sigue sin poder aparecer es la ETIQUETA de Keycloak leida como nodo: la prueba de arriba
+    // ya afirma que las cuatro aristas llegan al nombre del sistema, y esta que ninguna llega a
+    // un nombre que no sea un nodo.
+    const nodos = new Set(Object.keys(grafo));
+    for (const destino of Object.values(grafo).flat()) {
+      expect(nodos.has(destino), `«${destino}» no es ningun nodo del grafo`).toBe(true);
+    }
   });
 
   /**
-   * Y la medida que explica por que las dos pruebas de arriba usan un descriptor fabricado:
-   * **sobre los cinco descriptores de verdad los dos criterios dan lo mismo, hoy**.
+   * **La colision de AC-7 dejo de ser latente en la etapa 4, y esta es la medida.**
    *
-   * Se afirma en vez de suponerse, porque es lo que convierte «devolver el filtro viejo» en una
-   * mutacion que NO se ve en el grafo. El dia que deje de ser cierto —la etapa 4— esta prueba se
-   * pone roja y hay que venir aqui a leer por que.
+   * Hasta `identidad`#4 esta prueba afirmaba lo contrario: que sobre los cinco descriptores de
+   * verdad los dos criterios daban el MISMO grafo, y por eso hacia falta el fabricado. Con los
+   * cuatro consumidores declarando su salida hacia el namespace de `identidad`, el criterio por
+   * NOMBRE ya no coincide con el de por namespace sobre codigo real —en ninguno de los cuatro—,
+   * y lo que hace es exactamente lo que AC-7 anticipo: **ninguna de esas cuatro aristas llega
+   * al nodo `identidad`**. O se filtra como Keycloak, o llega con la etiqueta del pod
+   * (`identidad-sistema`), que no es ningun nodo. El grafo que se imprimiria con el filtro viejo
+   * diria que a `identidad` no lo llama nadie mientras los cuatro lo llaman.
+   *
+   * Se afirma por los dos lados: que el criterio bueno ve la arista, y que el viejo no. Sin lo
+   * segundo, «se ve la arista» no dice nada sobre la colision que este archivo existe para
+   * medir.
    */
-  it("hoy los dos criterios dan el mismo grafo, y por eso hace falta el fabricado", () => {
+  it("desde la etapa 4 los dos criterios difieren sobre los descriptores reales, y el viejo pierde `identidad`", () => {
+    const consumidores = SISTEMAS.map(({ descriptor }) => descriptor.sistema).filter(
+      (s) => s !== "identidad",
+    );
+    expect(consumidores.length, "sin consumidores esto no mide nada").toBeGreaterThan(0);
     for (const { descriptor } of SISTEMAS) {
+      if (descriptor.sistema === "identidad") continue;
       const entorno = entornoDe(descriptor.sistema);
       expect(
+        dependenciasDeclaradas(descriptor, entorno, DEL_NAMESPACE),
+        `«${descriptor.sistema}» no declara su salida hacia el namespace de «identidad»: su ` +
+          "consumidor de la autorizacion no podria leer el buzon (identidad#4 AC-2)",
+      ).toContain("identidad");
+      expect(
         dependenciasPorNombreDeEtiqueta(descriptor, entorno),
-        `«${descriptor.sistema}»: los dos criterios ya no coinciden sobre los descriptores ` +
-          "reales. Eso NO es un fallo de esta guarda: es que la colision de AC-7 dejo de ser " +
-          "latente, y las dos pruebas del descriptor fabricado pasan a tener sujeto real.",
-      ).toEqual(dependenciasDeclaradas(descriptor, entorno, DEL_NAMESPACE));
+        `«${descriptor.sistema}»: el criterio por nombre de etiqueta ve la arista hacia el ` +
+          "SISTEMA `identidad`. Eso solo puede pasar si sus pods dejaron de llevar " +
+          "`componente: identidad-sistema`, y entonces el grafo no distingue el sistema de Keycloak",
+      ).not.toContain("identidad");
     }
   });
 });

@@ -341,16 +341,32 @@ describe("quien puede traerse una imagen privada", () => {
    * cambia de forma—, «ninguna se queda sin credencial» seguiria pasando en verde y nadie lo
    * diria. Es C-15/C-16, y por eso la cifra se cuenta antes.
    *
-   * DIECINUEVE: siete `Deployment`, diez `Job` y dos `CronJob`, y las **diecinueve** viven fuera
-   * del espacio de nombres de la plataforma —donde desde `E` no queda ninguna imagen del
+   * VEINTITRES: siete `Deployment`, diez `Job` y seis `CronJob`, y las **veintitres** viven
+   * fuera del espacio de nombres de la plataforma —donde desde `E` no queda ninguna imagen del
    * producto—. Las tres que suma `identidad` (ADR-0039) son su `Deployment` web y sus dos `Job`.
+   *
+   * **Eran DIECINUEVE hasta la etapa 4** (`identidad`#4): los cuatro que suma son los cuatro
+   * `CronJob/kamayuk-<sistema>-consumidor-de-identidad`, uno por satelite, cada uno con la MISMA
+   * imagen que su aplicacion en perfil `batch` (ADR-0003: un artefacto, dos perfiles). **No traen
+   * una imagen nueva —este censo cuenta CARGAS, no imagenes—**, y `identidad` sigue en tres:
+   * sirve el buzon y no tiene ningun `CronJob`.
+   *
+   * **Y la cifra de la etapa 4 vive AQUI y no en la afirmacion de abajo, que es lo que cambia al
+   * traer `57771a2`.** Hasta entonces el censo y el hueco eran el mismo numero —las cargas del
+   * producto viven todas fuera del espacio de la plataforma, que era el unico que llevaba
+   * credencial, asi que «cuantas hay» y «cuantas no la tienen» daban lo mismo—, y por eso la
+   * etapa 4 subio a 23 lo unico que habia entonces: `podsSinCredencial`. Con la credencial en los
+   * seis espacios ese hueco es **cero POR DERIVACION** y deja de poder llevar un censo dentro; lo
+   * que sigue teniendo que crecer con cada carga es esto, que es el sujeto. Medido despues del
+   * merge y no deducido —la cifra a cero y el «but was» leido—: `expected [ … ] to have a length
+   * of +0 but got 23`, en los dos ambientes, y las veintitres con `credencial: true`.
    *
    * Esta cifra se toca a mano y con su motivo, como manda su antecesora: cada carga nueva pasa
    * por aqui.
    */
-  it.each(ENVIRONMENTS)("las DIECINUEVE cargas que traen una imagen del producto, en «%s»", (ambiente) => {
+  it.each(ENVIRONMENTS)("las VEINTITRES cargas que traen una imagen del producto, en «%s»", (ambiente) => {
     const todas = cargasConImagenDelProducto(ambiente);
-    expect(todas).toHaveLength(19);
+    expect(todas).toHaveLength(23);
     expect([...new Set(todas.map((p) => p.espacio))].sort()).toEqual([
       `kamayuk-caja-${ambiente}`,
       `kamayuk-catastro-${ambiente}`,
@@ -363,10 +379,15 @@ describe("quien puede traerse una imagen privada", () => {
   /**
    * Y ninguna se queda sin poder bajarla.
    *
-   * Eran **DIECINUEVE** —el parche llegaba a la plataforma y ninguna de las diecinueve vive
-   * alli—, y son **cero** desde que `index.ts` la crea en los seis espacios. La cifra no se
-   * ajusto para que pasara: lo que cambio es el despliegue, y el censo de arriba es lo que
-   * impide que este cero signifique «no se miro nada».
+   * Eran **TODAS** —el parche llegaba solo al espacio de la plataforma y ninguna carga del
+   * producto vive alli, asi que este hueco era el censo entero: diecinueve antes de la etapa 4 y
+   * veintitres con ella—, y son **cero** desde que `index.ts` la crea en los seis espacios. La
+   * cifra no se ajusto para que pasara: lo que cambio es el despliegue, y el censo de arriba es
+   * lo que impide que este cero signifique «no se miro nada».
+   *
+   * Por eso aqui no hay numero y arriba si: este cero lo dice la DERIVACION —la credencial llega
+   * a `namespacesDelAmbiente(env)`, o sea a los seis—, y una carga nueva no lo mueve; el censo,
+   * en cambio, tiene que moverse con cada carga o deja de ser sujeto de nada.
    */
   it.each(ENVIRONMENTS)("y NINGUNA se queda sin credencial, en «%s»", (ambiente) => {
     expect(podsSinCredencial(ambiente)).toEqual([]);

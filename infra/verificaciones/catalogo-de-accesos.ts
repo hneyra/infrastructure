@@ -16,8 +16,9 @@ import { clonDe, sistemaLlamado } from "./deriva-de-migraciones";
  * <sistema>.json`— con las opciones de los cinco.
  *
  * **Cuatro de esos cinco archivos son COPIAS de una verdad que vive en otro repositorio.**
- * El original de `rentas` es su `docs/10-negocio/catalogo-de-opciones.md` —las 134 filas
- * del manual, que `CatalogoDeOpciones` lee para sembrar—; el de `catastro`, `normativa`,
+ * El original de `rentas` es su `docs/10-negocio/catalogo-de-opciones.md` —las 130 filas
+ * del manual (134 hasta la etapa 4 de ADR-0039, que retiro las cuatro de la administracion),
+ * que `CatalogoDeOpciones` lee para sembrar—; el de `catastro`, `normativa`,
  * `caja` e `identidad` es la lista escrita de su `CatalogoDelSistema.java`. Desde
  * `catastro` no se puede ver si la copia esta al dia, porque la copia esta en `identidad`;
  * desde `identidad` tampoco, porque el original esta en `catastro`. Esta guarda es el
@@ -64,7 +65,7 @@ import { clonDe, sistemaLlamado } from "./deriva-de-migraciones";
 /** Donde `identidad` guarda las cinco copias, relativo a su clon. */
 export const DIRECTORIO_DEL_CATALOGO_UNIDO = "docs/10-negocio/catalogo-de-accesos";
 
-/** El catalogo del manual, del que `rentas` deriva sus 134. Relativo a su clon. */
+/** El catalogo del manual, del que `rentas` deriva sus 130. Relativo a su clon. */
 export const CATALOGO_DEL_MANUAL = "docs/10-negocio/catalogo-de-opciones.md";
 
 /** Como se llama, en cualquier clon, la clase que lleva la lista escrita. */
