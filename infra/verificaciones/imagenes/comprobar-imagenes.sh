@@ -67,21 +67,38 @@ fi
 # «Sin credencial» NO es «su `spec` no declara `imagePullSecrets`», y creerlo daba un falso
 # positivo sobre el monolito. La credencial de `ghcr.io` no vive en ningun pod: `index.ts` crea el
 # `Secret` `<amb>-registro-credenciales` y **parchea el `ServiceAccount` `default`** del espacio de
-# nombres de la plataforma, que es de donde la heredan todos sus pods —ninguno declara
-# `serviceAccountName`— (issue #257). Asi que un pod de la plataforma la tiene aunque su `spec` no
-# diga nada.
+# nombres, que es de donde la heredan todos sus pods —ninguno declara `serviceAccountName`—
+# (issue #257). Asi que un pod la tiene aunque su `spec` no diga nada.
 #
-# Lo que NO la tiene son los cuatro sistemas: desde ADR-0031 cada uno vive en **su** espacio de
-# nombres, y ni el `Secret` ni el parche llegan alli. Hoy sus imagenes son publicas y por eso
-# funciona; el dia que se hagan privadas, sus catorce cargas quedan en `ImagePullBackOff`. Esa
-# pareja de hechos es lo que esta columna mide.
+# **A que espacios llega NO se escribe aqui: se pregunta.** Esta linea decia
+# `espacio == "kamayuk-<ambiente>"`, que era cierto mientras la credencial llegaba a un solo sitio
+# —el de la plataforma— y dejaba a los cinco sistemas de ADR-0031 fuera. Con `identidad`, el primer
+# paquete privado del producto (ADR-0039), ese hueco dejo de ser hipotetico: sus TRES cargas
+# quedaban en `ImagePullBackOff` con el `up` en verde, y este guion lo decia con «FALTA CREDENCIAL».
+# Ahora `index.ts` la crea en los SEIS espacios del ambiente, derivados de `SISTEMAS_DEL_PRODUCTO`,
+# y quien contesta cuales son es `yarn espacios-con-credencial` —la misma funcion que la prueba
+# usa, que lee de `index.ts` de donde saca los suyos y EJECUTA esa derivacion—. Una lista escrita
+# aqui seria el mismo defecto un ano mas tarde: dos sitios con la misma verdad, y el que se queda
+# viejo es este.
+if ! ESPACIOS=$(cd "$INFRA" && yarn --silent espacios-con-credencial --ambiente "$AMBIENTE" 2>&1) \
+  || [ -z "$ESPACIOS" ]; then
+  echo "NO SE PUEDE COMPROBAR: no se pudo saber que espacios de nombres de «${AMBIENTE}» llevan" >&2
+  echo "  la credencial del registro. Sin esa lista, todo pod contaria como «sin credencial» y" >&2
+  echo "  este guion saldria rojo sobre un despliegue correcto — o, peor, al reves el dia que" >&2
+  echo "  alguien invierta la condicion. No se da por buena una comprobacion que no se hizo." >&2
+  echo "  Lo que contesto \`yarn espacios-con-credencial --ambiente ${AMBIENTE}\`:" >&2
+  echo "$ESPACIOS" | sed 's/^/    /' >&2
+  exit 3
+fi
+
 REFERENCIAS=$(cd "$INFRA" && yarn --silent manifiestos --ambiente "$AMBIENTE" | python3 -c '
 import json, sys
 
 d = json.load(sys.stdin)
 sin_credencial = {}
-# El espacio de nombres cuyo ServiceAccount `default` lleva la credencial, puesta por `index.ts`.
-plataforma = "kamayuk-" + sys.argv[1]
+# Los espacios de nombres cuyo ServiceAccount `default` lleva la credencial, puestos por
+# `index.ts` y preguntados con `yarn espacios-con-credencial`. No se componen aqui.
+con_credencial = set(a for a in sys.argv[2].split("\n") if a)
 
 def especificaciones(m):
     k = m.get("kind")
@@ -95,7 +112,7 @@ def especificaciones(m):
 for m in d["items"]:
     espacio = m.get("metadata", {}).get("namespace", "")
     for spec in especificaciones(m):
-        credencial = bool(spec.get("imagePullSecrets")) or espacio == plataforma
+        credencial = bool(spec.get("imagePullSecrets")) or espacio in con_credencial
         for c in list(spec.get("containers", [])) + list(spec.get("initContainers", [])):
             imagen = c.get("image", "")
             if not imagen.startswith("ghcr.io/"):
@@ -104,7 +121,7 @@ for m in d["items"]:
 
 for imagen in sorted(sin_credencial):
     print(imagen, "sin-credencial" if sin_credencial[imagen] else "con-credencial")
-' "$AMBIENTE")
+' "$AMBIENTE" "$ESPACIOS")
 
 if [ -z "$REFERENCIAS" ]; then
   echo "NO SE PUEDE COMPROBAR: el manifiesto de «${AMBIENTE}» no pide ninguna imagen de ghcr.io." >&2
@@ -147,10 +164,12 @@ while IFS=' ' read -r referencia credencial; do
         echo "FALTA CREDENCIAL $referencia" >&2
         echo "          La imagen es privada y algun pod que la trae vive en un espacio de" >&2
         echo "          nombres sin credencial de registro: ni su \`spec\` declara" >&2
-        echo "          \`imagePullSecrets\` ni es el de la plataforma, cuyo ServiceAccount" >&2
-        echo "          \`default\` la lleva (issue #257). Ese pod no puede bajarla y queda en" >&2
-        echo "          ImagePullBackOff. Remedio: replicar el Secret dockerconfigjson en ese" >&2
-        echo "          espacio de nombres y parchear su ServiceAccount, o publicar el paquete." >&2
+        echo "          \`imagePullSecrets\` ni su espacio esta entre los que \`index.ts\` parchea" >&2
+        echo "          (issue #257). Ese pod no puede bajarla y queda en ImagePullBackOff." >&2
+        echo "          Los que SI la llevan hoy: $(echo "$ESPACIOS" | tr '"'"'\n'"'"' ' ')" >&2
+        echo "          Remedio: que ese espacio de nombres entre en el bucle de \`index.ts\` que" >&2
+        echo "          crea el Secret dockerconfigjson y parchea su ServiceAccount, o publicar" >&2
+        echo "          el paquete." >&2
         FALLO=1
       fi
       ;;

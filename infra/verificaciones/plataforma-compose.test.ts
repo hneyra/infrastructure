@@ -101,7 +101,7 @@ describe("la plataforma levanta lo que todo el mundo necesita", () => {
     expect(PLATAFORMA.services["base"]?.image).toContain("postgis");
   });
 
-  it("y crea LAS CUATRO bases, una por sistema", () => {
+  it("y crea UNA BASE POR SISTEMA, y las de los cinco", () => {
     // Desde C-10 la lista de bases NO esta en el guion: sale de los archivos que se le
     // montan, uno por sistema. Asi que lo que hay que comprobar aqui es que estan los
     // cuatro montajes — un sistema en SISTEMAS sin su montaje es una base que no nace.

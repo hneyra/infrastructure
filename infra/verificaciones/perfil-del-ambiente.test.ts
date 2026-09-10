@@ -96,11 +96,11 @@ describe("E · el monolito no se compone, y la plataforma sigue entera", () => {
    * namespace, y esta prueba se pondría roja si alguien los borrara creyendo que son restos
    * del monolito.
    */
-  it.each(ENVIRONMENTS)("«%s»: y los cuatro Deployment de los sistemas siguen estando", (ambiente) => {
+  it.each(ENVIRONMENTS)("«%s»: y los cinco Deployment de los sistemas siguen estando", (ambiente) => {
     const nombres = manifiestosDe(ambiente)
       .filter((m) => m.kind === "Deployment")
       .map((m) => m.metadata.name);
-    for (const sistema of ["rentas", "catastro", "normativa", "caja"]) {
+    for (const sistema of ["rentas", "catastro", "normativa", "caja", "identidad"]) {
       expect(nombres, `falta el Deployment web de «${sistema}» en «${ambiente}»`).toContain(
         `kamayuk-${sistema}-web`,
       );
@@ -292,11 +292,46 @@ describe("C-19 · el perfil de recursos de un ambiente no alcanza al otro", () =
    * → esta prueba vuelve a VERDE con las cifras de arriba, y quien se pone roja es la guarda
    * de `despliegue-de-los-sistemas.test.ts`. Las dos mitades se sostienen: una dice **que**
    * corre y la otra **cuánto cuesta** que corra.
+   *
+   * ## Y suben otra vez con el QUINTO SISTEMA (ADR-0039), esta vez las dos
+   *
+   * `identidad` no es una interfaz ni un `CronJob` que despierta: es un sistema entero, con su
+   * `Deployment` web y sus dos `Job`. Lo que suma está medido y sale de su descriptor:
+   *
+   * | | permanente | pico |
+   * |---|---|---|
+   * | con #21 AC-4 | 1440m / 5280Mi | 1960m / 7904Mi |
+   * | con el quinto sistema | 1540m / 5792Mi | 2160m / 8928Mi |
+   * | y con su recorte (`identidad`#7) | **1540m / 5536Mi** | **2160m / 8416Mi** |
+   *
+   * O sea **+100m / +512Mi permanentes** —su `Deployment` web— y **+200m / +1024Mi en el pico**
+   * —ese `Deployment` más los dos `Job`, 50m/256Mi cada uno— con su descriptor tal como nació;
+   * y `identidad`#7 le bajó la memoria a la mitad —web 256Mi y cada `Job` 128Mi, con el límite
+   * en 1Gi—, porque el dueño eligió recortar antes que declarar una brecha en `stg`. Con eso
+   * queda en **+100m / +256Mi permanentes** y **+200m / +512Mi en el pico**. Las dos filas se
+   * conservan porque la de arriba es la que midió la primera corrida de CI de este PR.
+   *
+   * **Es un cambio de demanda y no un ajuste de prueba**, y lo que cuesta contra el nodo está
+   * medido en los dos ambientes y **no es simétrico**:
+   *
+   *   - `prod` **seguía sin caber y sigue sin caber**: le faltaban 160m y 2 176Mi, y le faltan
+   *     **360m y 3 200Mi** —y con el recorte, **360m y 2 688Mi**—. La brecha declarada (#1) no
+   *     se toca; lo que empeora es cuánto falta, y eso es D-25.
+   *   - `stg` **cabía y deja de caber**: pedía 1 970m / 6 912Mi contra 3 800m / 7 008Mi
+   *     disponibles —96Mi de margen— y pasa a pedir 2 170m / **7 936Mi**: **faltan 928Mi**; con
+   *     el recorte pide **7 424Mi** y **faltan 416Mi**, o sea que el recorte solo no basta. Eso
+   *     pone roja «`stg` cabe» de `capacidad.test.ts`, y ese rojo dice la verdad. **No se tapa
+   *     aquí y no se declara una brecha para `stg` desde este PR**: declararla apaga los siete
+   *     pasos de `aplicar-stg` (#25) y deja de desplegarse el único ambiente que hoy despliega,
+   *     que es una decisión del dueño del despliegue y no de un registro de sistema. Lo que sí
+   *     está escrito, y es la primera salida, es que **el nodo de `stg` NO está medido**: su
+   *     propio `Pulumi.stg.yaml` lo dice —«a diferencia de `prod`, esto no está medido»— y lleva
+   *     dentro el `kubectl` que lo mide. 7 936Mi entran en un nodo de 8Gi asignables.
    */
-  it("prod pide exactamente lo medido en `E`, mas el ingestor que #21 despierta", () => {
+  it("prod pide exactamente lo medido en `E`, mas el ingestor de #21 y el quinto sistema", () => {
     const demanda = demandaDelStack(manifiestosDe("prod"));
-    expect(demanda.permanente).toEqual({ cpuEnMili: 1440, memoriaEnMi: 5280 });
-    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 1960, memoriaEnMi: 7904 });
+    expect(demanda.permanente).toEqual({ cpuEnMili: 1540, memoriaEnMi: 5536 });
+    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 2160, memoriaEnMi: 8416 });
   });
 
   /** Y `prod` declara el perfil dimensionado, que es la tabla base. */

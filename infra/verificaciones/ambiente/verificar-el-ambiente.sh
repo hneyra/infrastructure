@@ -101,10 +101,14 @@ comoAplicacion() {
         env PGPASSWORD="$CLAVE_APP" psql -U kamayuk_app -h 127.0.0.1 -d "${2:-$BASE}" -tAqc "$1"
 }
 
-# Los cuatro sistemas de ADR-0031. Cada uno tiene SU base, SU historia de migraciones y SU
-# linea `kamayuk:versionDe<Sistema>` en el stack: una lista de cuatro nombres es lo unico
-# que este guion necesita saber, y su base se llama igual que el sistema (05-crear-bases.sh).
-SISTEMAS="rentas catastro normativa caja"
+# Los CINCO sistemas: los cuatro de ADR-0031 mas `identidad` (ADR-0039). Cada uno tiene SU
+# base, SU historia de migraciones y SU linea `kamayuk:versionDe<Sistema>` en el stack: una
+# lista de nombres es lo unico que este guion necesita saber, y su base se llama igual que el
+# sistema (05-crear-bases.sh).
+#
+# Que siga cuadrando con `descriptor/sistemas.ts` lo comprueba `el-monolito-fuera.test.ts`
+# EJECUTANDO esta asignacion, no leyendola (M10 de C-19).
+SISTEMAS="rentas catastro normativa caja identidad"
 
 # `rentas` -> `Rentas`, que es como se escribe la clave del stack.
 capitalizar() { printf '%s%s' "$(printf '%s' "${1:0:1}" | tr '[:lower:]' '[:upper:]')" "${1:1}"; }

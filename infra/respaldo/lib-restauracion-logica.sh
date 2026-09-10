@@ -148,7 +148,7 @@ rl_necesita_libro_de_flyway() {
 # Donde vive el esquema de cada sistema
 # ---------------------------------------------------------------------------
 
-# Los cuatro esquemas del producto, en el orden en que el simulacro los recorre.
+# Los cinco esquemas del producto, en el orden en que el simulacro los recorre.
 #
 # **No es una lista nueva**: es la misma de `SISTEMAS` en
 # `verificaciones/deriva-de-migraciones.ts`, y `restauracion-logica.test.ts` EJECUTA esta
@@ -158,7 +158,7 @@ rl_necesita_libro_de_flyway() {
 # Eran cinco: el monolito iba primero porque era el unico que declaraba perdidas. Se fue con
 # `E`, y con el las trece que declaraba — que siguen siendo ciertas DE EL, en su repositorio.
 rl_sistemas() {
-    printf '%s\n' rentas catastro normativa caja
+    printf '%s\n' rentas catastro normativa caja identidad
 }
 
 

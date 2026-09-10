@@ -55,7 +55,7 @@ describe("cada sistema recibe la implantacion con el prefijo que su Java lee", (
    * **su** Java: ahi el nombre compartido no confunde nada, porque cada sistema tiene su propio
    * Job y su propia base.
    */
-  it("y los cuatro leen el mismo, leido del Java y no escrito aqui", () => {
+  it("y los cinco leen el mismo, leido del Java y no escrito aqui", () => {
     const prefijos = Object.fromEntries(
       SISTEMAS_DEL_PRODUCTO.map((s) => [s, prefijoDeLaImplantacion(s)]),
     );
@@ -64,6 +64,10 @@ describe("cada sistema recibe la implantacion con el prefijo que su Java lee", (
       catastro: "kamayuk.implantacion",
       normativa: "kamayuk.implantacion",
       caja: "kamayuk.implantacion",
+      // El quinto (ADR-0039). Lee el MISMO prefijo, y eso no se escribe aqui: sale de su
+      // `@ConfigurationProperties`. C-18 midio lo que cuesta que no cuadre — el runner ni se
+      // registra, el proceso sale con codigo 0 y el Job queda `Complete` sin implantar nada.
+      identidad: "kamayuk.implantacion",
     });
   });
 

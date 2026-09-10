@@ -14,9 +14,18 @@ OVERRIDING SYSTEM VALUE
 VALUES (900001, '200101', 'Municipalidad Provincial de Ensayo', 'PROVINCIAL'),
        (900002, '200104', 'Municipalidad Distrital de Ensayo', 'DISTRITAL');
 
--- Una fila de tenant en una tabla que los cinco esquemas tienen, para que el recuento por
--- tabla hable tambien de la municipalidad y no solo del registro de municipalidades.
-INSERT INTO modulo_sistema (municipalidad_id, codigo, nombre)
-OVERRIDING SYSTEM VALUE
-VALUES (900001, 'C11', 'Modulo de ensayo'),
-       (900002, 'C11', 'Modulo de ensayo');
+-- La fila de TENANT —la que hace que el recuento por tabla hable tambien de la
+-- municipalidad y no solo del registro de municipalidades— ya no va aqui: la pone cada
+-- archivo de sistema, con la MISMA sentencia en cuatro de los cinco.
+--
+-- Estaba aqui hasta ADR-0039, y era correcto mientras `modulo_sistema` tuviera la misma
+-- forma en todos. Ya no: la de `identidad` lleva ademas `sistema character varying(20) NOT
+-- NULL`, porque ese sistema es el DUENO del catalogo de accesos de los cinco y tiene que
+-- decir de cual es cada modulo. Con el `INSERT` aqui, sembrar su base moriria con «null
+-- value in column "sistema" violates not-null constraint» —y no en la restauracion, que es
+-- lo que este simulacro mide, sino antes de llegar a ella—.
+--
+-- Lo que queda en este archivo es lo que de verdad es identico en los cinco esquemas, byte
+-- a byte: `municipalidad`. Duplicar la sentencia de `modulo_sistema` en cuatro archivos es
+-- el precio de que este no mienta, y es menor que el de una condicional sobre
+-- `information_schema` que haria que «se sembro» y «no se pudo sembrar» pasaran las dos.

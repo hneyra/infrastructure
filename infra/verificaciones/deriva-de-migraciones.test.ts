@@ -152,11 +152,17 @@ describe("los ambientes declaran la version que trae las migraciones de cada sis
  * cuatro, y ninguno de los cuatro lo medía nadie (hueco de C-20).
  */
 describe("el censo de sistemas desplegados cuadra con lo que se declara", () => {
-  /** Los cuatro de ADR-0031, escritos aqui a proposito: el censo tiene contra que cuadrar. */
-  const LOS_CUATRO = ["caja", "catastro", "normativa", "rentas"] as const;
+  /**
+  * Los CINCO, escritos aqui a proposito: el censo tiene contra que cuadrar.
+  *
+  * Eran los cuatro de ADR-0031; `identidad` entra con ADR-0039. Se escriben y no se derivan de
+  * `SISTEMAS` **porque este es el contraste**: derivarlos de la misma tabla que se comprueba
+  * dejaria la afirmacion cierta pase lo que pase.
+  */
+  const LOS_CINCO = ["caja", "catastro", "identidad", "normativa", "rentas"] as const;
 
-  it.each(CON_MIGRADOR)("%s construye los cuatro migradores, y solo esos", (ambiente) => {
-    expect(sistemasDesplegados(ambiente)).toEqual([...LOS_CUATRO]);
+  it.each(CON_MIGRADOR)("%s construye los cinco migradores, y solo esos", (ambiente) => {
+    expect(sistemasDesplegados(ambiente)).toEqual([...LOS_CINCO]);
   });
 
   /**
@@ -168,7 +174,7 @@ describe("el censo de sistemas desplegados cuadra con lo que se declara", () => 
    * un sistema antes de desplegarlo, esto se pone rojo y hay que decidirlo aqui.
    */
   it("y `SISTEMAS` declara exactamente los que se despliegan", () => {
-    expect(SISTEMAS.map((s) => s.nombre).sort()).toEqual([...LOS_CUATRO]);
+    expect(SISTEMAS.map((s) => s.nombre).sort()).toEqual([...LOS_CINCO]);
   });
 
   /**
@@ -196,7 +202,7 @@ describe("el censo de sistemas desplegados cuadra con lo que se declara", () => 
    * En CI esto necesita los cuatro clones hermanos; sin ellos, `clonDe` lanza diciendo cual
    * falta y como traerlo, que es lo que se quiere.
    */
-  it.each(LOS_CUATRO)("«%s» declara migraciones en su propio clon", (nombre) => {
+  it.each(LOS_CINCO)("«%s» declara migraciones en su propio clon", (nombre) => {
     const sistema = sistemaLlamado(nombre);
     expect(migracionesDe(REVISION_DE_REFERENCIA, sistema).length).toBeGreaterThan(0);
   });
@@ -269,7 +275,9 @@ describe("cuando hay deriva, el rojo nombra las dos cifras", () => {
 
   /** Un sistema que se despliega y no esta declarado no se puede medir, y lo dice. */
   it("y un sistema sin declarar dice cuales hay", () => {
-    expect(() => sistemaLlamado("inventado")).toThrowError(/rentas, catastro, normativa, caja/);
+    expect(() => sistemaLlamado("inventado")).toThrowError(
+      /rentas, catastro, normativa, caja, identidad/,
+    );
   });
 });
 
@@ -345,13 +353,13 @@ describe("el flujo trae lo que la guarda necesita para contar", () => {
    * escribir fuera del espacio de trabajo, asi que el hermano se consigue clonando ESTE
    * repositorio en un directorio propio y dejando que el espacio de trabajo haga de padre.
    *
-   * **Y con historial completo en los cuatro** (`E`). Antes bastaba `fetch-depth: 1` para
+   * **Y con historial completo en todos** (`E`). Antes bastaba `fetch-depth: 1` para
    * ellos porque de los cuatro solo se leian archivos del arbol de trabajo, y el unico que
-   * necesitaba historia era `sgtm`. Ahora la deriva se mide sobre los cuatro: con el checkout
+   * necesitaba historia era `sgtm`. Ahora la deriva se mide sobre los cinco: con el checkout
    * superficial, el `sha` que el stack declara no esta en el clon y `migracionesDe` **se niega
    * a contar** —que es lo correcto, y seria un rojo por un motivo que no es el que se mide—.
    */
-  it("y trae los cuatro clones, con historial completo", () => {
+  it("y trae los cinco clones, con historial completo", () => {
     const verificar = trabajoDeVerificar();
     expect(verificar, "este repositorio tiene que clonarse en un directorio propio, o el hermano no cabe").toContain(
       "path: infrastructure",
@@ -366,9 +374,11 @@ describe("el flujo trae lo que la guarda necesita para contar", () => {
       join(raizDelRepositorio(), ".github/actions/clonar-los-hermanos/action.yml"),
       "utf8",
     );
-    // Y la accion clona los cuatro, y ya **ninguno** es `sgtm`.
-    for (const sistema of ["rentas", "catastro", "normativa", "caja"]) {
-      expect(accion).toContain(`repository: hneyra/${sistema}`);
+    // Y la accion clona los CINCO, y ya **ninguno** es `sgtm`. La lista sale de `SISTEMAS`,
+    // que es la misma tabla cuya deriva se mide: un sistema que entre alli y no en la accion
+    // deja a `clonDe` lanzando en CI, que es el rojo por un motivo ajeno que esto evita.
+    for (const { clon } of SISTEMAS) {
+      expect(accion).toContain(`repository: hneyra/${clon}`);
     }
     expect(accion, "el flujo ya no clona el archivo historico").not.toContain("hneyra/sgtm");
 
@@ -387,7 +397,11 @@ describe("el flujo trae lo que la guarda necesita para contar", () => {
       .split("\n")
       .map((linea) => linea.trim())
       .filter((linea) => linea.startsWith("fetch-depth:"));
-    expect(profundidades.length, "la accion ya no declara ninguna profundidad").toBe(4);
+    expect(
+      profundidades.length,
+      "la accion no declara una profundidad por sistema: o sobra un checkout, o falta el de " +
+        "un clon que `SISTEMAS` mide",
+    ).toBe(SISTEMAS.length);
     for (const linea of profundidades) {
       expect(
         linea,

@@ -16,6 +16,7 @@ import {
   loQueElDescriptorDice,
   motorDeLaPlataforma,
   servicioDe,
+  BACKENDS_CON_NOMBRE_PROPIO,
   type ComposeDeSistema,
   type LoQueElDescriptorDice,
 } from "./compose-de-los-sistemas";
@@ -118,6 +119,54 @@ describe("cada sistema trae su compose, y dice lo mismo que su descriptor", () =
         ...COMPOSES.map(({ sistema, compose }) => ({ proyecto: `kamayuk-${sistema}`, compose })),
       ]),
     ).toEqual([]);
+  });
+
+  /**
+   * La UNICA excepcion a «el backend se llama como su sistema», en las dos direcciones.
+   *
+   * `identidad` (ADR-0039) la tiene porque el compose de la plataforma **ya** publica un
+   * servicio llamado `identidad`, y es Keycloak: con los dos en la red `kamayuk-plataforma` ese
+   * alias lo registran dos contenedores y el DNS de Docker reparte entre ellos, de modo que los
+   * cinco backends —el suyo incluido— pedirian su JWKS a un backend de Spring la mitad de las
+   * veces. Todo token invalido, de forma intermitente.
+   *
+   * Se fija **por los dos lados a proposito**. La direccion util —que `identidad` la tenga— sola
+   * no basta: sin la contraria, la excepcion se convertiria en un mapa donde cabe cualquiera y
+   * el siguiente sistema que quisiera llamarse distinto entraria sin escribir su motivo. Y la
+   * contraria sola tampoco: pasaria con el mapa vacio, o sea con el defecto puesto.
+   *
+   * La colision NO se afirma aqui de memoria: se lee del compose de la plataforma, para que el
+   * dia que Keycloak deje de llamarse asi esta excepcion se pueda retirar en vez de quedarse.
+   */
+  describe("el servicio del backend, y su unica excepcion", () => {
+    it("«identidad» se llama `identidad-sistema`, porque Keycloak ya ocupa ese alias", () => {
+      const plataforma = load(
+        readFileSync(join(raizDelRepositorio(), "despliegue/plataforma.compose.yaml"), "utf8"),
+      ) as ComposeDeSistema;
+      expect(
+        Object.keys(plataforma.services),
+        "la plataforma ya no publica un servicio «identidad»: si Keycloak se renombro, esta " +
+          "excepcion sobra y hay que retirarla de `BACKEND_QUE_CHOCA_CON_LA_PLATAFORMA`",
+      ).toContain("identidad");
+
+      expect(servicioDe("identidad", "web")).toBe("identidad-sistema");
+      // Y solo el backend: los otros dos procesos no chocan con nada.
+      expect(servicioDe("identidad", "migrador")).toBe("identidad-migraciones");
+      expect(servicioDe("identidad", "implantacion")).toBe("identidad-implantacion");
+    });
+
+    it("y NINGUN otro sistema tiene excepcion: la regla sigue siendo la regla", () => {
+      expect(
+        Object.keys(BACKENDS_CON_NOMBRE_PROPIO).sort(),
+        "un sistema mas con nombre propio de backend. La regla es que el servicio del backend " +
+          "se llama COMO SU SISTEMA, y la unica excepcion es la colision con un servicio de la " +
+          "plataforma. Si hay otra, tiene que traer su motivo escrito aqui y en `servicioDe`.",
+      ).toEqual(["identidad"]);
+      for (const sistema of SISTEMAS_DEL_PRODUCTO) {
+        if (sistema === "identidad") continue;
+        expect(servicioDe(sistema, "web")).toBe(sistema);
+      }
+    });
   });
 
   /**

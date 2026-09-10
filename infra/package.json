@@ -16,6 +16,7 @@
     "manifiestos": "vite-node herramientas/emitir.ts --",
     "secretos": "vite-node herramientas/secretos.ts --",
     "capacidad": "vite-node herramientas/capacidad.ts --",
+    "espacios-con-credencial": "vite-node herramientas/espacios-con-credencial.ts --",
     "grafo": "vite-node herramientas/grafo.ts --",
     "observabilidad-del-corte": "vite-node herramientas/escribir-observabilidad.ts",
     "imagenes": "verificaciones/imagenes/comprobar-imagenes.sh"

@@ -3,20 +3,26 @@ import { join } from "node:path";
 import { SISTEMAS, clonDe, type Sistema } from "./deriva-de-migraciones";
 
 /**
- * El censo de lo que los cuatro sistemas declaran compartir, y de lo que ya divergio (#22).
+ * El censo de lo que los CINCO sistemas declaran compartir, y de lo que ya divergio (#22).
  *
  * ## El hueco que cierra
  *
- * De los cinco repositorios, lo unico extraido como artefacto es `comun-verificaciones`. Todo
+ * De los seis repositorios, lo unico extraido como artefacto es `comun-verificaciones`. Todo
  * lo demas se copio: los 33 archivos de `dominio-compartido`, los 62 de `plataforma`, las cinco
  * convenciones de Gradle y el `checkstyle.xml`. Una copia no tiene quien la vigile, asi que
- * **una de las cuatro puede arreglar un defecto y las otras tres quedarse con el, en verde**.
+ * **una de las cinco puede arreglar un defecto y las otras cuatro quedarse con el, en verde**.
+ *
+ * **Y desde ADR-0039 son CINCO copias y no cuatro.** `identidad` nacio copiando `plataforma` y
+ * `dominio-compartido` de un hermano, asi que entra al censo heredando en cada divergencia de
+ * codigo el lado que NO tiene el arreglo, mas seis de prosa propias —todas deliberadas y con su
+ * motivo escrito dentro del propio archivo—. Las cifras suben de **412 a 515** comparaciones y de
+ * **20 a 24** entradas declaradas.
  *
  * No es hipotetico y no hace falta buscarlo: hoy, medido, `rentas` contesta **422 nombrando el
- * campo** cuando falta la observacion y los otros tres contestan **500 con un identificador de
+ * campo** cuando falta la observacion y los otros CUATRO contestan **500 con un identificador de
  * incidencia** (su #30/#55), su 422 de orden no admitido dice **por que campos SI se puede
- * ordenar** y el de los otros tres no (su #35), y `catastro` cerro con un tipo que **no compila**
- * el JSON compuesto a mano en una columna `jsonb` mientras los otros tres siguen componiendolo
+ * ordenar** y el de los otros CUATRO no (su #35), y `catastro` cerro con un tipo que **no compila**
+ * el JSON compuesto a mano en una columna `jsonb` mientras los otros CUATRO siguen componiendolo
  * (su #20). Cada uno de esos defectos se descubrio, se midio y se arreglo **una vez**, y las
  * otras tres copias no se enteraron.
  *
@@ -40,11 +46,11 @@ import { SISTEMAS, clonDe, type Sistema } from "./deriva-de-migraciones";
  *
  * ADR-0038 §1: «si describe el cluster, es de `infrastructure`». Una guarda que lee los cinco
  * clones a la vez no puede vivir en ninguno de ellos —desde `rentas` no se ve `caja`—, y elegir
- * uno dejaria que los otros tres divergieran sin que nada lo dijera. Es el mismo argumento que
+ * uno dejaria que los otros cuatro divergieran sin que nada lo dijera. Es el mismo argumento que
  * `componentes.test.ts` escribio para la tabla de formas de documento.
  */
 
-/** Una pieza que los cuatro repositorios declaran compartir. */
+/** Una pieza que los cinco repositorios declaran compartir. */
 export interface PiezaCompartida {
   /** Como se nombra en el hallazgo. */
   readonly nombre: string;
@@ -57,11 +63,11 @@ export interface PiezaCompartida {
 }
 
 /**
- * Las cuatro piezas, con sus cifras medidas el 2026-09-07 sobre `origin/main`.
+ * Las cuatro piezas, con sus cifras medidas sobre `origin/main` de los cinco clones.
  *
  * **No se escribe la lista de archivos**: se recorre el disco y se compara la INTERSECCION de
- * los cuatro. Un archivo que solo esta en uno sale como hallazgo con su propia clase, que es lo
- * que hace cierto «el censo no puede crecer en silencio»: un archivo copiado a tres de cuatro
+ * los cinco. Un archivo que solo esta en uno sale como hallazgo con su propia clase, que es lo
+ * que hace cierto «el censo no puede crecer en silencio»: un archivo copiado a cuatro de cinco
  * sale rojo el dia que aterriza, no el dia que alguien lo mire.
  */
 export const PIEZAS_COMPARTIDAS: readonly PiezaCompartida[] = [
@@ -81,8 +87,8 @@ export const PIEZAS_COMPARTIDAS: readonly PiezaCompartida[] = [
     nombre: "buildSrc",
     rutaEn: () => "backend/buildSrc",
     extensiones: [".kts"],
-    // `build/` y `.gradle/` son salida de Gradle, no fuente: dos de los cuatro clones las tienen
-    // en el disco y los otros dos no, segun quien haya compilado ultimo.
+    // `build/` y `.gradle/` son salida de Gradle, no fuente: unos clones las tienen en el disco
+    // y otros no, segun quien haya compilado ultimo.
     sinRecorrer: ["build", ".gradle"],
   },
   {
@@ -104,7 +110,7 @@ export const LO_QUE_NO_SE_COMPARTE: readonly { readonly que: string; readonly mo
     que: "Api.RAIZ",
     motivo:
       "Es el prefijo bajo el que publica cada sistema —«/rentas/api/v1», «/caja/api/v1»— y los " +
-      "cuatro se sirven del mismo origen: es lo que permite que el ingreso enrute sin mirar el " +
+      "cinco se sirven del mismo origen: es lo que permite que el ingreso enrute sin mirar el " +
       "cuerpo. Es una constante que se inyecta, no una divergencia, asi que se normaliza antes " +
       "de comparar. El resto del archivo SI se compara: hoy su javadoc diverge y sale nombrado.",
   },
@@ -117,8 +123,8 @@ export const LO_QUE_NO_SE_COMPARTE: readonly { readonly que: string; readonly mo
       "como se provisiona esa base en todos los ambientes (C-2).",
   },
   {
-    que: "Los cuatro V1__baseline.sql",
-    motivo: "ADR-0032: el esquema de cada sistema nace en su baseline, y son cuatro esquemas.",
+    que: "Los cinco V1__baseline.sql",
+    motivo: "ADR-0032: el esquema de cada sistema nace en su baseline, y son cinco esquemas.",
   },
   {
     que: "Los contextos acotados",
@@ -132,21 +138,22 @@ export const LO_QUE_NO_SE_COMPARTE: readonly { readonly que: string; readonly mo
       "El MECANISMO es el mismo y la LISTA no puede serlo: `infrastructure` no tiene `backend/` " +
       "ni `frontend/` —declara `infra/`, `librerias-backend/…/src/main/` y `despliegue/`—, y el " +
       "`despliegue/` de `caja` lo anadio su #39 con su motivo escrito. Lo que si es una propiedad " +
-      "de los cuatro es que cada lista cubra su propio descriptor: {@link cubreSuPropioDescriptor}.",
+      "de los cinco es que cada lista cubra su propio descriptor: {@link cubreSuPropioDescriptor}.",
   },
   {
     que: "seguridad",
     motivo:
-      "Es D-19 —«como llega el catalogo de accesos a cuatro sistemas»—, una decision de producto " +
-      "que sigue abierta, no una extraccion. Hoy la administracion de usuarios y grupos vive solo " +
-      "en `rentas`.",
+      "Era D-19 —«como llega el catalogo de accesos a los sistemas»— y **esta contestada** " +
+      "(2026-09-09, ADR-0039): la autorizacion es un SISTEMA propio, `identidad`, y se replica por " +
+      "el buzon. No es una extraccion a una libreria y por eso sigue aqui: hoy la administracion " +
+      "de usuarios y grupos vive todavia en `rentas`, y su mudanza es la etapa 2 de ese ADR.",
   },
 ];
 
 /** De que clase es un desajuste. */
 export type ClaseDeDesajuste = "codigo" | "prosa" | "solo-en-uno";
 
-/** Un archivo compartido que no dice lo mismo en los cuatro. */
+/** Un archivo compartido que no dice lo mismo en los cinco. */
 export interface Desajuste {
   readonly pieza: string;
   /** Ruta dentro de la pieza. */
@@ -155,7 +162,7 @@ export interface Desajuste {
    * Los grupos de clones que coinciden entre si, cada uno ordenado y separados por « | ».
    *
    * Se dice asi y no «difiere de `rentas`» a proposito: elegir un clon de referencia lo
-   * convertiria en el correcto por construccion, y en tres de los cuatro casos medidos hoy el
+   * convertiria en el correcto por construccion, y en tres de los casos medidos hoy el
    * que va solo **es** el que tiene el arreglo.
    */
   readonly grupos: string;
@@ -173,7 +180,12 @@ export interface DivergenciaDeclarada {
 }
 
 /**
- * Los desajustes que hay hoy, cada uno con su motivo y su dueno (2026-09-07, `origin/main`).
+ * Los desajustes que hay hoy, cada uno con su motivo y su dueno (`origin/main` de los cinco).
+ *
+ * Se midieron el 2026-09-07 sobre los cuatro del corte —diecisiete— y se volvieron a medir el
+ * 2026-09-09 con `identidad` dentro: **veinticuatro**, de las que seis son suyas y las trece
+ * anteriores cambian de GRUPO y no de archivo, porque su copia hereda en cada una el lado que no
+ * tiene el arreglo.
  *
  * **Es la lista de trabajo pendiente, no una puerta abierta**, y por eso se comprueba en las dos
  * direcciones: quitarle una entrada pone la prueba roja nombrando el archivo, y una entrada que
@@ -197,7 +209,7 @@ export const DIVERGENCIAS_DECLARADAS: readonly DivergenciaDeclarada[] = [
       "de salir como `ERROR_INTERNO` con numero de incidencia. Vive en el dominio compartido " +
       "por lo mismo que `MotivoDeInalcanzable`: sus excepciones estan en `tesoreria` y en " +
       "`catastro`, y `ManejadorDeErrores` vive en `plataforma`, que no depende de ninguno. Los " +
-      "otros tres no lo tienen, asi que una limitacion de diseno conocida les sigue saliendo " +
+      "otros cuatro no lo tienen, asi que una limitacion de diseno conocida les sigue saliendo " +
       "como fallo del servidor. Cierra: la libreria 1 de #22 (`comun-dominio`).",
   },
   {
@@ -207,28 +219,29 @@ export const DIVERGENCIAS_DECLARADAS: readonly DivergenciaDeclarada[] = [
     clase: "solo-en-uno",
     motivo:
       "De `rentas`#25: separa «falta la variable del vecino» de «el vecino no contesta» en las " +
-      "tres familias de excepcion. Los otros tres no lo tienen, asi que su cliente HTTP no puede " +
+      "tres familias de excepcion. Los otros cuatro no lo tienen, asi que su cliente HTTP no puede " +
       "distinguir las dos cosas. Cierra: la libreria 1 de #22 (`comun-dominio`).",
   },
   {
     pieza: "dominio-compartido",
     archivo: "dominio/Observacion.java",
-    grupos: "caja, catastro, normativa | rentas",
+    grupos: "caja, catastro, identidad, normativa | rentas",
     clase: "codigo",
     motivo:
-      "**Defecto vivo en tres de cuatro.** `rentas`#30/#55 midio que una observacion ausente " +
+      "**Defecto vivo en CUATRO de cinco.** `rentas`#30/#55 midio que una observacion ausente " +
       "salia como `Objects.requireNonNull` -> `NullPointerException` -> **500 con incidencia**, " +
       "o sea que el estado MIENTE sobre de quien es la culpa y un cliente que reintenta ante 5xx " +
       "reintentaria para siempre. Lo arreglo a `IllegalArgumentException`, que el manejador ya " +
-      "traduce a 422 nombrando el campo. Los otros tres siguen con el `requireNonNull`.",
+      "traduce a 422 nombrando el campo. Los otros CUATRO siguen con el `requireNonNull`, e " +
+      "`identidad` entra en ese lado: su copia es la del defecto.",
   },
   {
     pieza: "plataforma",
     archivo: "autorizacion/ComprobadorDeAcceso.java",
-    grupos: "caja, catastro, normativa | rentas",
+    grupos: "caja, catastro, identidad, normativa | rentas",
     clase: "codigo",
     motivo:
-      "De #29 §8, y la divergencia es **inherente y no trabajo pendiente**: los tres sistemas que " +
+      "De #29 §8, y la divergencia es **inherente y no trabajo pendiente**: los sistemas que " +
       "no administran la seguridad ganan `conoceAlUsuario(String)` para poder separar «no tienes " +
       "el privilegio» de «no estas dado de alta AQUI», que llegaban al funcionario como el mismo " +
       "403. `rentas` no lo necesita ni lo puede necesitar: las nueve escrituras de administracion " +
@@ -239,7 +252,7 @@ export const DIVERGENCIAS_DECLARADAS: readonly DivergenciaDeclarada[] = [
   {
     pieza: "plataforma",
     archivo: "autorizacion/GuardiaDeAcceso.java",
-    grupos: "caja, catastro, normativa | rentas",
+    grupos: "caja, catastro, identidad, normativa | rentas",
     clase: "codigo",
     motivo:
       "La otra mitad de la anterior: el `if (!comprobador.conoceAlUsuario(usuario))` que lanza " +
@@ -252,11 +265,11 @@ export const DIVERGENCIAS_DECLARADAS: readonly DivergenciaDeclarada[] = [
   {
     pieza: "plataforma",
     archivo: "auditoria/AuditoriaJdbc.java",
-    grupos: "caja, normativa, rentas | catastro",
+    grupos: "caja, identidad, normativa, rentas | catastro",
     clase: "codigo",
     motivo:
       "Racimo de `catastro`#20: la bitacora escribia texto que no es JSON en una columna `jsonb`. " +
-      "`catastro` lo cerro con un tipo que **no compila** si se le pasa una cadena; los otros tres " +
+      "`catastro` lo cerro con un tipo que **no compila** si se le pasa una cadena; los otros cuatro " +
       "siguen con `RegistroDeAuditoria.con(String, String)` y sus ayudantes `escapar(`, que " +
       "escapan la comilla y no los caracteres de control.",
   },
@@ -268,36 +281,39 @@ export const DIVERGENCIAS_DECLARADAS: readonly DivergenciaDeclarada[] = [
     motivo:
       "Racimo de `catastro`#20: el tipo que hace que componer prosa **no compile**. Es la pieza " +
       "que convierte la regla en una propiedad del compilador en vez de en una revision, y los " +
-      "otros tres no la tienen.",
+      "otros cuatro no la tienen.",
   },
   {
     pieza: "plataforma",
     archivo: "auditoria/RegistroDeAuditoria.java",
-    grupos: "caja, normativa, rentas | catastro",
+    grupos: "caja, identidad, normativa, rentas | catastro",
     clase: "codigo",
     motivo:
       "Racimo de `catastro`#20: su `con(...)` ya no acepta `String`, asi que la bitacora no puede " +
-      "recibir prosa. En los otros tres la firma sigue siendo `con(String, String)` y sus " +
+      "recibir prosa. En los otros cuatro la firma sigue siendo `con(String, String)` y sus " +
       "ayudantes `escapar(` escapan la comilla y no los caracteres de control.",
   },
   {
     pieza: "plataforma",
     archivo: "autorizacion/package-info.java",
-    grupos: "caja, catastro, rentas | normativa",
+    grupos: "caja, catastro, rentas | identidad | normativa",
     clase: "prosa",
     motivo:
-      "Los cuatro documentan por que la anotacion vive fuera del contexto de seguridad, y el de " +
-      "`normativa` anade que **este sistema no tiene ese contexto**: su motivo esta escrito dentro " +
-      "del propio archivo. Es prosa que describe algo que de verdad difiere por sistema.",
+      "Los cinco documentan por que la anotacion vive fuera del contexto de seguridad, y **son " +
+      "tres grupos**: el de `normativa` anade que ese sistema no tiene ese contexto, y el de " +
+      "`identidad` (ADR-0039) anade que su reparto es TEMPORAL —hoy implementa donde los otros " +
+      "cuatro, y la etapa 2 lo convierte en el dueno del modelo de autorizacion, sin que el " +
+      "reparto de este paquete cambie—. Es prosa que describe algo que de verdad difiere por " +
+      "sistema, y cada motivo esta escrito dentro de su propio archivo.",
   },
   {
     pieza: "plataforma",
     archivo: "documentos/EmitirDocumento.java",
-    grupos: "caja, normativa, rentas | catastro",
+    grupos: "caja, identidad, normativa, rentas | catastro",
     clase: "codigo",
     motivo:
       "Racimo de `catastro`#20: es quien escribe la columna, y por eso cambia con la firma. En los " +
-      "otros tres sigue recibiendo la cadena que alguien concateno.",
+      "otros cuatro sigue recibiendo la cadena que alguien concateno.",
   },
   {
     pieza: "plataforma",
@@ -330,10 +346,10 @@ export const DIVERGENCIAS_DECLARADAS: readonly DivergenciaDeclarada[] = [
   {
     pieza: "plataforma",
     archivo: "persistencia/OrdenSeguro.java",
-    grupos: "caja, catastro, normativa | rentas",
+    grupos: "caja, catastro, identidad, normativa | rentas",
     clase: "codigo",
     motivo:
-      "**Defecto vivo en tres de cuatro.** `rentas`#35: el 422 de un campo de orden no admitido " +
+      "**Defecto vivo en CUATRO de cinco.** `rentas`#35: el 422 de un campo de orden no admitido " +
       "decia «Campo pedido: deuda» y nada mas, mientras el 422 del PARAMETRO desconocido contesta " +
       "«Se admiten: …» con la lista entera —la misma clase de error con dos calidades de respuesta " +
       "en la misma operacion—. Quien integra tenia que adivinar probando nombres contra produccion. " +
@@ -349,22 +365,75 @@ export const DIVERGENCIAS_DECLARADAS: readonly DivergenciaDeclarada[] = [
   {
     pieza: "plataforma",
     archivo: "web/Api.java",
-    grupos: "caja | catastro, rentas | normativa",
+    grupos: "caja | catastro, rentas | identidad | normativa",
     clase: "prosa",
     motivo:
       "`Api.RAIZ` se normaliza antes de comparar (ver LO_QUE_NO_SE_COMPARTE) y **aun asi el " +
-      "archivo diverge**: su javadoc dice tres cosas distintas —`rentas` cita su propio contrato, " +
-      "`caja` y `normativa` explican el prefijo—. Que salga nombrado es lo que compra que la " +
-      "excepcion sea la constante y no el archivo.",
+      "archivo diverge**: su javadoc dice CUATRO cosas distintas —`rentas` y `catastro` citan su " +
+      "propio contrato, `caja` y `normativa` explican el prefijo, y el de `identidad` dice que en " +
+      "la etapa 1 no la usa ningun controlador porque no hay ninguno, y por que aun asi no es una " +
+      "constante muerta—. Que salga nombrado es lo que compra que la excepcion sea la constante y " +
+      "no el archivo.",
+  },
+  {
+    pieza: "dominio-compartido",
+    archivo: "dominio/package-info.java",
+    grupos: "caja, catastro, normativa, rentas | identidad",
+    clase: "prosa",
+    motivo:
+      "Solo prosa, y es la que ADR-0039 mando escribir: el javadoc de `identidad` anade un " +
+      "epigrafe —«Esto es la QUINTA COPIA, y no se esconde»— que dice de donde llego el paquete, " +
+      "que ninguna guarda impide que las cinco copias divergan (esta las CENSA, no las impide) y " +
+      "que lo que corresponde no es recortarlo alli sino sacarlo a `kamayuk-lib` (ADR-0038, hoy " +
+      "vacio). No es trabajo pendiente de nadie: **es la cifra de #22 subiendo de cuatro a cinco**, " +
+      "escrita donde se lee. Cierra: la libreria 1 de #22 (`comun-dominio`).",
+  },
+  {
+    pieza: "plataforma",
+    archivo: "plataforma/package-info.java",
+    grupos: "caja, catastro, normativa, rentas | identidad",
+    clase: "prosa",
+    motivo:
+      "El mismo epigrafe de la quinta copia, en la pieza `plataforma`. Ver la entrada de " +
+      "`dominio/package-info.java`: misma decision, mismo motivo y mismo cierre —la libreria 2 de " +
+      "#22 (`comun-plataforma`)—.",
+  },
+  {
+    pieza: "plataforma",
+    archivo: "web/ParametroQueFalta.java",
+    grupos: "caja, catastro, normativa, rentas | identidad",
+    clase: "prosa",
+    motivo:
+      "Solo prosa, y el cambio es una CORRECCION que la normalizacion no puede hacer: el javadoc " +
+      "de los cuatro nombra `kamayuk-<sistema>-parametros` como el modulo del que `plataforma` no " +
+      "depende, y ese modulo **es de `normativa` y vive en otro repositorio** — con el nombre " +
+      "renombrado a `kamayuk-identidad-parametros` la frase nombraria un modulo que no existe en " +
+      "ningun sitio. El de `identidad` dice ademas que ahi no lo usa nadie —no consume ningun " +
+      "conjunto sellado y no tiene capa web todavia— y por que viaja igual. Cierra: la libreria 2 " +
+      "de #22 (`comun-plataforma`).",
+  },
+  {
+    pieza: "plataforma",
+    archivo: "web/ProblemaDeNegocio.java",
+    grupos: "caja, catastro, normativa, rentas | identidad",
+    clase: "prosa",
+    motivo:
+      "La misma correccion que `web/ParametroQueFalta.java` y en la misma frase: el modulo de " +
+      "parametros es de `normativa` y esta en otro repositorio, asi que el nombre renombrado " +
+      "nombraria un modulo inexistente. Solo javadoc; el codigo es identico en los cinco.",
   },
   {
     pieza: "plataforma",
     archivo: "web/CodigoDeError.java",
-    grupos: "caja, catastro, normativa | rentas",
+    grupos: "caja, catastro, normativa | identidad | rentas",
     clase: "codigo",
     motivo:
-      "**El desajuste que el AC-1 de #22 nombra.** Doce constantes en `rentas` y once en los " +
-      "otros tres: `SERVICIO_NO_DISPONIBLE` existe solo alli. `catastro`#41 midio lo que cuesta " +
+      "**El desajuste que el AC-1 de #22 nombra.** Doce constantes en `rentas` y once en " +
+      "`caja`, `catastro` y `normativa`: `SERVICIO_NO_DISPONIBLE` existe solo alli. Y desde la " +
+      "etapa 3 de #52 (identidad#9) `identidad` va por su lado con doce DISTINTAS: las once mas " +
+      "`SIN_IDENTIDAD_DE_SERVICIO`, el 403 de quien lee el buzon sin una cuenta de servicio, que " +
+      "es codigo propio porque su remedio es pedir otro token y no conceder un permiso. Tres " +
+      "grupos, y ninguno es el correcto por construccion. `catastro`#41 midio lo que cuesta " +
       "que un cliente no reconozca un codigo: `esCodigoConocido` lo rechaza, degrada al del estado " +
       "HTTP, y la pantalla sale con el titulo de OTRO codigo y con «Reintentar» puesto o quitado " +
       "por el motivo equivocado. Cierra: la libreria 2 de #22 (`comun-plataforma`).",
@@ -372,30 +441,30 @@ export const DIVERGENCIAS_DECLARADAS: readonly DivergenciaDeclarada[] = [
   {
     pieza: "plataforma",
     archivo: "web/ConfiguracionDeJson.java",
-    grupos: "caja, normativa, rentas | catastro",
+    grupos: "caja, identidad, normativa, rentas | catastro",
     clase: "codigo",
     motivo:
       "Racimo de `catastro`#20: registra el modulo que serializa los objetos de valor. `catastro` " +
-      "midio que el cuerpo de los eventos del buzon no cambia un byte al hacerlo; los otros tres " +
+      "midio que el cuerpo de los eventos del buzon no cambia un byte al hacerlo; los otros cuatro " +
       "no lo han medido porque no lo han hecho.",
   },
   {
     pieza: "plataforma",
     archivo: "web/GuardiaDeParametros.java",
-    grupos: "caja, catastro, normativa | rentas",
+    grupos: "caja, catastro, identidad, normativa | rentas",
     clase: "prosa",
     motivo:
       "Solo el javadoc: el ejemplo del `dNI` de `GET /rentas/contribuyentes`. `rentas`#35 renombro " +
-      "esos dos filtros y actualizo su copia; las otras tres siguen describiendo el estado " +
+      "esos dos filtros y actualizo su copia; las otras cuatro siguen describiendo el estado " +
       "anterior. La prosa que habla del backend envejece igual que una cifra.",
   },
   {
     pieza: "plataforma",
     archivo: "web/ManejadorDeErrores.java",
-    grupos: "caja, catastro, normativa | rentas",
+    grupos: "caja, catastro, identidad, normativa | rentas",
     clase: "codigo",
     motivo:
-      "**Defecto vivo en tres de cuatro.** La otra mitad de `persistencia/OrdenSeguro.java`: es " +
+      "**Defecto vivo en CUATRO de cinco.** La otra mitad de `persistencia/OrdenSeguro.java`: es " +
       "quien escribe el cuerpo del 422 con «Se admiten: …». Sin las dos, el arreglo no llega.",
   },
 ];
@@ -510,9 +579,9 @@ function agrupar(porClon: Map<string, string>): string {
 }
 
 /**
- * Los archivos compartidos que no dicen lo mismo en los cuatro, derivados del disco.
+ * Los archivos compartidos que no dicen lo mismo en los cinco, derivados del disco.
  *
- * No hay ninguna lista de archivos escrita a mano: se recorre cada pieza en los cuatro clones y
+ * No hay ninguna lista de archivos escrita a mano: se recorre cada pieza en los cinco clones y
  * se comparan **la interseccion** (por contenido) y **la diferencia** (un archivo que solo esta
  * en uno o en algunos). Las dos mitades hacen falta: sin la segunda, `PoolDeUnRol` y el racimo de
  * `catastro`#20 —cinco archivos— no serian ni un hallazgo.
@@ -573,7 +642,7 @@ export function divergencias(): Desajuste[] {
  *
  * **Se ejecuta el regex, no se lee la lista** —la leccion de C-19 §M10—: las cinco listas son
  * distintas y dos de las diferencias son legitimas, asi que compararlas como copias daria dos
- * rojos correctos. Lo que si es una propiedad de los cuatro es esta.
+ * rojos correctos. Lo que si es una propiedad de los cinco es esta.
  *
  * Fue el segundo rojo que el AC-1 de #22 nombra, y **se cerro solo mientras esto se escribia**:
  * `rentas`#55 (`39389e1`) le anadio `/^infrastructure\/src\//` el 2026-09-07. Hasta entonces
@@ -605,6 +674,6 @@ export function cubreSuPropioDescriptor(sistema: Sistema): boolean {
 /**
  * Donde vive el descriptor de despliegue de cada sistema, desde `E`.
  *
- * Es el mismo en los cuatro y lo importa `infra/descriptor/sistemas.ts` por esa ruta.
+ * Es el mismo en los cinco y lo importa `infra/descriptor/sistemas.ts` por esa ruta.
  */
 export const DESCRIPTOR_DEL_SISTEMA = "infrastructure/src/descriptor.ts";

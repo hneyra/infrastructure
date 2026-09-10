@@ -164,6 +164,14 @@ config:
   kamayuk:versionDeCatastro: 37cc08b25712db92a72c3b375d76158665c3a418
   kamayuk:versionDeNormativa: b364c22b0fa667b31af47061dd827980391ffb46
   kamayuk:versionDeCaja: 5db1db30f464aa2ce4cd3511c39317513d4e0f96
+  # El quinto (ADR-0039). Es el `sha` de `main` de `hneyra/identidad` —su etapa 1 se integro
+  # como `89eca30`—, medido con `git -C ../identidad rev-parse origin/main` y no tecleado:
+  # cuarenta caracteres hexadecimales inventados pasan la comprobacion de forma, y lo que
+  # `deriva-de-migraciones` exige es que la revision este en la historia de `origin/main`,
+  # porque `publicar-imagenes.yml` solo publica al integrar. **Lo que esta linea NO demuestra
+  # es que las dos imagenes esten en el registro**: eso lo pregunta `yarn imagenes --ambiente
+  # <amb>`, que necesita red y credencial y sin ella sale con codigo 3 — nunca en verde.
+  kamayuk:versionDeIdentidad: a0866be2295467bf392e747eae3678967ad5d0f9
   # La versión con la que Pulumi CREA los despliegues. El campo `image` de los tres
   # `Deployment` queda ignorado después (ADR-0011 §5), así que subir esta línea **no**
   # reemplaza la imagen de un `Deployment` que ya corre: eso lo hace el flujo de

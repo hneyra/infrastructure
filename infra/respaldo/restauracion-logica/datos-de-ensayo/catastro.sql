@@ -7,3 +7,12 @@ INSERT INTO via (municipalidad_id, codigo, tipo_via, nombre, ubigeo)
 VALUES (900001, 'V-0001', 'AVENIDA', 'AVENIDA JOSE DE LAMA', '200101'),
        (900001, 'V-0002', 'CALLE', 'CALLE CAYETANO HEREDIA', '200101'),
        (900002, 'V-0001', 'JIRON', 'JIRON GRAU', '200104');
+
+-- La fila de tenant que `comun.sql` tenia hasta ADR-0039. Se movio aqui —y a los otros tres
+-- archivos de sistema, con la misma sentencia— porque `modulo_sistema` dejo de tener la
+-- misma forma en los cinco: la de `identidad` lleva ademas `sistema NOT NULL`. Ver la
+-- cabecera de `comun.sql`.
+INSERT INTO modulo_sistema (municipalidad_id, codigo, nombre)
+OVERRIDING SYSTEM VALUE
+VALUES (900001, 'C11', 'Modulo de ensayo'),
+       (900002, 'C11', 'Modulo de ensayo');

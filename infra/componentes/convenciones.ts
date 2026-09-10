@@ -647,17 +647,26 @@ export function emisorPublico(domain: string, realm: string): string {
  * `permitirIngresoPostgres` existe para impedir.
  */
 /**
- * Los cuatro sistemas del producto, en el orden de ADR-0029.
+ * Los **cinco** sistemas del producto, en el orden de ADR-0029 mas el de ADR-0039.
  *
  * Vive aqui —y no en `descriptor/sistemas.ts`— porque quien la necesita es la PLATAFORMA: es de
- * esta lista de donde salen las cuatro bases que el motor provisiona al arrancar. `componentes/`
+ * esta lista de donde salen las cinco bases que el motor provisiona al arrancar. `componentes/`
  * no puede importar de `descriptor/`, que es quien compone los descriptores ajenos.
  *
- * Y no es una quinta lista escrita a mano: `descriptor.test.ts` comprueba que estos cuatro sean
- * exactamente los que `SISTEMAS` compone, de modo que un sistema nuevo no puede entrar por un
- * lado y quedarse sin base por el otro.
+ * Y no es una segunda lista escrita a mano: `el-monolito-fuera.test.ts` comprueba que estos
+ * cinco sean exactamente los que `SISTEMAS` compone, de modo que un sistema nuevo no puede
+ * entrar por un lado y quedarse sin base por el otro. Es lo que mide la mutacion (M1) de
+ * ADR-0039 §etapa 1: sacar `identidad` de aqui dejandolo en `SISTEMAS` compone su `Deployment`
+ * contra una base que nadie crea.
+ *
+ * **`identidad` es un SISTEMA, no el servidor de autenticacion.** La plataforma etiqueta a
+ * Keycloak `componente: identidad` desde antes (`componentes/Identidad.ts`), asi que la cadena
+ * aparece en este repositorio con dos significados; el de aqui es el de ADR-0039, y por eso los
+ * pods de ese sistema llevan `componente: identidad-sistema` y su servicio del compose se llama
+ * igual. Ver `descriptor/sistemas.ts` (`grafoDeEgreso`) y `verificaciones/compose-de-los-sistemas.ts`
+ * (`servicioDe`).
  */
-export const SISTEMAS_DEL_PRODUCTO = ["rentas", "catastro", "normativa", "caja"] as const;
+export const SISTEMAS_DEL_PRODUCTO = ["rentas", "catastro", "normativa", "caja", "identidad"] as const;
 
 export const ETIQUETA_DE_NAMESPACE_DE_SISTEMA = { "kamayuk-sistema": "si" } as const;
 

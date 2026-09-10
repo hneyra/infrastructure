@@ -2,7 +2,7 @@
  * El grafo de egreso compuesto: quien puede llamar a quien.
  *
  * **El egreso declarado ES el grafo de dependencias** (ADR-0029), y no es una figura: es lo que
- * las `NetworkPolicy` aplican en el clúster. Si esta salida y ARQ-01 reducido a cuatro nodos no
+ * las `NetworkPolicy` aplican en el clúster. Si esta salida y ARQ-01 reducido a cinco nodos no
  * coinciden, la que esta mal es la arquitectura, no el descriptor — y la unica forma de verlo es
  * imprimirlo.
  *
@@ -29,5 +29,7 @@ for (const sistema of Object.keys(grafo).sort()) {
   );
 }
 const aristas = Object.values(grafo).reduce((n, d) => n + d.length, 0);
-console.log(`\n  ${aristas} aristas entre sistemas. El motor y la identidad no cuentan: los`);
-console.log("  cuatro los necesitan y no son un sistema.");
+console.log(`\n  ${aristas} aristas entre sistemas. El motor y KEYCLOAK no cuentan: los`);
+console.log("  cinco los necesitan y no son un sistema. Cuidado con el nombre: desde ADR-0039");
+console.log("  hay un SISTEMA llamado `identidad` y es un nodo mas; el que no cuenta es el");
+console.log("  servidor de autenticacion de la plataforma, que se etiqueta igual.");

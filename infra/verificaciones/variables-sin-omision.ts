@@ -38,8 +38,23 @@ const SIN_OMISION = /\$\{([A-Z0-9_]+)\}/g;
 /** El separador de documentos YAML que Spring Boot usa para los bloques por perfil. */
 const SEPARADOR = /^---\s*$/m;
 
-/** Los sistemas que despliegan una aplicacion Spring Boot; `sgtm` es el archivo historico. */
-export const SISTEMAS_CON_APLICACION: readonly string[] = ["rentas", "catastro", "normativa", "caja"];
+/**
+ * Los sistemas que despliegan una aplicacion Spring Boot; `sgtm` es el archivo historico.
+ *
+ * **CINCO desde ADR-0039.** Se escribe y no se deriva de `SISTEMAS` porque es la lista de quien
+ * tiene un `application.yaml` que leer, y no todo lo que se despliega lo tiene; pero un sistema
+ * que despliegue su aplicacion y NO este aqui es justo el hueco que C-7 midio y que esta guarda
+ * existe para cerrar: no sale roja, **deja de mirarlo**, y el sintoma llega en el cluster con el
+ * pod sin levantar. El contraste que lo impide vive en la propia prueba —exige que cada uno
+ * componga al menos un contenedor— pero solo para los que estan en esta lista.
+ */
+export const SISTEMAS_CON_APLICACION: readonly string[] = [
+  "rentas",
+  "catastro",
+  "normativa",
+  "caja",
+  "identidad",
+];
 
 function sistemaDe(nombre: string): Sistema {
   const sistema = SISTEMAS.find((candidato) => candidato.nombre === nombre);

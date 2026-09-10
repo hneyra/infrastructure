@@ -15,23 +15,27 @@ plataforma local.
 
 ## 0 · Los clones hermanos, que no son opcionales
 
-Los cinco repositorios son **hermanos**, y varias cosas cuentan con ello: el `includeBuild` de los
-cuatro backends busca `../../infrastructure/librerias-backend`, y los CI hacen checkout de dos
+Los seis repositorios son **hermanos**, y varias cosas cuentan con ello: el `includeBuild` de los
+backends busca `../../infrastructure/librerias-backend`, y los CI hacen checkout de los demás
 repositorios con `path:` para que queden así.
 
 ```
 IdeaProjects/
 ├── infrastructure/    este repositorio
-├── rentas/  catastro/  normativa/  caja/
+├── rentas/  catastro/  normativa/  caja/  identidad/
 └── sgtm/              el archivo historico. NO se modifica
 ```
 
-**Los cuatro, y desde el directorio padre de este repositorio:**
+**Los cinco, y desde el directorio padre de este repositorio:**
 
 ```bash
 cd ..                 # el directorio que contiene a infrastructure/
-for r in rentas catastro normativa caja; do git clone https://github.com/hneyra/$r; done
+for r in rentas catastro normativa caja identidad; do git clone https://github.com/hneyra/$r; done
 ```
+
+> **`identidad` es el quinto** (ADR-0039, contesta D-19) y entró el 2026-09-09. **Es el único de
+> los cinco cuyo repositorio es PRIVADO**, así que ese `git clone` pide credencial donde los otros
+> cuatro no; en CI lo trae la misma acción compuesta con el mismo secreto.
 
 `infra/descriptor/sistemas.ts` los importa por ruta relativa
 (`../../../<sistema>/infrastructure/src/descriptor`), así que **falta uno y la verificación no
@@ -52,7 +56,7 @@ Error: Cannot find module '../../../normativa/infrastructure/src/descriptor'
 **«`Tests no tests`» es lo que hay que leer**: no dice qué falta ni cómo traerlo, y el remedio no
 está en el mensaje. En CI no pasa porque
 [`.github/actions/clonar-los-hermanos`](../../.github/actions/clonar-los-hermanos/action.yml) los
-trae los cuatro —y con `historial-completo: si` en el trabajo `verificar`, porque
+trae los cinco —y con `historial-completo: si` en el trabajo `verificar`, porque
 `deriva-de-migraciones` cuenta migraciones en el árbol de git de dos revisiones y con un checkout
 superficial no está ninguna—. Lo que faltaba era decirlo aquí.
 
@@ -79,11 +83,14 @@ cd librerias-backend && ./gradlew build
 ```
 
 > **El paso 2 no corre sin el paso 0**, que es el de arriba: `yarn verificar` compone los
-> descriptores de los cuatro sistemas y los lee de sus clones hermanos. Sin ellos no se pone rojo
+> descriptores de los cinco sistemas y los lee de sus clones hermanos. Sin ellos no se pone rojo
 > diciendo qué falta: **se cae antes de mirar nada**.
 >
-> Con los cuatro al lado da hoy **714 de 714, en verde** — medido el 2026-09-07 con los cuatro
-> clones recién traídos. El aviso que había aquí decía «no está en verde: 337 verdes y
+> Con los cinco al lado da hoy **891 pruebas y UNA roja** — medido el 2026-09-09 con los cinco
+> clones a `origin/main`. La roja es `«stg» cabe` de `capacidad.test.ts` y **no es del entorno**:
+> con el quinto sistema el pico de `stg` pasa a 7 936Mi contra 7 008Mi disponibles, y esa guarda
+> está diciendo la verdad. Su primera salida es medir el nodo de `stg`, que su propio
+> `Pulumi.stg.yaml` declara **sin medir**. Antes del quinto sistema eran 840 de 840 en verde. El aviso que había aquí decía «no está en verde: 337 verdes y
 > 7 rojas»; esos dos defectos se cerraron en P6 y el aviso se quedó. [DEV-02 §2](pruebas.md)
 > conserva el diagnóstico, que es lo que costó entender, y ya dice que el estado cambió.
 

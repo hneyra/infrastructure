@@ -102,7 +102,7 @@ describe("#742/C-2 — la extension que una migracion usa esta declarada, en los
 });
 
 describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse rancia", () => {
-  it("son los cuatro sistemas de SISTEMAS, y ninguno mas", () => {
+  it("son los cinco sistemas de SISTEMAS, y ninguno mas", () => {
     // Derivarla de SISTEMAS es lo que impide el defecto de #742: alli la ruta estaba
     // escrita a mano, y al aparecer cuatro repositorios nuevos la guarda siguio mirando
     // uno solo **sin ponerse roja**. Si manana entra un quinto sistema, entra aqui solo.
@@ -111,7 +111,15 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
     // esquema del monolito que este repositorio llevaba en `backend/sgtm-esquema`. Las dos
     // del monolito se fueron con el.
     expect(esquemas().map((e) => e.nombre)).toEqual(SISTEMAS.map((s) => s.nombre));
-    expect(SISTEMAS.map((s) => s.nombre)).toEqual(["rentas", "catastro", "normativa", "caja"]);
+    expect(SISTEMAS.map((s) => s.nombre)).toEqual([
+      "rentas",
+      "catastro",
+      "normativa",
+      "caja",
+      // El quinto (ADR-0039), y su entrada llego el mismo dia que su descriptor: un sistema
+      // que se despliega y no esta aqui es un esquema cuya deriva de extensiones no mide nadie.
+      "identidad",
+    ]);
   });
 
   it("y los dos archivos de cada uno existen de verdad", () => {
@@ -177,10 +185,24 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
       // mismo caso que la `V13` de `catastro`. Esa clase de operadores compara en bytes, que es lo
       // que hace que un `LIKE 'algo%'` alcance un b-tree bajo cualquier colacion. Y los numeros 15 y 16 no existen: se los llevaron
       // otras ramas, que es a lo que `Migrador` responde con `.outOfOrder(true)` (#722).
+      // identidad 1: nace con su baseline y nada mas (ADR-0039, etapa 1). Se comprobo lo que
+      // este parrafo manda comprobar antes de escribir el numero: `V1__baseline.sql` **no usa
+      // ninguna extension** —trece tablas, ni una columna geografica, ni un indice GiST, ni un
+      // `EXCLUDE`, ni una busqueda por aproximacion—, y su `crear-roles.sql` no declara ninguna;
+      // las dos direcciones cuadran y lo dicen las otras pruebas de este archivo.
+      // identidad 2: la etapa 2 de #52 trae `V2__buzon_de_identidad.sql`, y se leyo entera antes
+      // de mover el numero: una tabla (`identidad_evento`), un indice b-tree corriente sobre
+      // `(municipalidad_id, id)`, su politica de RLS forzada y los GRANT. Ni GiST, ni GIN, ni
+      // `EXCLUDE`, ni `text_pattern_ops` siquiera. Sigue sin declarar ninguna extension.
+      // identidad 3: la etapa 3 (identidad#9) trae `V3__acuses_del_buzon.sql`, leida entera antes
+      // de mover el numero: una tabla (`identidad_evento_acuse`) con su clave primaria compuesta,
+      // una foranea compuesta a `identidad_evento`, un `CHECK` de cuatro literales, su RLS
+      // forzada y los GRANT. Ningun indice que pida extension. Sigue sin declarar ninguna.
       rentas: 15,
       catastro: 13,
       normativa: 1,
       caja: 2,
+      identidad: 3,
     });
   });
 
@@ -211,12 +233,19 @@ describe("C-2 — la lista de esquemas no se escribe aqui, y no puede quedarse r
       // correr en el motor mas simple que exista». Que sea cero y no un archivo
       // ilegible lo garantiza la prueba de que los dos archivos existen.
       caja: [],
+      // CERO desde su primer dia (ADR-0039), y por el mismo motivo medido que las dos de
+      // arriba: este sistema guarda quien puede hacer que, y sus trece tablas no tienen una
+      // sola columna geografica ni una busqueda por aproximacion. `postgis` seria ademas la
+      // mas cara —no es *trusted*, o sea superusuario en cada ambiente— y arrastraria la
+      // exencion de `spatial_ref_sys` a su prueba de aislamiento: una declaracion de mas se
+      // propaga a la lista de excepciones de la barrera numero uno.
+      identidad: [],
     });
   });
 });
 
 describe("C-13 — lo declarado y no usado es ROJO, y hoy no hay ninguna", () => {
-  it("ninguno de los cuatro esquemas declara una extension que no use", () => {
+  it("ninguno de los cinco esquemas declara una extension que no use", () => {
     // C-2 dejo esto como CENSO porque un rojo «naceria disparado en dos de los seis», y
     // una comprobacion que grita el primer dia se acaba silenciando (#437). C-13 retiro
     // las cinco —`pg_trgm` de `catastro` y las cuatro de `normativa`—, asi que el rojo

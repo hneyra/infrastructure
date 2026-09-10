@@ -6,7 +6,7 @@
 # Las extensiones se nombraban en TRES sitios (C-2 §6, huecos 2 y 3):
 #
 #   1. el `crear-roles.sql` de cada sistema — el unico que deberia decidirlo;
-#   2. `05-crear-bases.sh`, con las cuatro escritas a mano y creadas en las cuatro bases;
+#   2. `05-crear-bases.sh`, con las cuatro escritas a mano y creadas en todas las bases;
 #   3. `crear-extensiones.sh`, que si derivaba, pero de UN archivo con la ruta del
 #      monolito escrita a mano y contra UNA base.
 #

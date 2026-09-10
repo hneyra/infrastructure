@@ -356,10 +356,10 @@ export interface RecursosSettings {
  * varios sistemas hay que declarar una version POR SISTEMA». Esto es esa linea.
  *
  * `applicationBootstrapVersion` **ya no existe** (`E`): era la version del MONOLITO, un `sha` de
- * `sgtm`, y con el monolito fuera no gobierna ningun `Job` ni ningun `Deployment`. Estas cuatro
+ * `sgtm`, y con el monolito fuera no gobierna ningun `Job` ni ningun `Deployment`. Estas cinco
  * son las unicas versiones que este despliegue declara.
  *
- * ## Por que cuatro claves y no un mapa
+ * ## Por que una clave por sistema y no un mapa
  *
  * Porque el lector de estos archivos —`verificaciones/stacks.ts`— entiende exactamente la forma
  * que Pulumi lee de ellos: una linea `kamayuk:clave: valor` por valor, sin estructuras anidadas.
@@ -370,7 +370,7 @@ export interface RecursosSettings {
  * mas la prueba que la ata a `descriptor/sistemas.ts`: un quinto sistema que se componga sin su
  * clave pone esa prueba roja **nombrandolo**, en vez de heredar en silencio la version de otro.
  */
-export const SISTEMAS_CON_IMAGEN = ["rentas", "catastro", "normativa", "caja"] as const;
+export const SISTEMAS_CON_IMAGEN = ["rentas", "catastro", "normativa", "caja", "identidad"] as const;
 
 /** La clave del stack que declara la version de un sistema: `rentas` -> `versionDeRentas`. */
 export function claveDeVersion(sistema: string): string {

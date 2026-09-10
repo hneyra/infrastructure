@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { load } from "js-yaml";
 import { raizDelRepositorio } from "../componentes/fuentes";
+import { namespacesDelAmbiente } from "../descriptor/entorno";
 import type { Environment } from "../config";
 import { manifiestosDelAmbiente } from "../herramientas/emitir-manifiestos";
 import { invariantesDe } from "./stacks";
@@ -63,13 +64,18 @@ export const REGISTRO_PROPIO = "ghcr.io/hneyra/";
 /**
  * Los clones hermanos que pueden publicar algo.
  *
- * Eran cinco: el quinto era `sgtm`, que publicaba las tres imagenes del monolito. Se fue con
+ * Eran cinco con `sgtm`, que publicaba las tres imagenes del monolito. Se fue con
  * el en `E`, y con el la unica razon por la que este repositorio clonaba el archivo historico
  * en CI — `clonar-los-hermanos` ya no lo trae—. Dejarlo aqui pondria rojo el inventario
  * nombrando un clon que nadie pide: `publicadores()` **no se repliega** cuando falta uno, y
  * ese rojo seria por un motivo que no es el que se mide.
+ *
+ * Y vuelven a ser cinco con `identidad` (ADR-0039), que publica sus dos con el mismo
+ * `publicar-imagenes.yml` que los otros cuatro: **sin esta entrada, las dos imagenes que sus dos
+ * `Job` y su `Deployment` piden no las publicaria nadie a los ojos de esta guarda**, y el rojo
+ * diria la verdad sobre un repositorio que si las publica.
  */
-export const CLONES = ["rentas", "catastro", "normativa", "caja"] as const;
+export const CLONES = ["rentas", "catastro", "normativa", "caja", "identidad"] as const;
 
 /**
  * Las imagenes DEL PRODUCTO que un ambiente pide, sin repetir.
@@ -261,58 +267,289 @@ export function etiquetasQueNoIdentifican(pedidas: readonly ImagenPedida[]): str
 }
 
 /**
+ * Deja en blanco los comentarios de un fuente TypeScript y, si se le pide, tambien el contenido
+ * de los literales — **sin mover ni un caracter de sitio**.
+ *
+ * Blanquear y no borrar es deliberado, y aqui se cobra dos veces: las posiciones no cambian, asi
+ * que el emparejado de llaves de mas abajo sigue valiendo, un diagnostico que hable de una linea
+ * habla de la linea que es, y las **dos** lecturas del mismo archivo —una con literales y otra
+ * sin ellos— se pueden recortar por los mismos indices.
+ *
+ * Hace falta blanquear los comentarios porque el javadoc de `index.ts` **escribe** las cadenas
+ * que esta guarda busca —`imagePullSecrets`, `namespacesDelAmbiente`— para explicar el mecanismo:
+ * una comprobacion que se satisface con la prosa que la justifica es la que alguien acaba
+ * apagando borrando el comentario (#16 con `proxy_pass`, #10 con los rotulos del panel).
+ */
+export function enBlanco(fuente: string, tambienLosLiterales: boolean): string {
+  let salida = "";
+  let i = 0;
+  const blanco = (texto: string): string => texto.replace(/[^\n]/g, " ");
+  while (i < fuente.length) {
+    const dos = fuente.slice(i, i + 2);
+    if (dos === "//") {
+      const fin = fuente.indexOf("\n", i);
+      const hasta = fin === -1 ? fuente.length : fin;
+      salida += blanco(fuente.slice(i, hasta));
+      i = hasta;
+    } else if (dos === "/*") {
+      const fin = fuente.indexOf("*/", i + 2);
+      const hasta = fin === -1 ? fuente.length : fin + 2;
+      salida += blanco(fuente.slice(i, hasta));
+      i = hasta;
+    } else if (fuente[i] === '"' || fuente[i] === "'" || fuente[i] === "`") {
+      const comilla = fuente[i]!;
+      let j = i + 1;
+      while (j < fuente.length && fuente[j] !== comilla) {
+        if (fuente[j] === "\\") j += 1;
+        j += 1;
+      }
+      const dentro = fuente.slice(i + 1, j);
+      // La comilla de apertura y la de cierre se conservan siempre: son sintaxis, y quitarlas
+      // dejaria `resourceName(env, )` sin forma. Lo que se blanquea es el contenido.
+      salida += comilla + (tambienLosLiterales ? blanco(dentro) : dentro) + (j < fuente.length ? comilla : "");
+      i = j + 1;
+    } else {
+      salida += fuente[i];
+      i += 1;
+    }
+  }
+  return salida;
+}
+
+/** Donde empieza y acaba el bloque `{...}` que sigue a `desde`, con sus llaves emparejadas. */
+function limitesDelBloque(fuente: string, desde: number): [number, number] | undefined {
+  const abre = fuente.indexOf("{", desde);
+  if (abre === -1) return undefined;
+  let nivel = 0;
+  for (let i = abre; i < fuente.length; i += 1) {
+    if (fuente[i] === "{") nivel += 1;
+    else if (fuente[i] === "}") {
+      nivel -= 1;
+      if (nivel === 0) return [abre + 1, i];
+    }
+  }
+  return undefined;
+}
+
+/**
+ * De donde saca `index.ts` los espacios de nombres que reciben la credencial de registro, leido
+ * de su fuente. Devuelve el texto de la expresion, tal cual.
+ *
+ * **Sigue la indireccion hasta la LLAMADA y no se para en la declaracion**, que es la leccion de
+ * #10 con `selectorDeLaBiblioteca`: alli la guarda leia el `local selector="..."` declarado y no
+ * comprobaba que alguien lo usara, asi que la variable podia quedarse muerta y la comparacion se
+ * hacia sola. Aqui se exige que el MISMO bucle cree las dos cosas —el `Secret` de
+ * `dockerconfigjson` y el `ServiceAccountPatch` con `imagePullSecrets`— y que las dos pongan
+ * `namespace:` a la variable que ese bucle recorre. Un `Secret` que se quedara fuera del bucle
+ * deja `imagePullSecrets` apuntando a un `Secret` que en ese espacio de nombres no existe, y el
+ * pod no arranca igual.
+ *
+ * Toma el fuente como argumento en vez de leerlo, para que las muestras de la prueba puedan
+ * ejercitar la lectura misma: una guarda que solo se puede probar contra el archivo de verdad no
+ * se puede probar contra un archivo defectuoso.
+ */
+export interface BucleDeLaCredencial {
+  /** El texto de la expresion que el bucle recorre, tal cual. */
+  expresion: string;
+  /** Si en su cuerpo se crea el `Secret` de `kubernetes.io/dockerconfigjson`. */
+  secreto: boolean;
+  /** Si en su cuerpo se crea el `ServiceAccountPatch` con `imagePullSecrets`. */
+  parche: boolean;
+  /** A que le pone `namespace:` cada uno de los objetos que crea, en orden. */
+  namespaces: string[];
+  /** La variable que el bucle recorre. */
+  variable: string;
+}
+
+/** Los bucles que crean AL MENOS una de las dos mitades de la credencial, con lo que les falta. */
+export function buclesDeLaCredencialEn(fuente: string): BucleDeLaCredencial[] {
+  // DOS lecturas del mismo archivo, blanqueadas en el sitio, asi que comparten indices. La
+  // estructura —el bucle, los dos `new`, el `namespace:`— se busca sin literales, para que una
+  // cadena que llevara el bucle entero dentro no cuente. El unico dato que SI vive en un literal
+  // es el tipo del `Secret` (`kubernetes.io/dockerconfigjson`), y ese se busca en la otra.
+  const limpio = enBlanco(fuente, true);
+  const conLiterales = enBlanco(fuente, false);
+  const bucles = [...limpio.matchAll(/for\s*\(\s*const\s+(?<variable>[A-Za-z_$][\w$]*)\s+of\s+/g)];
+
+  const hallados: BucleDeLaCredencial[] = [];
+  for (const bucle of bucles) {
+    const variable = bucle.groups?.["variable"];
+    if (variable === undefined) continue;
+    // Hasta el `)` que cierra el `for (`, contando parentesis: `namespacesDelAmbiente(env)` lleva
+    // uno dentro, y cortar en el primero devolvia media expresion —medido: «namespacesDelAmbiente(env»—.
+    const desde = (bucle.index ?? 0) + bucle[0].length;
+    let nivel = 1;
+    let cierra = desde;
+    while (cierra < limpio.length && nivel > 0) {
+      if (limpio[cierra] === "(") nivel += 1;
+      else if (limpio[cierra] === ")") nivel -= 1;
+      if (nivel > 0) cierra += 1;
+    }
+    if (nivel !== 0) continue;
+    const expresion = limpio.slice(desde, cierra).trim();
+    const limites = limitesDelBloque(limpio, cierra + 1);
+    if (limites === undefined) continue;
+    const cuerpo = limpio.slice(limites[0], limites[1]);
+
+    const secreto =
+      cuerpo.includes("new k8s.core.v1.Secret(") &&
+      conLiterales.slice(limites[0], limites[1]).includes("kubernetes.io/dockerconfigjson");
+    const parche =
+      cuerpo.includes("new k8s.core.v1.ServiceAccountPatch(") &&
+      cuerpo.includes("imagePullSecrets");
+    if (!secreto && !parche) continue;
+
+    // Y a que le ponen `namespace:` los objetos que ese bucle crea. Tiene que ser la variable que
+    // recorre: mover el `namespace` de uno de ellos a una constante —la de la plataforma, por
+    // ejemplo— dejaria el bucle dando vueltas y escribiendo seis veces en el mismo sitio.
+    const puestas = [...cuerpo.matchAll(/namespace:\s*([A-Za-z_$][\w$]*)/g)].map((m) => m[1] ?? "");
+
+    hallados.push({ expresion, secreto, parche, namespaces: puestas, variable });
+  }
+  return hallados;
+}
+
+/**
+ * Y solo las expresiones de los bucles que cumplen las CUATRO condiciones: crean el `Secret`,
+ * crean el parche, y los dos le ponen `namespace:` a la variable del bucle.
+ */
+export function espaciosDeclaradosEn(fuente: string): string[] {
+  return buclesDeLaCredencialEn(fuente)
+    .filter(
+      (b) =>
+        b.secreto &&
+        b.parche &&
+        b.namespaces.length === 2 &&
+        b.namespaces.every((n) => n === b.variable),
+    )
+    .map((b) => b.expresion);
+}
+
+/**
+ * Y la misma lectura sobre el `index.ts` de verdad, exigiendo que haya exactamente una.
+ *
+ * Lanza si no la encuentra: «no se pudo leer» no puede leerse como «no hay credencial»
+ * (C-15/C-16), y devolver la lista vacia dejaria en verde todo lo que este archivo afirma.
+ */
+export function fuenteDeLosEspaciosConCredencial(): string {
+  const ruta = join(raizDelRepositorio(), "infra", "index.ts");
+  const fuente = readFileSync(ruta, "utf8");
+  const hallados = espaciosDeclaradosEn(fuente);
+  if (hallados.length !== 1) {
+    // Y QUE le falta a cada bucle a medias, porque las dos mitades se rompen en direcciones
+    // opuestas y se arreglan distinto: sin el `Secret`, `imagePullSecrets` apunta en esos
+    // espacios a un objeto que no existe y el kubelet no puede autenticarse; sin el parche, el
+    // `Secret` esta puesto y no lo reclama nadie. Un diagnostico que solo dijera «no cuadra»
+    // mandaria a leer el archivo entero.
+    const aMedias = buclesDeLaCredencialEn(fuente)
+      .map((b) => {
+        const falta = [
+          b.secreto ? "" : "el `Secret` de `kubernetes.io/dockerconfigjson`",
+          b.parche ? "" : "el `ServiceAccountPatch` con `imagePullSecrets`",
+          b.namespaces.length === 2 && b.namespaces.every((n) => n === b.variable)
+            ? ""
+            : `que los dos pongan \`namespace: ${b.variable}\` (ponen: ${b.namespaces.join(", ") || "ninguno"})`,
+        ].filter((x) => x !== "");
+        return falta.length === 0 ? "" : `    · bucle sobre \`${b.expresion}\`: le falta ${falta.join(" y ")}`;
+      })
+      .filter((x) => x !== "");
+    throw new Error(
+      "«infra/index.ts» no crea la credencial de registro en la forma que esta guarda sabe leer: " +
+        "se esperaba UN bucle que recorra los espacios de nombres creando en cada uno el `Secret` " +
+        "de `dockerconfigjson` Y el `ServiceAccountPatch` con `imagePullSecrets`, los dos con " +
+        "`namespace:` puesto a la variable del bucle, y se encontraron " +
+        String(hallados.length) +
+        (hallados.length > 1 ? ` (${hallados.join(" · ")})` : "") +
+        ".\n" +
+        "  Esta comprobacion NO se salta y NO devuelve la lista vacia: «no se pudo leer» se " +
+        "leeria como «ningun espacio tiene credencial», y con eso todo lo que este archivo " +
+        "afirma sobre quien puede bajarse una imagen privada pasaria en verde sobre el conjunto " +
+        "vacio.\n" +
+        (aMedias.length > 0 ? `  Lo que hay:\n${aMedias.join("\n")}\n` : "") +
+        `  Fuente leida: ${ruta}`,
+    );
+  }
+  return hallados[0]!;
+}
+
+/**
  * Los espacios de nombres cuyos pods tienen credencial para `ghcr.io`, y de donde sale el dato.
  *
  * **No es «los que declaran `imagePullSecrets` en el pod»**, y creerlo daba un falso positivo
  * sobre el monolito: la credencial no vive en ningun `spec`. `index.ts` crea el `Secret`
- * `<amb>-registro-credenciales` y **parchea el `ServiceAccount` `default`** del espacio de nombres
- * de la plataforma, de donde la heredan todos sus pods —ninguno declara `serviceAccountName`—
- * (issue #257).
+ * `<amb>-registro-credenciales` y **parchea el `ServiceAccount` `default`**, de donde la heredan
+ * todos los pods de ese espacio de nombres —ninguno declara `serviceAccountName`— (issue #257).
  *
- * Y ese parche llega a **uno** solo. Desde ADR-0031 cada sistema vive en el suyo, y ahi no hay ni
- * `Secret` ni parche: hoy funciona porque sus paquetes son publicos.
+ * Y llegaba a **uno**, el de la plataforma. Desde ADR-0031 cada sistema vive en el suyo, y ahi no
+ * habia ni `Secret` ni parche: funcionaba porque los ocho paquetes de los cuatro sistemas del
+ * corte son publicos. `identidad` (ADR-0039) es el primer paquete privado del producto y con el
+ * el hueco dejo de ser hipotetico, asi que la credencial pasa a los SEIS espacios del ambiente.
  *
- * Se lee del propio `index.ts` en vez de escribirse aqui, porque esta es justo la clase de
- * exencion que se queda rancia: el dia que alguien replique la credencial en los cuatro espacios,
- * esta funcion tiene que enterarse.
+ * **La lista NO se escribe aqui, y tampoco se lee de `index.ts` como texto: se EJECUTA.** El
+ * fuente de `index.ts` solo dice de DONDE sale —`namespacesDelAmbiente(env)`—, y esta funcion
+ * llama a esa misma funcion para saber cuales son. Leer los nombres del texto seria un segundo
+ * sitio con la misma verdad, y el que se queda viejo el dia que entre un sexto sistema; escribir
+ * la lista aqui seria peor todavia, porque una guarda que no cambia cuando el mundo cambia es
+ * peor que no tenerla (M10 de C-19: la lista se ejecuta, no se lee).
+ *
+ * Si `index.ts` cambiara de fuente, esta funcion devuelve **el texto de la expresion tal cual**
+ * en vez de una lista de espacios: la prueba la nombra y sale roja, que es lo contrario de darla
+ * por buena.
  */
-export function espaciosConCredencialDeRegistro(): string[] {
-  const fuente = readFileSync(join(raizDelRepositorio(), "infra", "index.ts"), "utf8");
-  const patch = /new k8s\.core\.v1\.ServiceAccountPatch\(([\s\S]*?)\n\);/g;
-  const espacios: string[] = [];
-  for (const [, cuerpo] of fuente.matchAll(patch)) {
-    if (cuerpo === undefined) continue;
-    if (!cuerpo.includes("imagePullSecrets")) continue;
-    // `namespace,` a secas es el de la plataforma: `index.ts` lo tiene en una constante con ese
-    // nombre. Cualquier otra forma se devuelve tal cual para que la prueba la nombre en vez de
-    // darla por buena.
-    const casa = /^\s*namespace(,|:\s*(?<valor>[^,\n]+),)/m.exec(cuerpo);
-    espacios.push(casa?.groups?.["valor"]?.trim() ?? "namespace");
+const FUENTE_ESPERADA = "namespacesDelAmbiente(env)";
+
+export function espaciosConCredencialDeRegistro(ambiente: Environment): string[] {
+  const expresion = fuenteDeLosEspaciosConCredencial();
+  // La UNICA expresion que esta guarda sabe ejecutar. No es una lista de espacios de nombres —eso
+  // es lo que se queria evitar—: es el nombre de la funcion que los deriva, y quien la ejecuta
+  // con el ambiente de verdad es la linea de abajo.
+  if (expresion !== FUENTE_ESPERADA) {
+    throw new Error(
+      `«infra/index.ts» crea la credencial de registro recorriendo \`${expresion}\`, y esta ` +
+        `guarda solo sabe ejecutar \`${FUENTE_ESPERADA}\`.\n` +
+        "  No se devuelve la expresion como si fuera un espacio de nombres: con eso, todo pod " +
+        "contaria como «sin credencial» y el rojo hablaria de los pods en vez de hablar de esta " +
+        "linea. Y no se devuelve la lista vacia, por lo mismo que arriba.\n" +
+        "  Remedio: recorrer `namespacesDelAmbiente(env)` —que es de donde salen los espacios de " +
+        "un ambiente, derivados de SISTEMAS_DEL_PRODUCTO— o enseñarle a esta guarda a ejecutar " +
+        "la fuente nueva. Lo que no vale es que las dos se separen en silencio.",
+    );
   }
-  return espacios;
+  return namespacesDelAmbiente(ambiente);
 }
 
-/** Un pod que trae una imagen del producto sin credencial propia, y donde vive. */
-export interface PodSinCredencial {
+/** Una carga que trae una imagen del producto, donde vive y si su espacio tiene credencial. */
+export interface CargaConImagenDelProducto {
   espacio: string;
   donde: string;
   imagenes: string[];
+  /** `true` si esa carga puede bajarse una imagen PRIVADA: por su `spec` o por su espacio. */
+  credencial: boolean;
 }
 
+/** Compatibilidad de nombre con lo que `#257` dejo escrito: una carga que NO puede bajarla. */
+export type PodSinCredencial = CargaConImagenDelProducto;
+
 /**
- * Las cargas que traen una imagen del producto **fuera** del espacio de nombres de la plataforma
- * y sin `imagePullSecrets` propio: exactamente las que no podrian bajarla si el paquete fuera
- * privado.
+ * TODAS las cargas del ambiente que traen una imagen de `ghcr.io/hneyra`, con si tienen o no
+ * credencial para bajarla.
+ *
+ * Existe aparte de `podsSinCredencial` por el contraste: **todo lo que este archivo afirma sobre
+ * la credencial es cierto sobre el conjunto vacio**. Con la credencial ya puesta en los seis
+ * espacios, «ninguna carga se queda sin credencial» pasa igual de verde si el recorrido dejara
+ * de encontrar cargas — que es exactamente C-15/C-16—. Este censo es el sujeto: la prueba exige
+ * primero que haya cargas que contar.
  */
-export function podsSinCredencial(ambiente: Environment): PodSinCredencial[] {
-  const plataforma = `kamayuk-${ambiente}`;
-  const salida: PodSinCredencial[] = [];
+export function cargasConImagenDelProducto(ambiente: Environment): CargaConImagenDelProducto[] {
+  // Los espacios cuyo `ServiceAccount` `default` lleva la credencial. NO es una lista escrita
+  // aqui: sale de leer `index.ts` y ejecutar la funcion de la que el saca los suyos.
+  const conCredencial = new Set(espaciosConCredencialDeRegistro(ambiente));
+  const salida: CargaConImagenDelProducto[] = [];
 
   for (const m of manifiestosDelAmbiente(invariantesDe(ambiente))) {
     const manifiesto = m as unknown as Record<string, unknown>;
     const meta = manifiesto["metadata"] as { namespace?: string; name?: string } | undefined;
     const espacio = meta?.namespace ?? "";
-    if (espacio === plataforma) continue;
 
     const spec = manifiesto["spec"] as Record<string, unknown> | undefined;
     const plantilla =
@@ -339,15 +576,32 @@ export function podsSinCredencial(ambiente: Environment): PodSinCredencial[] {
         }
       | undefined;
     if (pod === undefined) continue;
-    if ((pod.imagePullSecrets ?? []).length > 0) continue;
 
     const imagenes = [...(pod.containers ?? []), ...(pod.initContainers ?? [])]
       .map((c) => c.image ?? "")
       .filter((i) => i.startsWith(REGISTRO_PROPIO));
-    if (imagenes.length > 0) {
-      salida.push({ espacio, donde: `${String(manifiesto["kind"])}/${meta?.name ?? ""}`, imagenes });
-    }
+    if (imagenes.length === 0) continue;
+
+    salida.push({
+      espacio,
+      donde: `${String(manifiesto["kind"])}/${meta?.name ?? ""}`,
+      imagenes,
+      credencial: (pod.imagePullSecrets ?? []).length > 0 || conCredencial.has(espacio),
+    });
   }
 
   return salida.sort((a, b) => a.donde.localeCompare(b.donde));
+}
+
+/**
+ * Las cargas que traen una imagen del producto y **no podrian bajarla si el paquete fuera
+ * privado**: ni su `spec` declara `imagePullSecrets` ni su espacio de nombres tiene la credencial.
+ *
+ * Eran DIECINUEVE —las de los cinco sistemas, porque el parche llegaba solo a la plataforma— y
+ * hoy son cero, porque la credencial llega a los seis espacios del ambiente. Lo que sigue
+ * midiendo es lo mismo que medía: una carga que aparezca fuera de esos seis espacios, o un
+ * espacio que se quede sin credencial, vuelve a salir aqui.
+ */
+export function podsSinCredencial(ambiente: Environment): CargaConImagenDelProducto[] {
+  return cargasConImagenDelProducto(ambiente).filter((c) => !c.credencial);
 }

@@ -6,7 +6,8 @@ está en [`ADR-0011`](../docs/30-arquitectura/adr/ADR-0011-infraestructura-como-
 la topología, en [`INF-01`](../docs/80-infraestructura/arquitectura-de-infraestructura.md);
 los ambientes, en [`INF-03`](../docs/80-infraestructura/ambientes.md).
 
-**Hoy describe la PLATAFORMA**: PostgreSQL con sus cuatro roles y sus cuatro bases,
+**Hoy describe la PLATAFORMA**: PostgreSQL con sus cuatro roles y sus **cinco** bases —una por
+sistema, y `identidad` es la quinta desde [ADR-0039](../docs/30-arquitectura/adr/ADR-0039-la-identidad-es-un-sistema.md)—,
 Keycloak con su base y su realm, el buzón de correo, el respaldo, la observabilidad y
 Traefik con TLS ([qué hace cada componente](componentes/README.md)). Hasta
 [`E`](../docs/00-gobierno/E-el-monolito-sale-del-sistema.md) describía además el monolito
@@ -231,7 +232,7 @@ ahí sólo podría acertar con uno de los cinco. Antes de C-17 declaraba nueve `
 sistemas montaban diez, con **intersección cero**: el guion corría, decía «Listo» y creaba cero
 de los diez, mientras sus pods esperaban en `Pending`.
 
-**Ocho de esos diez son espejos, no valores nuevos.** Los cuatro sistemas se conectan con
+**Los espejos no son valores nuevos.** Los cinco sistemas se conectan con
 `kamayuk_app` y migran con `kamayuk_owner`, que son roles del **clúster**, y PostgreSQL le da a un rol
 **una** contraseña: no se pueden generar por separado sin dejar a tres de cada cuatro sin poder
 conectarse. Se copian del `Secret` de la plataforma —en base64, sin decodificar y sin pasar por
@@ -293,7 +294,7 @@ volver a aplicar la misma no hace nada: el migrador es idempotente.
 convivían `applicationBootstrapVersion` —la del monolito, un `sha` de `sgtm`— y las cuatro
 de los sistemas; la primera se fue con el código que gobernaba, y con ella la asimetría.
 
-Las ocho imágenes de los cuatro sistemas se etiquetan con `kamayuk:versionDe<Sistema>`, un
+Las **diez** imágenes de los cinco sistemas se etiquetan con `kamayuk:versionDe<Sistema>`, un
 `sha` del repositorio que construye cada una — porque una etiqueta que no resuelve contra
 ningún `git log` no identifica nada. `yarn imagenes --ambiente <amb>` le pregunta al
 registro si esas etiquetas existen, y ese mismo guion corre **antes de cada `pulumi up`**:

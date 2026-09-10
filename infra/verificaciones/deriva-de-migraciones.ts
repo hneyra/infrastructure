@@ -117,9 +117,14 @@ export interface Sistema {
  *
  * **`sgtm` ya no esta** (`E`). Estuvo hasta el 2026-09-06 porque era el que se desplegaba;
  * con el monolito fuera, ningun ambiente construye su migrador y su `sha` no gobierna nada.
- * Las cuatro entradas que quedan son las que de verdad migran, y por eso esta comprobacion
+ * Las entradas que quedan son las que de verdad migran, y por eso esta comprobacion
  * pasa de medir un esquema a medir cuatro: hasta hoy los cuatro `Job` de migracion del
  * corte **no los medía nadie** (hueco declarado en C-20).
+ *
+ * **`identidad` entra con ADR-0039** y son cinco. Su esquema es el mas pequeno de los cinco
+ * —un solo baseline— y aun asi entra aqui el mismo dia que su descriptor: un sistema que se
+ * despliega y no esta en esta tabla es una deriva que nadie puede medir, y `sistemaLlamado`
+ * lanza diciendolo en vez de dejarla pasar.
  */
 export const SISTEMAS: readonly Sistema[] = [
   {
@@ -141,6 +146,11 @@ export const SISTEMAS: readonly Sistema[] = [
     nombre: "caja",
     clon: "caja",
     migraciones: "backend/kamayuk-caja-esquema/src/main/resources/db/migration/",
+  },
+  {
+    nombre: "identidad",
+    clon: "identidad",
+    migraciones: "backend/kamayuk-identidad-esquema/src/main/resources/db/migration/",
   },
 ] as const;
 
