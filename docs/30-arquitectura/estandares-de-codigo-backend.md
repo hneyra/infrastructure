@@ -25,7 +25,7 @@ kamayuk-<contexto>/src/main/java/kamayuk/<sistema>/<contexto>/
   contexto.
 - Los demás contextos se importan **solo** por el paquete raíz. Lo verifica Spring Modulith.
 
-## 2. Las diez reglas, y la undécima que trajo la separación
+## 2. Las diez reglas, y las dos que trajo la separación
 
 | # | Regla | Verificación |
 |---|---|---|
@@ -40,12 +40,38 @@ kamayuk-<contexto>/src/main/java/kamayuk/<sistema>/<contexto>/
 | 9 | No existe «la deuda»: es `deudaActualizadaA(fecha)` | Revisión |
 | 10 | Toda modificación de datos exige observación del usuario | ArchUnit (`@Transactional` de escritura sin `Observacion`) + restricción en la base |
 | 11 | **Ningún SQL cruza la frontera de sistema**: un `JOIN` contra una tabla de otro sistema | Escáner de fuentes (`FronteraDeSistema`) |
+| 12 | **Ningún sistema que no sea `identidad` ESCRIBE la autorización**: `INSERT INTO`, `UPDATE … SET` o `DELETE FROM` sobre `usuario`, `grupo`, `miembro` o `permiso` | Escáner de fuentes (`RevisorDeCodigoFuente.revisarAutorizacion`) |
 
 La 11 sólo existe desde que hay cinco repositorios, y es **escáner de texto y no ArchUnit** por el
 mismo motivo que `SET SESSION`: lo que cruza la frontera no es un tipo sino un nombre de tabla
 dentro de un literal, y en el bytecode un `JOIN predio` no deja huella. Las excepciones se
 declaran nominadas, **con el issue que las cierra**, y una excepción que ya no exime nada se pone
 roja sola.
+
+**La 12 llega con ADR-0039** —la autorización es un sistema propio y su dueño es `identidad`— y es
+la mitad que el reparto de tablas de la 11 no puede dar. Las cuatro tablas siguen estando en los
+cinco baselines porque los cinco las **leen** para autorizar sin un viaje de red (D-N5), así que en
+`sistemaDeCadaTabla()` van como replicadas: marcarlas de `identidad` pondría en rojo el
+`ComprobadorDeAccesoJdbc` de los otros cuatro, que es código correcto. Lo que hay que ver es la
+escritura, y un reparto distingue tablas, no verbos. Lo que cuesta que no se vea, dicho con lo que
+pasa y no con lo que podría pasar: **dos sistemas que escriben la misma tabla de permisos en dos
+bases no dan un error — dan dos respuestas a «quién puede hacer esto»**, y la que gana es la del
+sistema al que se le preguntó.
+
+Sus excepciones se declaran por clase en `escritoresDeLaAutorizacionConMotivo()`, **con su motivo y
+su fecha de fin**: el sembrador de la copia local de cada satélite (hasta la etapa 5), el consumidor
+del buzón (etapa 4), los dos repositorios de `identidad` —sin fecha, es el dueño— y los dos de
+`rentas`, **hasta la etapa 4 y no más**. Como las demás listas, una entrada que no nombra ninguna
+clase de producción se pone roja sola (#27).
+
+**Y nace desactivada, que es una desviación y se dice**: mientras la configuración de un
+repositorio no declare ese método —por omisión devuelve `null`, que significa «no declarado», no
+«nadie puede»— la prohibición **no le vigila nada**. Es lo que impide que entrar en la librería deje
+rojos los cinco consumidores el mismo día (#437), y su coste no se calla:
+`ProhibicionesEnElCodigoFuenteTest` **imprime en cada corrida** si este repositorio la vigila o no,
+porque «no se hace» no es «está bien» (C-15/C-16). Medido con la lista declarada vacía, los cinco
+salen rojos: **7 · 4 · 4 · 4 · 7 = 26** escrituras, y ninguna es un defecto — son exactamente las
+legítimas de arriba, que cada repositorio tiene que declarar en su propio PR.
 
 **Si agregas una regla, agrega la clase de muestra que la viola**, en
 `librerias-backend/comun-verificaciones/src/main/java/kamayuk/comun/verificaciones/muestras/`. Una

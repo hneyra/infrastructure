@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Las reglas de ARQ-04 §2 que viven en el texto del SQL y no en la estructura de las clases: {@code
@@ -473,6 +474,72 @@ public final class RevisorDeCodigoFuente {
     public static final Set<String> BUSCAN_TEXTO_LIBRE_CON_MOTIVO =
             CONFIG.busquedasDeTextoLibreConMotivo();
 
+    /**
+     * Las cuatro tablas que dicen QUIEN PUEDE HACER QUE, cuyo dueño es {@code identidad}
+     * (ADR-0039).
+     *
+     * <p>Se escriben aqui y no en la configuracion de cada repositorio —al reves que {@link
+     * #TABLAS_PROTEGIDAS} y {@link #TABLAS_INMUTABLES}— y el motivo es justo el contrario del que
+     * aquellas tienen: {@code recibo} es de {@code caja} y {@code cuenta_corriente_asiento} es de
+     * {@code rentas}, asi que sus listas no pueden ser una sola; estas cuatro <b>estan en los cinco
+     * baselines</b> (ADR-0032) porque los cinco las LEEN para autorizar sin un viaje de red (D-N5).
+     * Dejar que cada repositorio declarase cuales son seria dejar que cada uno decidiera de que
+     * frontera esta hablando esta regla.
+     *
+     * <p><b>{@code modulo_sistema} y {@code acceso} NO estan, y no es un olvido</b>: son el
+     * CATALOGO, y hoy cada sistema siembra su parte —es lo que hace que una pantalla nueva tenga a
+     * quien darle permiso (RF-122)—. Lo que la etapa 2 vigila es quien decide <b>a quien</b> se le
+     * concede, no quien declara <b>que hay</b>. {@code sesion} tampoco: es de cada sistema y se
+     * abre y se cierra en el suyo.
+     */
+    public static final Set<String> TABLAS_DE_LA_AUTORIZACION =
+            Set.of("usuario", "grupo", "miembro", "permiso");
+
+    /** El alternado de {@link #TABLAS_DE_LA_AUTORIZACION}, para meterlo en los patrones. */
+    private static final String LAS_CUATRO =
+            "(" + String.join("|", new java.util.TreeSet<>(TABLAS_DE_LA_AUTORIZACION)) + ")";
+
+    /**
+     * {@code INSERT INTO usuario} / {@code DELETE FROM permiso}, palabra entera.
+     *
+     * <p>El {@code \\b} del final es lo que separa la tabla de sus columnas: {@code usuario_alta} y
+     * {@code usuario_baja} son columnas de {@code miembro} y no casan, porque el guion bajo es
+     * caracter de palabra.
+     */
+    private static final Pattern ALTA_O_BAJA_EN_LA_AUTORIZACION =
+            Pattern.compile(
+                    "\\b(?:insert\\s+into|delete\\s+from)\\s+" + LAS_CUATRO + "\\b",
+                    Pattern.CASE_INSENSITIVE);
+
+    /**
+     * {@code UPDATE grupo … SET}, con el {@code SET} hasta ochenta caracteres mas alla.
+     *
+     * <p>La holgura no es capricho: el SQL de un repositorio JDBC se compone concatenando, asi que
+     * {@code "UPDATE usuario"} y {@code " SET …"} pueden caer en dos literales distintos con las
+     * comillas y el {@code +} en medio. Se exige el {@code SET} —y no basta el {@code UPDATE}—
+     * porque {@code ON CONFLICT … DO UPDATE SET} tambien es una escritura y tiene que entrar, y
+     * porque un {@code UPDATE} suelto sin {@code SET} no existe.
+     *
+     * <p><b>El limite, dicho:</b> con mas de ochenta caracteres de por medio deja de verse. Un SQL
+     * compuesto en dos sentencias de Java distintas —el {@code UPDATE} en una variable y el {@code
+     * SET} en otra— se le escapa, igual que al resto de este revisor: aqui no hay un analizador de
+     * SQL, hay un escaner de texto.
+     */
+    private static final Pattern EDICION_EN_LA_AUTORIZACION =
+            Pattern.compile(
+                    "\\bupdate\\s+" + LAS_CUATRO + "\\b[^;{}]{0,80}?\\bset\\b",
+                    Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+    /**
+     * Los escritores que ESTE repositorio declara, o {@code null} si no ha declarado nada.
+     *
+     * <p>{@code null} no es «ninguno»: es «esta prohibicion todavia no esta activa aqui». Ver
+     * {@link ConfiguracionDeLasVerificaciones#escritoresDeLaAutorizacionConMotivo()}, donde estan
+     * el motivo y lo que cuesta.
+     */
+    private static final Set<String> ESCRITORES_DE_LA_AUTORIZACION =
+            CONFIG.escritoresDeLaAutorizacionConMotivo();
+
     private static final Pattern COMENTARIO_SQL_DE_LINEA = Pattern.compile("--[^\\n]*");
     private static final Pattern COMENTARIO_DE_BLOQUE = Pattern.compile("(?s)/\\*.*?\\*/");
 
@@ -494,6 +561,7 @@ public final class RevisorDeCodigoFuente {
         hallazgos.addAll(revisarAreas(archivo, contenido));
         hallazgos.addAll(revisarEspacial(archivo, contenido));
         hallazgos.addAll(revisarPrefijo(archivo, contenido));
+        hallazgos.addAll(revisarAutorizacionSiSeDeclara(archivo, contenido));
         return hallazgos;
     }
 
@@ -708,6 +776,176 @@ public final class RevisorDeCodigoFuente {
         return hallazgos;
     }
 
+    /**
+     * ADR-0039: <b>ningun sistema que no sea {@code identidad} escribe la autorizacion</b>.
+     *
+     * <p>Es la mitad que un reparto de tablas no puede dar. Las cuatro —{@code usuario}, {@code
+     * grupo}, {@code miembro}, {@code permiso}— estan en los cinco baselines y los cinco las LEEN
+     * para autorizar sin un viaje de red (D-N5), asi que en {@code sistemaDeCadaTabla()} van como
+     * replicadas: marcarlas de {@code identidad} pondria en rojo el {@code ComprobadorDeAccesoJdbc}
+     * de los otros cuatro, que es codigo correcto. Lo que hay que ver es la ESCRITURA, y eso el
+     * reparto no lo distingue: distingue tablas, no verbos.
+     *
+     * <p><b>Lo que cuesta que no se vea, dicho con lo que pasa y no con lo que podria pasar</b>:
+     * dos sistemas que escriben la misma tabla de permisos en dos bases distintas no dan un error
+     * —dan dos respuestas a «quien puede hacer esto», y la que gana es la del sistema al que se le
+     * pregunto. El sintoma no es un fallo: es que una cuenta a la que se le retiro un permiso lo
+     * conserva en tres de los cinco.
+     *
+     * <p><b>La unidad es el ARCHIVO, y por eso la exencion se declara por clase</b> —igual que
+     * {@link #COMPONEN_EL_AREA_A_MANO_CON_MOTIVO} y {@link #BUSCAN_TEXTO_LIBRE_CON_MOTIVO}—. No es
+     * la sentencia como en {@link #revisarEspacial}: alli habia que separar dos consultas del mismo
+     * repositorio porque una era correcta y la otra no; aqui lo que decide es <b>quien escribe</b>,
+     * y quien escribe es la clase. Anadir un escritor tiene que ser una linea visible en el diff
+     * con su motivo al lado.
+     *
+     * <p><b>Se descartan los comentarios, y las posiciones NO se mueven.</b> Este mismo javadoc
+     * escribe {@code INSERT INTO usuario} para explicar la prohibicion, y {@code
+     * ConfiguracionDeLasVerificaciones} tambien: una guarda que se dispara con la prosa que la
+     * justifica es la que alguien acaba apagando borrando el comentario (#42, #16, #10). Se
+     * blanquean en vez de borrarse —{@link #enBlancoLosComentarios}— porque el hallazgo nombra la
+     * LINEA, y borrar un comentario de bloque de tres lineas correria todo lo de abajo tres lineas
+     * arriba.
+     *
+     * @param archivo la ruta o el nombre del archivo; de el salen la clase que se compara con la
+     *     lista de exentos y el lenguaje —{@code .sql} o Java—
+     * @param eximidos quien puede escribirlas, por nombre simple de clase. Vacio = nadie
+     */
+    public static List<Hallazgo> revisarAutorizacion(
+            String archivo, String contenido, Set<String> eximidos) {
+        if (eximidos.contains(claseDe(archivo))) {
+            return List.of();
+        }
+
+        String texto = enBlancoLosComentarios(contenido, archivo.endsWith(".sql"));
+        List<Hallazgo> hallazgos = new ArrayList<>();
+
+        Matcher alta = ALTA_O_BAJA_EN_LA_AUTORIZACION.matcher(texto);
+        while (alta.find()) {
+            hallazgos.add(hallazgoDeAutorizacion(archivo, texto, alta.start(), alta.group()));
+        }
+
+        Matcher edicion = EDICION_EN_LA_AUTORIZACION.matcher(texto);
+        while (edicion.find()) {
+            hallazgos.add(hallazgoDeAutorizacion(archivo, texto, edicion.start(), edicion.group()));
+        }
+
+        return hallazgos.stream()
+                .sorted(java.util.Comparator.comparing(Hallazgo::fragmento))
+                .toList();
+    }
+
+    /**
+     * La misma prohibicion, <b>solo si este repositorio la ha declarado</b>.
+     *
+     * <p>Es el interruptor, y esta escrito aparte de {@link #revisarAutorizacion} a proposito:
+     * aquel es una funcion pura que siempre revisa, y es el que las pruebas de muestra llaman. Si
+     * el interruptor viviera dentro, la demostracion de la muestra pasaria en VERDE en los cinco
+     * repositorios mientras ninguno declarase nada — o sea que la regla se habria escrito sin que
+     * nada comprobase que muerde, que es exactamente lo que este proyecto no admite.
+     *
+     * <p>{@code null} —lo que devuelve la configuracion por omision— significa «no declarado, no se
+     * revisa», y no «nadie puede escribirlas». La diferencia esta medida y su motivo esta en {@link
+     * ConfiguracionDeLasVerificaciones#escritoresDeLaAutorizacionConMotivo()}.
+     */
+    public static List<Hallazgo> revisarAutorizacionSiSeDeclara(String archivo, String contenido) {
+        return revisarAutorizacionSiSeDeclara(archivo, contenido, ESCRITORES_DE_LA_AUTORIZACION);
+    }
+
+    /** La misma, con la lista dada, para poder medir el interruptor en las dos posiciones. */
+    public static List<Hallazgo> revisarAutorizacionSiSeDeclara(
+            String archivo, String contenido, @Nullable Set<String> eximidosODesactivada) {
+        return eximidosODesactivada == null
+                ? List.of()
+                : revisarAutorizacion(archivo, contenido, eximidosODesactivada);
+    }
+
+    /** Si esta prohibicion esta activa en este repositorio. La imprime la prueba, no la calla. */
+    public static boolean laAutorizacionSeVigila() {
+        return ESCRITORES_DE_LA_AUTORIZACION != null;
+    }
+
+    private static Hallazgo hallazgoDeAutorizacion(
+            String archivo, String texto, int posicion, String fragmento) {
+        return new Hallazgo(
+                archivo,
+                "ADR-0039: la autorizacion es un sistema y su dueño es «identidad». Esta clase"
+                        + " ESCRIBE usuario/grupo/miembro/permiso, y dos sistemas que escriben la"
+                        + " misma tabla de permisos en dos bases no dan un error: dan dos"
+                        + " respuestas a «quien puede hacer esto». Se pide por el API de"
+                        + " «identidad», o se declara en"
+                        + " escritoresDeLaAutorizacionConMotivo() con su motivo y su fecha de fin",
+                "linea " + lineaDe(texto, posicion) + ": " + fragmento.replaceAll("\\s+", " "));
+    }
+
+    /** La linea (empezando en 1) en que cae esa posicion del texto. */
+    private static int lineaDe(String texto, int posicion) {
+        int linea = 1;
+        for (int i = 0; i < posicion && i < texto.length(); i++) {
+            if (texto.charAt(i) == '\n') {
+                linea++;
+            }
+        }
+        return linea;
+    }
+
+    /**
+     * El contenido con los comentarios en blanco y <b>todo lo demas donde estaba</b>.
+     *
+     * <p>Al reves que {@link #soloCodigo}, que los borra: aqui hace falta conservar las posiciones
+     * porque el hallazgo nombra la linea, y un rojo que manda a mirar la linea equivocada es peor
+     * que uno que no la nombra. Cada caracter de un comentario se sustituye por un espacio y cada
+     * salto de linea se conserva, asi que el texto resultante mide lo mismo y tiene los mismos
+     * saltos.
+     *
+     * <p>Los literales de cadena se conservan <b>tal cual</b>: es donde vive el SQL.
+     *
+     * @param sql si el comentario de linea es {@code --} (SQL) o {@code //} (Java). No se admiten
+     *     los dos a la vez: en Java {@code i--} es un decremento y leerlo como comentario borraria
+     *     el resto de la linea
+     */
+    static String enBlancoLosComentarios(String contenido, boolean sql) {
+        StringBuilder salida = new StringBuilder(contenido.length());
+        int i = 0;
+        while (i < contenido.length()) {
+            char actual = contenido.charAt(i);
+            char siguiente = i + 1 < contenido.length() ? contenido.charAt(i + 1) : '\0';
+
+            boolean comentarioDeLinea =
+                    sql ? (actual == '-' && siguiente == '-') : (actual == '/' && siguiente == '/');
+            if (comentarioDeLinea) {
+                while (i < contenido.length() && contenido.charAt(i) != '\n') {
+                    salida.append(' ');
+                    i++;
+                }
+            } else if (actual == '/' && siguiente == '*') {
+                int cierre = contenido.indexOf("*/", i + 2);
+                int fin = cierre < 0 ? contenido.length() : cierre + 2;
+                for (int j = i; j < fin; j++) {
+                    salida.append(contenido.charAt(j) == '\n' ? '\n' : ' ');
+                }
+                i = fin;
+            } else if (!sql && actual == '"' && contenido.startsWith("\"\"\"", i)) {
+                int cierre = contenido.indexOf("\"\"\"", i + 3);
+                int fin = cierre < 0 ? contenido.length() : cierre + 3;
+                salida.append(contenido, i, fin);
+                i = fin;
+            } else if (actual == '"' || actual == '\'') {
+                int fin = i + 1;
+                while (fin < contenido.length() && contenido.charAt(fin) != actual) {
+                    fin += contenido.charAt(fin) == '\\' && !sql ? 2 : 1;
+                }
+                fin = Math.min(fin + 1, contenido.length());
+                salida.append(contenido, i, fin);
+                i = fin;
+            } else {
+                salida.append(actual);
+                i++;
+            }
+        }
+        return salida.toString();
+    }
+
     /** El nombre de la clase a partir de la ruta o del nombre del archivo. */
     private static String claseDe(String archivo) {
         String nombre = archivo.replace('\\', '/');
@@ -823,7 +1061,15 @@ public final class RevisorDeCodigoFuente {
     }
 
     public static List<Hallazgo> revisarSql(String archivo, String contenido) {
-        return revisarTexto(archivo, sqlSinComentarios(contenido));
+        List<Hallazgo> hallazgos =
+                new ArrayList<>(revisarTexto(archivo, sqlSinComentarios(contenido)));
+        // Tambien las migraciones. Hoy ninguna de los cinco escribe las cuatro tablas de la
+        // autorizacion —medido el 2026-09-09: cero `INSERT INTO usuario` en los cinco
+        // `src/main/resources/db/migration/`—, y por eso mismo hay que mirarlas: una siembra
+        // metida en un `V…` es exactamente la puerta que quedaria abierta si esta regla solo
+        // mirara Java, y ademas una migracion aplicada ya no se puede cambiar.
+        hallazgos.addAll(revisarAutorizacionSiSeDeclara(archivo, contenido));
+        return hallazgos;
     }
 
     /**
