@@ -499,7 +499,7 @@ describe("#151 · identidad", () => {
         .containers[0] as Contenedor,
     );
     expect(variables.get("KAMAYUK_OIDC_EMISOR")).toBe(
-      `https://${dominio}${RUTA_DE_IDENTIDAD}/realms/sgtm`,
+      `https://${dominio}${RUTA_DE_IDENTIDAD}/realms/kamayuk`,
     );
     // El JWKS no sale al ingreso para volver a entrar. Y lleva el namespace dentro, porque
     // desde ADR-0031 el que pregunta vive en OTRO (C-14, punto 3).
@@ -511,7 +511,7 @@ describe("#151 · identidad", () => {
   it("el realm que se aplica conserva el mapeador de municipalidad_id", () => {
     const documentos = documentosDelRealm({
       domain: "sgtm.example.pe",
-      realm: "sgtm",
+      realm: "kamayuk",
       clienteDeVerificacion: false,
       smtp: SMTP_DE_PRUEBA,
     });
@@ -539,7 +539,7 @@ describe("#151 · identidad", () => {
     const delCiudadano = () =>
       documentosDelRealm({
         domain: "sgtm.example.pe",
-        realm: "sgtm-ciudadano",
+        realm: "kamayuk-ciudadano",
         clienteDeVerificacion: false,
         smtp: SMTP_DE_PRUEBA,
         fuente: realmCiudadanoJson(),
@@ -575,11 +575,11 @@ describe("#151 · identidad", () => {
 
     it("su cliente lleva los dos mapeadores, y ninguno de municipalidad", () => {
       const clientes = clientesDe(delCiudadano().clientes);
-      // Exactamente uno. El archivo versionado trae ademas un `sgtm-verificacion` —el
+      // Exactamente uno. El archivo versionado trae ademas un `kamayuk-verificacion` —el
       // que deja a la escalera del compose pedir un token de ciudadano sin navegador
       // (#415)— y al clúster NO llega: el del ciudadano es el realm de cara al publico,
       // y una concesion directa de credenciales ahi es una puerta que nadie necesita.
-      expect(clientes.map((c) => c.clientId)).toEqual(["sgtm-portal"]);
+      expect(clientes.map((c) => c.clientId)).toEqual(["kamayuk-portal"]);
       const claims = (clientes[0]?.protocolMappers ?? []).map((m) => m.config["claim.name"]);
 
       expect(claims).toContain("numero_documento");
@@ -606,7 +606,7 @@ describe("#151 · identidad", () => {
       const configuracion = buscar(ms, "ConfigMap", "realm") as { data: Record<string, string> };
       expect(configuracion.data["realm-ciudadano.json"]).toBeDefined();
       expect(configuracion.data["perfil-de-usuario-ciudadano.json"]).toContain("numero_documento");
-      expect(configuracion.data["clientes-ciudadano.json"]).toContain("sgtm-portal");
+      expect(configuracion.data["clientes-ciudadano.json"]).toContain("kamayuk-portal");
 
       const job = buscar(ms, "Job", "realm") as {
         spec: { template: { spec: { containers: Contenedor[] } } };
@@ -624,7 +624,7 @@ describe("#151 · identidad", () => {
       expect(variables.get("KC_REALM_CIUDADANO")).toBe(
         realmDelCiudadano(invariantesDe(AMBIENTE).identity.realm),
       );
-      expect(variables.get("KC_CLIENTES_CIUDADANO")).toBe("sgtm-portal");
+      expect(variables.get("KC_CLIENTES_CIUDADANO")).toBe("kamayuk-portal");
     });
 
     it("un cambio suyo crea un Job nuevo", () => {
@@ -642,7 +642,7 @@ describe("#151 · identidad", () => {
   it("la pantalla de acceso no dice «marcha blanca»", () => {
     const configuracion = buscar(ms, "ConfigMap", "realm") as { data: Record<string, string> };
     expect(configuracion.data["realm.json"]).not.toContain("marcha blanca");
-    expect(JSON.parse(configuracion.data["realm.json"] ?? "{}").displayName).toBe("SGTM");
+    expect(JSON.parse(configuracion.data["realm.json"] ?? "{}").displayName).toBe("Kamayuk");
   });
 
   it("el realm no trae ni un usuario ni una clave", () => {
@@ -674,8 +674,8 @@ describe("#151 · identidad", () => {
       ] ?? "",
     ).map((c) => c.clientId);
 
-    expect(enProd).not.toContain("sgtm-verificacion");
-    expect(enStg).toContain("sgtm-verificacion");
+    expect(enProd).not.toContain("kamayuk-verificacion");
+    expect(enStg).toContain("kamayuk-verificacion");
   });
 
   it("un cambio del realm cambia el nombre del Job que lo aplica", () => {
@@ -717,7 +717,7 @@ describe("#151 · identidad", () => {
         namespace: namespaceName(AMBIENTE),
         recursos: recursosDe(invariantesDe(AMBIENTE).recursos.perfil),
         image: "quay.io/keycloak/keycloak:26.1",
-        realm: "sgtm",
+        realm: "kamayuk",
         domain: invariantesDe(AMBIENTE).ingress.domain,
         clienteDeVerificacion: false,
         correoDePrueba: false,
@@ -1289,7 +1289,7 @@ describe("#151 · la demostracion", () => {
   it("sin el mapeador, la comprobacion del realm se pone roja", () => {
     const documentos = documentosDelRealm({
       domain: "sgtm.example.pe",
-      realm: "sgtm",
+      realm: "kamayuk",
       clienteDeVerificacion: false,
       smtp: SMTP_DE_PRUEBA,
     });

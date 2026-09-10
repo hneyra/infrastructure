@@ -65,7 +65,7 @@
 # El modo se detecta solo; se puede forzar con KC_MODO=compose|directo.
 #
 # ── Variables ─────────────────────────────────────────────────────────────────
-#   KC_REALM                  realm de funcionarios; por omision `sgtm`
+#   KC_REALM                  realm de funcionarios; por omision `kamayuk`
 #   KC_REALM_CIUDADANO        realm del portal; por omision `<KC_REALM>-ciudadano`
 #   KC_DIRECTORIO             (directo) carpeta con los TSV; por omision /realm
 #   MUNICIPALIDADES_DIR       (compose) carpeta con `*.json`; por omision ./municipalidades
@@ -87,17 +87,17 @@ AQUI="$(cd "$(dirname "$0")" && pwd)"
 CUAL="${1:-funcionarios}"
 case "$CUAL" in
     funcionarios)
-        REALM="${KC_REALM:-sgtm}"
+        REALM="${KC_REALM:-kamayuk}"
         ARCHIVO_TSV="identidades.tsv"
         ;;
     ciudadanos)
-        REALM="${KC_REALM_CIUDADANO:-${KC_REALM:-sgtm}-ciudadano}"
+        REALM="${KC_REALM_CIUDADANO:-${KC_REALM:-kamayuk}-ciudadano}"
         ARCHIVO_TSV="ciudadanos.tsv"
         ;;
     servicios)
         # Las cuentas de SERVICIO: un backend llamando a otro, sin persona detras (#21).
         # Mismo realm que los funcionarios: lo que cambia es que aqui no hay persona.
-        REALM="${KC_REALM:-sgtm}"
+        REALM="${KC_REALM:-kamayuk}"
         ARCHIVO_TSV="servicios.tsv"
         ;;
     *)
@@ -392,7 +392,18 @@ if [ "$CUAL" = servicios ]; then
         echo "Aplica el realm primero (reconciliar-realm.sh) y vuelve." >&2
         exit 1
     fi
-    AMBITO=$(kc get client-scopes -r "$REALM" -q "name=kamayuk-servicio" --fields id --format csv --noquotes 2>/dev/null | head -1)
+    # SE ELIGE POR NOMBRE EN CLIENTE, y no con `-q name=...`: ese endpoint de Keycloak
+    # **ignora el parametro** y devuelve TODOS los ambitos del realm. Con `head -1` el id
+    # que salia era el del primero que Keycloak listara —medido contra Keycloak 26:
+    # `basic`—, y funcionaba por casualidad mientras el realm tuviera pocos ambitos.
+    #
+    # Lo que costaba, medido: la comprobacion del mapeador de mas abajo se hacia sobre el
+    # ambito EQUIVOCADO y fallaba diciendo que falta un mapeador que si estaba; y si esa
+    # comprobacion no existiera, la linea que asigna `default-client-scopes` le habria
+    # puesto al cliente de servicio un ambito que no emite `municipalidad_id`, con lo que
+    # su token sale valido y sin el claim — que es justo el estado del que #21 sale.
+    AMBITO=$(kc get client-scopes -r "$REALM" --fields id,name 2>/dev/null \
+        | python3 -c 'import json,sys; print(next((a["id"] for a in json.load(sys.stdin) if a["name"] == "kamayuk-servicio"), ""))')
     [ -n "$AMBITO" ] || { echo "FALLO: no se pudo leer el id del ambito." >&2; exit 1; }
 
     # Y QUE EL AMBITO LLEVE SU MAPEADOR, que es una comprobacion distinta y hace falta.

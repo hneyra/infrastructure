@@ -1,7 +1,7 @@
 {
-  "realm": "sgtm-ciudadano",
+  "realm": "kamayuk-ciudadano",
   "enabled": true,
-  "displayName": "SGTM — portal del contribuyente",
+  "displayName": "Kamayuk — portal del contribuyente",
   "sslRequired": "external",
   "registrationAllowed": false,
   "resetPasswordAllowed": true,
@@ -10,15 +10,15 @@
   "smtpServer": {
     "host": "correo",
     "port": "1025",
-    "from": "no-responder@sgtm.local",
-    "fromDisplayName": "SGTM",
+    "from": "no-responder@kamayuk.local",
+    "fromDisplayName": "Kamayuk",
     "ssl": "false",
     "starttls": "false",
     "auth": "false"
   },
   "clients": [
     {
-      "clientId": "sgtm-portal",
+      "clientId": "kamayuk-portal",
       "name": "Portal del contribuyente",
       "enabled": true,
       "publicClient": true,
@@ -70,7 +70,7 @@
       ]
     },
     {
-      "clientId": "sgtm-verificacion",
+      "clientId": "kamayuk-verificacion",
       "name": "Verificacion del portal (solo marcha blanca)",
       "enabled": true,
       "publicClient": true,

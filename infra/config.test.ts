@@ -57,7 +57,7 @@ function baseline(environment: Environment = "prod"): Invariants {
     },
     identity: {
       image: "quay.io/keycloak/keycloak:26.0",
-      realm: "sgtm",
+      realm: "kamayuk",
       developmentMode: false,
       seedTestUsers: isStg,
       // `stg` tiene relay —el buzon Mailpit del clúster—; `prod` no (ADR-0012,
@@ -478,7 +478,7 @@ describe("un valor obligatorio que falta revienta al principio, y dice cuál", (
   it("los valores con omisión no son obligatorios", () => {
     const leidas = readInvariants("prod", reader(VALORES_MINIMOS));
     expect(leidas.backup.walArchiveTimeoutSeconds).toBe(300);
-    expect(leidas.identity.realm).toBe("sgtm");
+    expect(leidas.identity.realm).toBe("kamayuk");
     // Sin `keycloakSmtpHost` no hay relay (ADR-0012, Opción B).
     expect(leidas.identity.smtp).toBeUndefined();
     expect(leidas.implantacion.tipo).toBe("DISTRITAL");

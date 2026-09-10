@@ -161,7 +161,7 @@ describe("un consumidor se reconoce por su forma, no por su nombre", () => {
     const pod = cron.spec.jobTemplate.spec.template.spec;
     pod.containers[0]!.env!.push({
       name: "KAMAYUK_CAJA_IDENTIDAD_TOKEN",
-      value: `http://kamayuk-${AMBIENTE}-identidad.kamayuk-${AMBIENTE}:8080/realms/sgtm/protocol/openid-connect/token`,
+      value: `http://kamayuk-${AMBIENTE}-identidad.kamayuk-${AMBIENTE}:8080/realms/kamayuk/protocol/openid-connect/token`,
     });
     expect(consumidoresEn([cron], AMBIENTE)).toEqual([]);
   });

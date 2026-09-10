@@ -1,5 +1,5 @@
 #!/bin/bash
-# Crea un usuario en el realm sgtm, con su municipalidad.
+# Crea un usuario en el realm de funcionarios (`$KC_REALM`), con su municipalidad.
 #
 # Vive aqui y no dentro del realm versionado por una razon que conviene no
 # discutir cada vez: un realm que trae usuarios con contrasena es la forma mas
@@ -12,7 +12,7 @@
 # Con `--reset` la clave se asigna como TEMPORAL, se marca UPDATE_PASSWORD y se
 # envia el enlace de correo de Keycloak: el usuario fija su clave en el primer
 # acceso (ADR-0012). Sin `--reset` la clave es permanente —que es lo que necesitan
-# los usuarios `sgtm-verificacion` de CI para el direct grant—. Para el alta
+# los usuarios `kamayuk-verificacion` de CI para el direct grant—. Para el alta
 # declarativa de una municipalidad entera, ver `reconciliar-identidades.sh`.
 #
 # El correo, el nombre y el apellido salen de KAMAYUK_CORREO, KAMAYUK_NOMBRE y
@@ -42,6 +42,12 @@ municipalidad="${3:-}"
 : "${KAMAYUK_CLAVE_KEYCLOAK:?falta KAMAYUK_CLAVE_KEYCLOAK}"
 : "${KAMAYUK_KEYCLOAK_URL:=http://localhost:8180}"
 : "${KAMAYUK_KEYCLOAK_SERVICIO:=identidad}"
+# El realm, por variable y no cableado. Antes estaba escrito ocho veces dentro de
+# las llamadas a `kcadm`, al contrario que sus dos hermanos —`reconciliar-identidades.sh`
+# y `reconciliar-realm.sh`, que ya lo leian de aqui—, asi que renombrarlo dejaba este
+# guion apuntando a un realm que ya no existe y su unico sintoma era un `kcadm` que no
+# encuentra al usuario. Un solo literal, y el mismo nombre que `infra/config.ts`.
+: "${KC_REALM:=kamayuk}"
 
 # kcadm corre DENTRO del contenedor de Keycloak: es donde esta la herramienta, y
 # asi la clave de administracion no sale a la linea de comandos del anfitrion.
@@ -60,7 +66,7 @@ kc config credentials \
 # ver con Keycloak. Se lee todo y se recorta despues.
 buscarId() {
   local salida
-  salida=$(kc get users -r sgtm -q "username=$1" --fields id --format csv --noquotes || true)
+  salida=$(kc get users -r "$KC_REALM" -q "username=$1" --fields id --format csv --noquotes || true)
   printf '%s' "$salida" | tr -d '\r' | sed -n '1p'
 }
 
@@ -76,18 +82,18 @@ existente=$(buscarId "$usuario")
 # El marcador del apellido va SIN parentesis, y no es capricho: Keycloak valida
 # nombre y apellido contra una lista de caracteres prohibidos —parentesis entre
 # ellos— y responde `error-person-name-invalid-character`. Letras y espacios.
-correo="${KAMAYUK_CORREO:-$usuario@sgtm.invalido}"
+correo="${KAMAYUK_CORREO:-$usuario@kamayuk.invalido}"
 nombre="${KAMAYUK_NOMBRE:-$usuario}"
 apellido="${KAMAYUK_APELLIDO:-Por completar}"
 
 if [ -z "$existente" ]; then
   if [ -n "$municipalidad" ]; then
-    kc create users -r sgtm \
+    kc create users -r "$KC_REALM" \
       -s "username=$usuario" -s enabled=true -s emailVerified=true \
       -s "email=$correo" -s "firstName=$nombre" -s "lastName=$apellido" \
       -s "attributes.municipalidad_id=$municipalidad"
   else
-    kc create users -r sgtm \
+    kc create users -r "$KC_REALM" \
       -s "username=$usuario" -s enabled=true -s emailVerified=true \
       -s "email=$correo" -s "firstName=$nombre" -s "lastName=$apellido"
   fi
@@ -95,7 +101,7 @@ if [ -z "$existente" ]; then
   echo "Usuario $usuario creado."
 else
   if [ -n "$municipalidad" ]; then
-    kc update "users/$existente" -r sgtm \
+    kc update "users/$existente" -r "$KC_REALM" \
       -s "attributes.municipalidad_id=$municipalidad" \
       -s emailVerified=true -s "email=$correo" \
       -s "firstName=$nombre" -s "lastName=$apellido"
@@ -104,15 +110,15 @@ else
 fi
 
 if [ "$reset" = 1 ]; then
-  kc set-password -r sgtm --username "$usuario" --new-password "$clave" --temporary >/dev/null
-  kc update "users/$existente" -r sgtm -s 'requiredActions=["UPDATE_PASSWORD"]' >/dev/null
-  if kc update "users/$existente/execute-actions-email" -r sgtm -b '["UPDATE_PASSWORD"]' >/dev/null 2>&1; then
+  kc set-password -r "$KC_REALM" --username "$usuario" --new-password "$clave" --temporary >/dev/null
+  kc update "users/$existente" -r "$KC_REALM" -s 'requiredActions=["UPDATE_PASSWORD"]' >/dev/null
+  if kc update "users/$existente/execute-actions-email" -r "$KC_REALM" -b '["UPDATE_PASSWORD"]' >/dev/null 2>&1; then
     echo "Clave TEMPORAL asignada y enlace de UPDATE_PASSWORD enviado a «$usuario»."
   else
     echo "Clave TEMPORAL asignada; el correo de UPDATE_PASSWORD no salio (¿SMTP sin configurar?)." >&2
   fi
   echo "Municipalidad: ${municipalidad:-«ninguna, solo para verificar el 403»}"
 else
-  kc set-password -r sgtm --username "$usuario" --new-password "$clave" >/dev/null
+  kc set-password -r "$KC_REALM" --username "$usuario" --new-password "$clave" >/dev/null
   echo "Clave asignada. Municipalidad: ${municipalidad:-«ninguna, solo para verificar el 403»}"
 fi

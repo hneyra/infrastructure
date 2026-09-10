@@ -23,10 +23,10 @@ fija tres cosas:
      municipalidad desde la pantalla de su cuenta. Con ese atributo se decide qué
      padrón ve: si fuera editable por su dueño, el aislamiento entre
      municipalidades se configuraría desde el navegador del contribuyente.
-- **`sgtm-backoffice`**, el cliente público de la interfaz, con PKCE `S256`
+- **`kamayuk-backoffice`**, el cliente público de la interfaz, con PKCE `S256`
   obligatorio y sin secreto: una aplicación de navegador no tiene dónde guardar
   uno.
-- **`sgtm-verificacion`**, con `direct access grants`, que es como CI consigue un
+- **`kamayuk-verificacion`**, con `direct access grants`, que es como CI consigue un
   token sin abrir un navegador. No sirve para personas: no tiene redirección.
 - **`smtpServer`**, apuntando al buzón `correo` de la marcha blanca. Es lo que deja a
   Keycloak enviar el enlace de un solo uso con que un usuario nuevo fija su clave
@@ -100,11 +100,11 @@ cuenta por la derivada de su documento (`dni-70123456`). El caso B —clave temp
 fuera de banda— es además el camino normal de quien no declaró correo.
 
 El realm del ciudadano ([`realm-sgtm-ciudadano.json`](realm-sgtm-ciudadano.json)) trae su
-propio `sgtm-verificacion` por lo mismo, y **solo llega hasta aquí**: `Identidad.ts` lo filtra
+propio `kamayuk-verificacion` por lo mismo, y **solo llega hasta aquí**: `Identidad.ts` lo filtra
 al derivar los documentos del clúster, porque el del ciudadano es el realm de cara al público y
 una concesión directa de credenciales ahí es una puerta que nadie necesita. Lo comprueba
 `infra/verificaciones/componentes.test.ts`: los clientes que llegan son exactamente
-`["sgtm-portal"]`.
+`["kamayuk-portal"]`.
 
 `crear-usuario.sh` sigue aquí para los usuarios `verificacion` de CI, que necesitan una
 clave conocida para el *direct grant*:

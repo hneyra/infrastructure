@@ -11,7 +11,7 @@ import { invariantesDe } from "./stacks";
  * `kcadm update realms/<realm> -f realm.json` actualiza los ajustes y **no importa los
  * `clientScopes`**: esos entran solo al CREAR el realm. Medido en `stg` el 2026-09-10, el `Job`
  * de identidad imprimio «El realm ya existe: se actualizan sus ajustes.» y murio despues en
- * «FALLO: el realm «sgtm» no tiene el ambito «kamayuk-servicio»» —el que #21 anadio al archivo
+ * «FALLO: el realm «kamayuk» no tiene el ambito «kamayuk-servicio»» —el que #21 anadio al archivo
  * versionado—, llevandose por delante los tres modos que van detras, encadenados con `&&`.
  *
  * Es el mismo agujero por el que este guion existe (#151): «`--import-realm` solo importa la
@@ -39,7 +39,7 @@ describe("#63 · los ambitos del realm llegan tambien cuando el realm ya existe"
     // ademas el estado que este issue existe para que no vuelva a pasar desapercibido.
     const documentos = documentosDelRealm({
       domain: "d.example",
-      realm: "sgtm",
+      realm: "kamayuk",
       clienteDeVerificacion: true,
     });
     expect(
@@ -61,7 +61,7 @@ describe("#63 · los ambitos del realm llegan tambien cuando el realm ya existe"
   it("el `realm.json` conserva sus ambitos, que es el camino del `create`", () => {
     const documentos = documentosDelRealm({
       domain: "d.example",
-      realm: "sgtm",
+      realm: "kamayuk",
       clienteDeVerificacion: true,
     });
     const realm = JSON.parse(documentos.realm) as { clientScopes?: { name: string }[] };
@@ -75,7 +75,7 @@ describe("#63 · los ambitos del realm llegan tambien cuando el realm ya existe"
     const datos = configuracionDelRealm(ambiente);
     const documentos = documentosDelRealm({
       domain: "d.example",
-      realm: "sgtm",
+      realm: "kamayuk",
       clienteDeVerificacion: ambiente === "stg",
     });
 

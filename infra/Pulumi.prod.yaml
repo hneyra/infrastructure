@@ -116,7 +116,7 @@ config:
   kamayuk:postgresImage: postgis/postgis:16-3.4-alpine
   kamayuk:postgresStorageSize: 100Gi
   kamayuk:keycloakImage: quay.io/keycloak/keycloak:26.0
-  kamayuk:keycloakRealm: sgtm
+  kamayuk:keycloakRealm: kamayuk
   # SIN relay SMTP, a propósito (ADR-0012, Opción B). Esta marcha blanca no tiene un
   # relay de correo decidido (D-05), así que NO se declara `keycloakSmtpHost`: el realm
   # va sin `smtpServer`, el Job de reconciliación crea el usuario sin clave y con

@@ -77,7 +77,7 @@ function despliegueDe(
                   // backend que atiende sin poder validar un token responde a la sonda,
                   // se declara sano y no atiende a nadie (ADR-0005). Lo exige la auditoria
                   // heredada, no una regla del descriptor.
-                  { name: "KAMAYUK_OIDC_EMISOR", value: `https://${e.dominio}/keycloak/realms/sgtm` },
+                  { name: "KAMAYUK_OIDC_EMISOR", value: `https://${e.dominio}/keycloak/realms/kamayuk` },
                   { name: "KAMAYUK_DB_CLAVE", valueFrom: { secretKeyRef: { name: e.secretoDe("app"), key: "clave" } } },
                 ],
                 ...(atiendeHttp ? { ports: [{ name: "http", containerPort: 8080 }] } : {}),
