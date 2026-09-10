@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CLIENTE_DEL_BACKOFFICE, CLIENTE_DE_VERIFICACION, realmDelCiudadano } from "../componentes/Identidad";
-import { realmCiudadanoJson, realmSgtmJson } from "../componentes/fuentes";
+import { realmCiudadanoJson, realmDeFuncionariosJson } from "../componentes/fuentes";
 import { ENVIRONMENTS } from "../config";
 import { invariantesDe } from "./stacks";
 
@@ -11,7 +11,7 @@ import { invariantesDe } from "./stacks";
  *
  * | Camino | De donde sale |
  * |---|---|
- * | El compose (`--import-realm`) | el campo `realm` de `despliegue/identidad/realm-sgtm.json` |
+ * | El compose (`--import-realm`) | el campo `realm` de `despliegue/identidad/realm-kamayuk.json` |
  * | El cluster (Pulumi) | `identity.realm`, o sea `kamayuk:keycloakRealm` de cada stack, y `Identidad.ts` **descarta** el campo del archivo y pone ese |
  *
  * Mientras nadie los comparara, renombrar uno dejaba el otro atras **en silencio**. Y el
@@ -30,7 +30,7 @@ import { invariantesDe } from "./stacks";
  * lo mismo**. Un producto que se renombre otra vez seguira teniendo esta red.
  */
 describe("#70 · el nombre del realm es el mismo por los dos caminos", () => {
-  const versionado = JSON.parse(realmSgtmJson()) as { realm?: string; clients?: { clientId?: string }[] };
+  const versionado = JSON.parse(realmDeFuncionariosJson()) as { realm?: string; clients?: { clientId?: string }[] };
   const versionadoDelCiudadano = JSON.parse(realmCiudadanoJson()) as { realm?: string };
 
   it("EL CENTINELA: el archivo versionado declara un realm y algun cliente", () => {

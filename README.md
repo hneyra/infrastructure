@@ -64,8 +64,8 @@ conviene tenerla escrita antes de que alguien mueva uno:
 | Archivo | Quién lo lee | ¿Entra en los manifiestos? |
 |---|---|---|
 | `despliegue/inicializacion-del-motor/20-asignar-claves.sh` | `fuentes.ts` | **Sí** |
-| `despliegue/identidad/realm-sgtm.json` | `fuentes.ts` | **Sí** |
-| `despliegue/identidad/realm-sgtm-ciudadano.json` | `fuentes.ts` | **Sí** |
+| `despliegue/identidad/realm-kamayuk.json` | `fuentes.ts` | **Sí** |
+| `despliegue/identidad/realm-kamayuk-ciudadano.json` | `fuentes.ts` | **Sí** |
 | `despliegue/identidad/reconciliar-identidades.sh` | `fuentes.ts` | **Sí** |
 | `despliegue/identidad/municipalidades/` | `fuentes.ts` | **Sí** |
 | `despliegue/identidad/ciudadanos/` | `fuentes.ts` | **Sí** |

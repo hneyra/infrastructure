@@ -3,7 +3,7 @@
 #
 # ── EL DEFECTO QUE ESTO REPARA ──
 #
-# `realm-sgtm.json` declara `clientScopes`, y en un import COMPLETO de Keycloak esa
+# `realm-kamayuk.json` declara `clientScopes`, y en un import COMPLETO de Keycloak esa
 # clave **sustituye** el juego de fabrica en vez de anadirse a el. Medido contra
 # Keycloak 26 con la plataforma local: un realm importado de ese archivo se queda con
 # `offline_access` y `kamayuk-servicio` y **nada mas**, en vez de los TRECE que Keycloak
@@ -59,72 +59,98 @@ DE_FABRICA=$(kc get client-scopes -r "$LABORATORIO")
 POR_OMISION=$(kc get "realms/$LABORATORIO/default-default-client-scopes")
 OPCIONALES=$(kc get "realms/$LABORATORIO/default-optional-client-scopes")
 
+# ── UNA TRAMPA QUE COSTO DOS MEDIDAS, Y QUE CONVIENE NO REDESCUBRIR ──
+#
+# `kc()` es `docker compose exec -T`, y eso **consume stdin**. Dentro de un
+# `while read ... done <<< "$lista"` se traga el resto de la lista, asi que el bucle
+# muere en la primera vuelta **sin error**: la primera asignacion se hace y las demas
+# no. La primera version de este guion lo tenia asi y dejaba a los clientes del realm
+# de funcionarios con cero ambitos — token sin `preferred_username`, 403 «La cuenta «»
+# no esta dada de alta».
+#
+# Por eso todas las listas se leen a un ARRAY con `mapfile` y se recorren con `for`:
+# asi ningun `kc` compite por la entrada estandar.
+
+nombresDe() { printf '%s' "$1" | python3 -c 'import json,sys; print("\n".join(a["name"] for a in json.load(sys.stdin)))'; }
+
+# id de un ambito POR NOMBRE. No se usa `-q name=...`: ese endpoint de Keycloak
+# ignora el parametro y devuelve todos, asi que filtrar en cliente es lo unico fiable.
+idDelAmbito() { printf '%s' "$2" | python3 -c "
+import json,sys
+print(next((a['id'] for a in json.load(sys.stdin) if a['name'] == '$1'), ''))"; }
+
 restaurar() { # restaurar <realm>
   local realm="$1"
   kc get "realms/$realm" >/dev/null 2>&1 || { echo "  el realm «$realm» no existe: se omite"; return 0; }
   echo "  · $realm"
-  local presentes
-  presentes=$(kc get client-scopes -r "$realm" | python3 -c 'import json,sys; print(" ".join(s["name"] for s in json.load(sys.stdin)))')
+
+  local presentes nombre
+  presentes=$(nombresDe "$(kc get client-scopes -r "$realm")")
+  local -a deFabrica=(); mapfile -t deFabrica < <(nombresDe "$DE_FABRICA")
 
   # 1. crear los que falten, con sus mapeadores tal como Keycloak los hizo
-  local nombres
-  nombres=$(printf '%s' "$DE_FABRICA" | python3 -c 'import json,sys; print("\n".join(s["name"] for s in json.load(sys.stdin)))')
-  while IFS= read -r nombre; do
+  for nombre in "${deFabrica[@]}"; do
     [ -n "$nombre" ] || continue
-    case " $presentes " in *" $nombre "*) echo "      $nombre ya estaba"; continue;; esac
+    if printf '%s\n' "$presentes" | grep -qxF "$nombre"; then continue; fi
     printf '%s' "$DE_FABRICA" | python3 -c "
 import json,sys
-for s in json.load(sys.stdin):
-    if s['name'] != '$nombre': continue
-    s.pop('id', None)
-    for m in s.get('protocolMappers', []): m.pop('id', None)
-    print(json.dumps(s))
+for a in json.load(sys.stdin):
+    if a['name'] != '$nombre': continue
+    a.pop('id', None)
+    for m in a.get('protocolMappers', []): m.pop('id', None)
+    print(json.dumps(a))
 " | kc create client-scopes -r "$realm" -f - >/dev/null
-    echo "      $nombre creado"
-  done <<< "$nombres"
-
-  # 2. dejarlos como los de omision del realm, para que un cliente NUEVO los herede
-  local ids; ids=$(kc get client-scopes -r "$realm")
-  # `default-default-client-scopes` son los que un cliente nuevo hereda; los
-  # `default-optional-client-scopes`, los que puede pedir por `scope=`.
-  for cual in default-default default-optional; do
-    local lista; [ "$cual" = default-default ] && lista="$POR_OMISION" || lista="$OPCIONALES"
-    printf '%s\n%s' "$lista" "$ids" | python3 -c "
-import json,sys
-crudo = sys.stdin.read()
-# dos documentos JSON pegados: el primero es la lista, el segundo los ambitos del realm
-dec = json.JSONDecoder()
-lista, i = dec.raw_decode(crudo.lstrip())
-resto = crudo.lstrip()[i:].lstrip()
-ambitos, _ = dec.raw_decode(resto)
-porNombre = {a['name']: a['id'] for a in ambitos}
-print('\n'.join(porNombre[s['name']] for s in lista if s['name'] in porNombre))
-" | while IFS= read -r id; do
-      [ -n "$id" ] || continue
-      kc update "realms/$realm/${cual}-client-scopes/$id" >/dev/null 2>&1 || true
-    done
+    echo "      + $nombre"
   done
 
-  # 3. y asignarlos a los clientes QUE YA EXISTEN: el import los dejo sin ninguno, y
-  #    los de omision del realm solo los heredan los clientes nuevos.
-  local clientes
-  clientes=$(kc get clients -r "$realm" --fields id,clientId | python3 -c 'import json,sys; print("\n".join("%s %s" % (c["id"], c["clientId"]) for c in json.load(sys.stdin)))')
-  while IFS=' ' read -r cid nombre; do
-    [ -n "$cid" ] || continue
-    printf '%s\n%s' "$POR_OMISION" "$ids" | python3 -c "
+  # Se vuelven a leer DESPUES de crear: los ids de los nuevos no existian antes.
+  local ambitos; ambitos=$(kc get client-scopes -r "$realm" --fields id,name)
+
+  local -a porOmision=() opcionales=()
+  mapfile -t porOmision < <(nombresDe "$POR_OMISION")
+  mapfile -t opcionales < <(nombresDe "$OPCIONALES")
+
+  # 2. dejarlos como los de omision del realm, para que un cliente NUEVO los herede
+  local id
+  for nombre in "${porOmision[@]}"; do
+    [ -n "$nombre" ] || continue
+    id=$(idDelAmbito "$nombre" "$ambitos"); [ -n "$id" ] || continue
+    kc update "realms/$realm/default-default-client-scopes/$id" >/dev/null 2>&1 || true
+  done
+  for nombre in "${opcionales[@]}"; do
+    [ -n "$nombre" ] || continue
+    id=$(idDelAmbito "$nombre" "$ambitos"); [ -n "$id" ] || continue
+    kc update "realms/$realm/default-optional-client-scopes/$id" >/dev/null 2>&1 || true
+  done
+
+  # 3. y asignarlos a los clientes QUE YA EXISTEN. Hace falta: los de omision del realm
+  #    solo los heredan los clientes NUEVOS, y los que entraron por `--import-realm` se
+  #    quedaron sin ninguno.
+  local -a clientes=(); local cid cnom sid cuantos fila
+  mapfile -t clientes < <(kc get clients -r "$realm" --fields id,clientId | python3 -c '
 import json,sys
-dec = json.JSONDecoder()
-crudo = sys.stdin.read().lstrip()
-lista, i = dec.raw_decode(crudo)
-ambitos, _ = dec.raw_decode(crudo[i:].lstrip())
-porNombre = {a['name']: a['id'] for a in ambitos}
-print('\n'.join(porNombre[s['name']] for s in lista if s['name'] in porNombre))
-" | while IFS= read -r sid; do
-      [ -n "$sid" ] || continue
+for c in json.load(sys.stdin): print(c["id"], c["clientId"])')
+  for fila in "${clientes[@]}"; do
+    [ -n "$fila" ] || continue
+    cid=${fila%% *}; cnom=${fila#* }
+    for nombre in "${porOmision[@]}"; do
+      [ -n "$nombre" ] || continue
+      sid=$(idDelAmbito "$nombre" "$ambitos"); [ -n "$sid" ] || continue
       kc update "clients/$cid/default-client-scopes/$sid" -r "$realm" >/dev/null 2>&1 || true
     done
-    echo "      cliente $nombre: ambitos de omision asignados"
-  done <<< "$clientes"
+
+    # EL CENTINELA. Existe porque la version anterior de este guion se tragaba el fallo
+    # y dejaba a los clientes sin un solo ambito, en verde.
+    cuantos=$(kc get "clients/$cid/default-client-scopes" -r "$realm" 2>/dev/null \
+      | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+    if [ "${cuantos:-0}" -eq 0 ]; then
+      echo "FALLO: el cliente «$cnom» de «$realm» se quedo sin ningun ambito de omision." >&2
+      echo "Su token saldria sin «preferred_username» ni «sub», y el backend contestaria 403" >&2
+      echo "«La cuenta «» no esta dada de alta en este sistema»." >&2
+      exit 1
+    fi
+    echo "      $cnom: $cuantos ambitos"
+  done
 }
 
 restaurar "$KC_REALM"

@@ -17,7 +17,7 @@ import {
   ciudadanosJson,
   municipalidadesJson,
   realmCiudadanoJson,
-  realmSgtmJson,
+  realmDeFuncionariosJson,
   reconciliarIdentidadesSh,
   reconciliarRealmSh,
 } from "./fuentes";
@@ -246,7 +246,7 @@ export function documentosDelRealm(args: {
    */
   fuente?: string;
 }): DocumentosDelRealm {
-  const versionado = JSON.parse(args.fuente ?? realmSgtmJson()) as RealmVersionado;
+  const versionado = JSON.parse(args.fuente ?? realmDeFuncionariosJson()) as RealmVersionado;
 
   // El `smtpServer` del archivo versionado apunta al buzon `correo` del compose y NUNCA
   // llega asi al clúster: o lo decide el stack (ADR-0012), o el ambiente no tiene relay

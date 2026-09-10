@@ -96,8 +96,8 @@ export function baseDeKeycloakSh(): string {
  * En el clúster no se importa al arrancar: lo aplica un Job con `partialImport` cada
  * vez que el contenido cambia (ver `Identidad.ts`). El archivo es el mismo.
  */
-export function realmSgtmJson(): string {
-  return leer(join(raizDelRepositorio(), "despliegue/identidad/realm-sgtm.json"));
+export function realmDeFuncionariosJson(): string {
+  return leer(join(raizDelRepositorio(), "despliegue/identidad/realm-kamayuk.json"));
 }
 
 /**
@@ -109,7 +109,7 @@ export function realmSgtmJson(): string {
  * funcionario no autentique en `/portal/**` ni al reves.
  */
 export function realmCiudadanoJson(): string {
-  return leer(join(raizDelRepositorio(), "despliegue/identidad/realm-sgtm-ciudadano.json"));
+  return leer(join(raizDelRepositorio(), "despliegue/identidad/realm-kamayuk-ciudadano.json"));
 }
 
 /** El guion que reconcilia el realm contra Keycloak. Vive en `infra/`. */

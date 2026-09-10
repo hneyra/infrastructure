@@ -9,7 +9,7 @@ import type { Invariants } from "../config";
  *
  * ## El defecto, medido antes de tocar nada
  *
- * `despliegue/identidad/realm-sgtm.json` declaraba dos clientes —`kamayuk-backoffice`, publico y con
+ * `despliegue/identidad/realm-kamayuk.json` declaraba dos clientes —`kamayuk-backoffice`, publico y con
  * PKCE, y `kamayuk-verificacion`— y **ninguno servia para que un backend llamara a otro**. Lo que los
  * dos publicadores mandaban en su lugar es una credencial de servicio **configurada**, y lo que el
  * descriptor pone en esa variable es lo que `bootstrap-secretos.sh` genera: una cadena aleatoria,
@@ -191,7 +191,7 @@ export function realm(raiz: string): {
     protocolMappers?: { name: string; config?: Record<string, string> }[];
   }[];
 } {
-  const ruta = join(raiz, IDENTIDAD, "realm-sgtm.json");
+  const ruta = join(raiz, IDENTIDAD, "realm-kamayuk.json");
   if (!existsSync(ruta)) {
     throw new Error(
       `No esta «${ruta}». Sin el realm versionado esta comprobacion no mide nada, y un verde ` +

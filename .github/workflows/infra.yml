@@ -97,12 +97,12 @@ on:
       # solo corre con el volumen vacio, asi que una extension anadida despues no llega
       # sola y la migracion que la usa se cae (ADR-0021).
       - 'despliegue/crear-extensiones.sh'
-      - 'despliegue/identidad/realm-sgtm.json'
+      - 'despliegue/identidad/realm-kamayuk.json'
       # Lo demas que `Identidad.ts` monta o deriva: el realm del ciudadano, el guion de
       # identidades y las dos fuentes versionadas de personas. Faltaban, y es la leccion
       # de #192 §2 otra vez: un archivo que las pruebas LEEN y el filtro no nombra cambia
       # sin que corra quien lo mira —verde rancio, no verde—.
-      - 'despliegue/identidad/realm-sgtm-ciudadano.json'
+      - 'despliegue/identidad/realm-kamayuk-ciudadano.json'
       - 'despliegue/identidad/reconciliar-identidades.sh'
       - 'despliegue/identidad/municipalidades/**'
       - 'despliegue/identidad/ciudadanos/**'

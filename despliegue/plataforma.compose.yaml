@@ -129,8 +129,8 @@ services:
       # que separa a las dos poblaciones estructuralmente (ADR-0020). Un login
       # para los cuatro sistemas, con un *client* publico por frontend
       # (ADR-0030 §3).
-      - ./identidad/realm-sgtm.json:/opt/keycloak/data/import/realm-sgtm.json:ro
-      - ./identidad/realm-sgtm-ciudadano.json:/opt/keycloak/data/import/realm-sgtm-ciudadano.json:ro
+      - ./identidad/realm-kamayuk.json:/opt/keycloak/data/import/realm-kamayuk.json:ro
+      - ./identidad/realm-kamayuk-ciudadano.json:/opt/keycloak/data/import/realm-kamayuk-ciudadano.json:ro
     ports:
       - "${KAMAYUK_PUERTO_IDENTIDAD:-8180}:8080"
 

@@ -4,7 +4,7 @@
 
 Un realm ajustado en la pantalla de administración no es reproducible: el día que
 haya que levantar la instalación otra vez, nadie recordará qué casillas estaban
-marcadas. [`realm-sgtm.json`](realm-sgtm.json) se importa al arrancar Keycloak y
+marcadas. [`realm-kamayuk.json`](realm-kamayuk.json) se importa al arrancar Keycloak y
 fija tres cosas:
 
 - **El atributo `municipalidad_id` del perfil de usuario, y el mapeador que lo
@@ -99,7 +99,7 @@ Lo mismo vale para un **ciudadano** enrolado, cambiando el realm por `sgtm-ciuda
 cuenta por la derivada de su documento (`dni-70123456`). El caso B —clave temporal entregada
 fuera de banda— es además el camino normal de quien no declaró correo.
 
-El realm del ciudadano ([`realm-sgtm-ciudadano.json`](realm-sgtm-ciudadano.json)) trae su
+El realm del ciudadano ([`realm-kamayuk-ciudadano.json`](realm-kamayuk-ciudadano.json)) trae su
 propio `kamayuk-verificacion` por lo mismo, y **solo llega hasta aquí**: `Identidad.ts` lo filtra
 al derivar los documentos del clúster, porque el del ciudadano es el realm de cara al público y
 una concesión directa de credenciales ahí es una puerta que nadie necesita. Lo comprueba
@@ -129,7 +129,7 @@ Un backend que llama a otro sin un usuario delante —el ingestor de `rentas`, e
 `caja` y, desde la etapa 4 de ADR-0039, **los cuatro consumidores de la autorizacion**— pide su
 token con `client_credentials` a un **cliente confidencial por (sistema, municipalidad)**:
 `kamayuk-<sistema>-servicio-<ubigeo>` (#21, ADR-0028 §2: «no hay un proceso con permiso sobre
-todas»). Ninguno vive en `realm-sgtm.json`, porque un cliente confidencial tiene una clave y una
+todas»). Ninguno vive en `realm-kamayuk.json`, porque un cliente confidencial tiene una clave y una
 clave no vive en git (ADR-0012). **Nacen con este guion**, en su tercer modo:
 
 ```bash

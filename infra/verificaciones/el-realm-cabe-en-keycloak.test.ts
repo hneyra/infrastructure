@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { realmCiudadanoJson, realmSgtmJson } from "../componentes/fuentes";
+import { realmCiudadanoJson, realmDeFuncionariosJson } from "../componentes/fuentes";
 
 /**
  * `#71` — Keycloak no arrancaba porque una cadena del realm versionado no cabia en su columna.
@@ -8,7 +8,7 @@ import { realmCiudadanoJson, realmSgtmJson } from "../componentes/fuentes";
  * **no servia un solo token**, con este registro:
  *
  * ```
- * Full importing from file /opt/keycloak/bin/../data/import/realm-sgtm.json
+ * Full importing from file /opt/keycloak/bin/../data/import/realm-kamayuk.json
  * Value too long for column "DESCRIPTION CHARACTER VARYING(255)":
  *   "U&'El ambito de una identidad de servicio (ADR-0028 \\00a72). Lleva `municipalida... (390)"
  * ERROR: Failed to start server in (development) mode
@@ -55,7 +55,7 @@ function textosAcotados(realm: Record<string, unknown>): { donde: string; valor:
 
 describe("#71 · lo que el realm versionado escribe cabe en las columnas de Keycloak", () => {
   const realms = {
-    funcionarios: JSON.parse(realmSgtmJson()) as Record<string, unknown>,
+    funcionarios: JSON.parse(realmDeFuncionariosJson()) as Record<string, unknown>,
     ciudadano: JSON.parse(realmCiudadanoJson()) as Record<string, unknown>,
   };
 

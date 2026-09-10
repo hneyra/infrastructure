@@ -29,7 +29,7 @@
 # por eso no hay dos guiones.
 #
 # Los tres archivos JSON no se escriben a mano: los deriva `Identidad.ts` del
-# `realm-sgtm.json` que ya usa el compose, para que haya un solo realm versionado.
+# `realm-kamayuk.json` que ya usa el compose, para que haya un solo realm versionado.
 set -euo pipefail
 
 : "${KC_SERVIDOR:?falta KC_SERVIDOR}"
