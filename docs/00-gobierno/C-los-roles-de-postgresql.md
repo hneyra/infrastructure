@@ -174,7 +174,7 @@ cuatro. Contadas después, el árbol dice 322 · 430 · 3 · 2 · 3.
 
 ### Lo que lleva `sgtm` y **no** es un rol — se declara aquí
 
-- **`sgtm_prueba_<hex>`**, el prefijo con que `MotorPostgres` nombra la base de cada corrida de
+- **`kamayuk_prueba_<hex>`**, el prefijo con que `MotorPostgres` nombra la base de cada corrida de
   pruebas. Es un **nombre de base de datos**, no un rol; cae en la misma categoría que
   `BASE_DEL_PADRON = "sgtm"`, que `R-AB` §4 punto 2 dejó para la etapa D.
 - **`CANDADO_DE_PROVISIONAMIENTO = 0x5347544D524F4C`**, los bytes ASCII de `SGTMROL`. Es la clave
@@ -254,7 +254,7 @@ lección de §0: esto es una frontera, y una frontera no se mide desde un lado.
 **9 en rojo de 21**, y el mensaje nombra el mecanismo exacto:
 
 ```
-org.postgresql.util.PSQLException: FATAL: permission denied for database "sgtm_prueba_d1ac3065"
+org.postgresql.util.PSQLException: FATAL: permission denied for database "kamayuk_prueba_d1ac3065"
   Detail: User does not have CONNECT privilege.
 ```
 

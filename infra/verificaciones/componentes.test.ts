@@ -510,7 +510,7 @@ describe("#151 · identidad", () => {
 
   it("el realm que se aplica conserva el mapeador de municipalidad_id", () => {
     const documentos = documentosDelRealm({
-      domain: "sgtm.example.pe",
+      domain: "kamayuk.example.pe",
       realm: "kamayuk",
       clienteDeVerificacion: false,
       smtp: SMTP_DE_PRUEBA,
@@ -538,7 +538,7 @@ describe("#151 · identidad", () => {
   describe("el realm del ciudadano", () => {
     const delCiudadano = () =>
       documentosDelRealm({
-        domain: "sgtm.example.pe",
+        domain: "kamayuk.example.pe",
         realm: "kamayuk-ciudadano",
         clienteDeVerificacion: false,
         smtp: SMTP_DE_PRUEBA,
@@ -598,7 +598,7 @@ describe("#151 · identidad", () => {
         expect(uri, "una redireccion a localhost en el clúster").not.toContain("localhost");
         // El camino se conserva: con `https://<dominio>/*` el ciudadano podria
         // acabar en la aplicacion del funcionario tras autenticarse.
-        expect(uri).toBe("https://sgtm.example.pe/portal/*");
+        expect(uri).toBe("https://kamayuk.example.pe/portal/*");
       }
     });
 
@@ -1288,7 +1288,7 @@ describe("#415 · enrolamiento del ciudadano", () => {
 describe("#151 · la demostracion", () => {
   it("sin el mapeador, la comprobacion del realm se pone roja", () => {
     const documentos = documentosDelRealm({
-      domain: "sgtm.example.pe",
+      domain: "kamayuk.example.pe",
       realm: "kamayuk",
       clienteDeVerificacion: false,
       smtp: SMTP_DE_PRUEBA,
@@ -1631,7 +1631,7 @@ describe("#153 · la demostracion", () => {
       spec: { routes: { match: string }[] };
     };
     const ruta = identidad.spec.routes[0];
-    if (ruta) ruta.match = "Host(`sgtm.example.pe`) && PathPrefix(`/keycloak`)";
+    if (ruta) ruta.match = "Host(`kamayuk.example.pe`) && PathPrefix(`/keycloak`)";
 
     expect(auditar(ms)).toContainEqual(expect.stringContaining("consola de"));
   });
