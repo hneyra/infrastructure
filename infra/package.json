@@ -3,7 +3,7 @@
   "private": true,
   "license": "UNLICENSED",
   "main": "index.ts",
-  "description": "SGTM — infraestructura como código (Pulumi, ADR-0011)",
+  "description": "Kamayuk — infraestructura como código (Pulumi, ADR-0011)",
   "engines": {
     "node": ">=22"
   },

@@ -5,11 +5,12 @@ import { describe, expect, it } from "vitest";
 import { inventarioDeSecretos } from "../componentes/secretos";
 import {
   BASE_DEL_PADRON,
+  BASE_DE_IDENTIDAD,
   BASE_DE_MANTENIMIENTO,
   SISTEMAS_DEL_PRODUCTO,
 } from "../componentes/convenciones";
 import { raizDeInfra, raizDelRepositorio } from "../componentes/fuentes";
-import { ENVIRONMENTS, type Environment } from "../config";
+import { ENVIRONMENTS, SISTEMAS_CON_IMAGEN, type Environment } from "../config";
 import { manifiestosDelAmbiente } from "../herramientas/emitir-manifiestos";
 import { clonDe, sistemaLlamado, SISTEMAS } from "./deriva-de-migraciones";
 import { invariantesDe } from "./stacks";
@@ -94,11 +95,26 @@ describe("E · ninguna clave del monolito sigue declarada", () => {
     expect(imagenes.size, "ningun contenedor declara imagen: la prueba no mide nada").toBeGreaterThan(
       5,
     );
-    expect(
-      [...imagenes].filter((i) => /\/sgtm(-[a-z]+)?:/.test(i)),
-      "una imagen del monolito: nadie la publica desde este repositorio, asi que el nodo se " +
-        "quedaria en ImagePullBackOff",
-    ).toEqual([]);
+    // NO se prohibe UN nombre: se exige que toda imagen propia sea una que este repositorio
+      // publique. Antes esto buscaba el nombre del monolito, y por tanto dejaba pasar cualquier
+      // OTRA imagen de la organizacion que nadie publica, con el mismo sintoma:
+      // `ImagePullBackOff`. Derivarlo de `SISTEMAS_CON_IMAGEN` lo hace mas fuerte.
+      // Los tres sufijos que los cinco `publicar-imagenes.yml` producen: el artefacto, su
+      // migrador y —los dos sistemas que tienen pantalla— su interfaz. Medido al generalizar
+      // esta guarda: con solo los dos primeros salian rojas `kamayuk-rentas-interfaz` y
+      // `kamayuk-caja-interfaz`, que son legitimas.
+      const publicables = SISTEMAS_CON_IMAGEN.flatMap((sistema) => [
+        `kamayuk-${sistema}`,
+        `kamayuk-${sistema}-migrador`,
+        `kamayuk-${sistema}-interfaz`,
+      ]);
+      expect(
+        [...imagenes]
+          .filter((i) => i.includes("ghcr.io/hneyra/"))
+          .filter((i) => !publicables.includes(i.split("/").pop()?.split(":")[0] ?? "")),
+        "una imagen propia que este repositorio NO publica: el nodo se quedaria en " +
+          `ImagePullBackOff. Las que publica son ${publicables.join(", ")}`,
+      ).toEqual([]);
   });
 });
 
@@ -170,9 +186,15 @@ describe("E · la base del monolito no gobierna nada", () => {
         `«${entrada.rol}» declara el rol «${entrada.rolDePostgres}» y no dice contra que base ` +
           "se conecta: sin ese dato, comprobar la credencial no dice nada",
       ).toBeDefined();
-      expect(entrada.baseDeDatos, `«${entrada.rol}» apunta a la base del monolito`).not.toBe(
-        "sgtm",
-      );
+      // Igual que arriba: no se prohibe UN nombre, se exige que la base sea una de las que
+        // el cluster crea. Antes decia «no es la del monolito», y una base inventada cualquiera
+        // pasaba con la misma consecuencia: una credencial que se comprueba contra algo que no
+        // existe.
+        expect(
+          [...SISTEMAS_DEL_PRODUCTO, BASE_DE_MANTENIMIENTO, BASE_DE_IDENTIDAD] as readonly string[],
+          `«${entrada.rol}» dice conectarse a «${entrada.baseDeDatos}», que no es ninguna de las ` +
+            "bases que este cluster crea",
+        ).toContain(entrada.baseDeDatos);
     }
   });
 
@@ -253,11 +275,25 @@ describe("E · `verificar-el-ambiente.sh` mide los cuatro sistemas", () => {
       .split("\n")
       .filter((linea) => !linea.trim().startsWith("#"))
       .join("\n");
-    expect(
-      sentencias,
-      "vuelve a haber un `-d sgtm` o un `--dbname=sgtm`: esa base existe y no tiene ni una " +
-        "tabla del producto, asi que la comprobacion pasaria sin medir nada",
-    ).not.toMatch(/(-d|--dbname=)\s*sgtm\b/);
+      // No se prohibe UN nombre: se exige que toda base que el guion nombre sea una de las que
+      // este cluster crea. Negar una sola dejaba pasar cualquier otra con la misma consecuencia:
+      // una comprobacion que pasa sin medir nada, porque la base existe y esta vacia.
+      const permitidas = [
+        ...SISTEMAS_DEL_PRODUCTO,
+        BASE_DE_MANTENIMIENTO,
+        BASE_DE_IDENTIDAD,
+      ] as readonly string[];
+      // `-d` tiene que ser una BANDERA suelta: sin el limite de palabra, `--depth` casaba y
+      // la guarda señalaba «epth» —medido al escribirla—.
+      const nombradas = [
+        ...sentencias.matchAll(/(?:^|\s)(?:-d\s+|--dbname[= ])([a-z_][a-z0-9_]*)/gm),
+      ].map(
+        (m) => m[1]!,
+      );
+      expect(
+        [...new Set(nombradas)].filter((b) => !permitidas.includes(b)),
+        `el guion consulta una base que este cluster no crea. Crea: ${permitidas.join(", ")}`,
+      ).toEqual([]);
   });
 });
 

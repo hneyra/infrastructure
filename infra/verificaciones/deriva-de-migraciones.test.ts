@@ -380,7 +380,10 @@ describe("el flujo trae lo que la guarda necesita para contar", () => {
     for (const { clon } of SISTEMAS) {
       expect(accion).toContain(`repository: hneyra/${clon}`);
     }
-    expect(accion, "el flujo ya no clona el archivo historico").not.toContain("hneyra/sgtm");
+      // Y son EXACTAMENTE esos: negar UN repositorio dejaba pasar cualquier otro de mas, con
+      // la misma consecuencia —un clon que nadie mide y que alarga cada corrida—.
+      const clonados = [...accion.matchAll(/repository:\s*hneyra\/(\S+)/g)].map((m) => m[1]!);
+      expect([...clonados].sort()).toEqual(SISTEMAS.map((s) => s.clon).sort());
 
     /**
      * Y las dos profundidades van **entrecomilladas**.

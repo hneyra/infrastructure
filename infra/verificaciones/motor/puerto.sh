@@ -3,7 +3,7 @@
 #
 # ## Que problema cierra
 #
-# `lib-motor-local.sh` nombra su contenedor con el PID —`sgtm-motor-verificacion-$$`—, o
+# `lib-motor-local.sh` nombra su contenedor con el PID —`kamayuk-motor-verificacion-$$`—, o
 # sea que el NOMBRE no puede chocar nunca. El puerto del anfitrion, en cambio, era una
 # CONSTANTE por guion: 55432 en `verificar-el-motor.sh`, 55434 en `verificar-rotacion.sh`
 # y 55433 en `simulacro-de-restauracion.sh`. Esa asimetria es el defecto entero, y tiene

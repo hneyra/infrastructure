@@ -83,7 +83,7 @@ function versionDelSistema(invariantes: Invariants): (sistema: string) => string
           `declara \`kamayuk:${claveDeVersion(sistema)}\`, asi que no hay con que etiquetar sus ` +
           "imagenes.\n" +
           "  No se hereda ninguna otra: `applicationBootstrapVersion` es la version del " +
-          "monolito, un `sha` de `sgtm`, y con ella la etiqueta no resolveria contra el `git " +
+          "monolito, y con ella la etiqueta no resolveria contra el `git " +
           `log\` de hneyra/${sistema} — y probablemente no existiria en el registro.\n` +
           `  Remedio: declarar \`kamayuk:${claveDeVersion(sistema)}\` con un \`sha\` de main de ` +
           `hneyra/${sistema} cuyas imagenes haya publicado \`publicar-imagenes.yml\`.`,

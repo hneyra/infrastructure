@@ -351,7 +351,7 @@ if [ "$CON_AISLAMIENTO" = "si" ]; then
     # `ALTER ROLE ... LOGIN PASSWORD` sobre los cinco roles de ARQ-03 §4. Contra
     # Testcontainers eso pasa en el contenedor de la prueba y **aqui no cambia nada**.
     #
-    # No se mide por la base `sgtm_prueba_<uuid>` que la corrida crea, y eso se comprobo
+    # No se mide por la base `kamayuk_prueba_<uuid>` que la corrida crea, y eso se comprobo
     # ejecutando: `MotorPostgres.close()` la borra con `DROP DATABASE ... WITH (FORCE)`, asi
     # que al terminar el bucle no queda ninguna y ese censo daria **rojo en falso**.
     # La huella de los roles, en cambio, sobrevive.

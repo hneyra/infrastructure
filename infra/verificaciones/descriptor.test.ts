@@ -29,7 +29,7 @@ import { catastro, rentas } from "../descriptor/muestras/validos";
 const ENTORNO: EntornoDelDescriptor = {
   ambiente: "stg",
   namespace: "kamayuk-catastro-stg",
-  dominio: "stg.sgtm.example",
+  dominio: "stg.kamayuk.example",
   etiquetas: { "app.kubernetes.io/part-of": "kamayuk", ambiente: "stg" },
   imagenDe: (c) => `ghcr.io/hneyra/kamayuk-${c}:0eee58e43e04b1c2d3f4a5b6c7d8e9f0a1b2c3d4`,
   secretoDe: (c) => `kamayuk-stg-${c}`,
@@ -48,7 +48,7 @@ const ENTORNO: EntornoDelDescriptor = {
   nombreConVersion: (base) => `${base}-0eee58e43e04`,
   plataforma: {
     namespace: "kamayuk-stg",
-    emisor: "https://stg.sgtm.example/keycloak/realms/kamayuk",
+    emisor: "https://stg.kamayuk.example/keycloak/realms/kamayuk",
     jwks: "http://kamayuk-stg-identidad.kamayuk-stg:8080/keycloak/realms/kamayuk/protocol/openid-connect/certs",
     token: "http://kamayuk-stg-identidad.kamayuk-stg:8080/keycloak/realms/kamayuk/protocol/openid-connect/token",
     // Ya cruzando el namespace, como el JWKS y por lo mismo (C-17, punto 1).

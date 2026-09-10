@@ -38,7 +38,7 @@ function baseline(environment: Environment = "prod"): Invariants {
     // nombre del ambiente: `checkInvariants` rechaza `minimo` en `prod`.
     recursos: { perfil: isStg ? "minimo" : "dimensionado" },
     ingress: {
-      domain: isStg ? "stg.sgtm.example.pe" : "sgtm.example.pe",
+      domain: isStg ? "stg.kamayuk.example.pe" : "kamayuk.example.pe",
       acmeEmail: "operaciones@example.pe",
       acmeStaging: isStg,
       publishedNodePorts: [],
@@ -73,7 +73,7 @@ function baseline(environment: Environment = "prod"): Invariants {
         : undefined,
     },
     application: {
-      imageRepository: "ghcr.io/hneyra/sgtm",
+      imageRepository: "ghcr.io/hneyra/kamayuk",
       isDemonstration: isStg,
       // Declarado en los dos: en prod es obligatorio decidirlo a mano (issue #150).
       isDemonstrationDeclared: true,
@@ -103,7 +103,7 @@ function baseline(environment: Environment = "prod"): Invariants {
     },
     observability: {
       // Declarado en los dos: en prod es obligatorio (issue #156).
-      alertWebhookUrl: "http://observabilidad-alertmanager-receptor.example.svc:9094/hooks/sgtm",
+      alertWebhookUrl: "http://observabilidad-alertmanager-receptor.example.svc:9094/hooks/kamayuk",
     },
   };
 }
@@ -276,7 +276,7 @@ describe("ADR-0011 — el estado de Pulumi no guarda ni versiones ni secretos", 
 
   it("la etiqueta de la imagen metida en la configuración", () => {
     const c = baseline();
-    c.application.imageRepository = "ghcr.io/hneyra/sgtm:1.4.2";
+    c.application.imageRepository = "ghcr.io/hneyra/kamayuk:1.4.2";
     expectViolation(c, "la pone el flujo de liberación, no Pulumi");
   });
 
@@ -354,7 +354,7 @@ const VALORES_MINIMOS = {
   // que todo cabe, que es peor que no comprobar nada.
   nodeAllocatableCpu: "8",
   nodeAllocatableMemory: "16Gi",
-  domain: "sgtm.example.pe",
+  domain: "kamayuk.example.pe",
   acmeEmail: "operaciones@example.pe",
   postgresImage: "postgis/postgis:16-3.4-alpine",
   postgresStorageSize: "100Gi",
@@ -362,7 +362,7 @@ const VALORES_MINIMOS = {
   backupRegion: "us-east-1",
   backupBucket: "sgtm-prod-respaldos",
   keycloakImage: "quay.io/keycloak/keycloak:26.0",
-  applicationImageRepository: "ghcr.io/hneyra/sgtm",
+  applicationImageRepository: "ghcr.io/hneyra/kamayuk",
   // Una por sistema, y todas obligatorias: `readInvariants` no admite que falte ninguna,
   // porque un valor por omision haria que olvidarse de declarar la version de un sistema se
   // leyera igual que declararla — y lo que decide es que imagen baja el nodo.

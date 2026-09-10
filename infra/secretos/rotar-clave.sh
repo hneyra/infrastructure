@@ -112,8 +112,13 @@ REINICIAR=$(leer_campo requiereReinicioDe)
 
 echo "· Rotando «${ROL_DE_POSTGRES}» ($ROL) en «${NAMESPACE}»"
 
-MOTOR="deployment/$(printf 'sgtm-%s-postgres' "$AMBIENTE")"
-SECRETO_SUPER=$(printf 'sgtm-%s-postgres-superusuario' "$AMBIENTE")
+# `kamayuk-`, que es el prefijo que `resourceName()` produce. Estaba en `sgtm-`, y con el
+# el `kubectl get secret` de abajo devolvia NotFound: **rotar una clave de PostgreSQL no
+# funcionaba**, y moria diciendo «No se pudo leer la clave del superusuario», que suena a
+# permisos. Sus dos hermanos —`asignar-claves.sh:67` y `publicar-parametros.sh:118`— ya
+# usaban el prefijo correcto; este se quedo atras y nadie lo ejercio.
+MOTOR="deployment/$(printf 'kamayuk-%s-postgres' "$AMBIENTE")"
+SECRETO_SUPER=$(printf 'kamayuk-%s-postgres-superusuario' "$AMBIENTE")
 
 CLAVE_SUPER=$(kubectl -n "$NAMESPACE" get secret "$SECRETO_SUPER" \
     -o jsonpath='{.data.clave-superusuario}' | base64 --decode)

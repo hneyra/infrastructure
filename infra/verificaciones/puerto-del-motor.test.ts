@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 /**
  * El puerto del motor de verificacion se pide; no se fija (#731).
  *
- * `lib-motor-local.sh` nombra su contenedor con el PID —`sgtm-motor-verificacion-$$`—,
+ * `lib-motor-local.sh` nombra su contenedor con el PID —`kamayuk-motor-verificacion-$$`—,
  * asi que el NOMBRE no puede chocar nunca. El puerto del anfitrion era una CONSTANTE por
  * guion: 55432, 55434 y 55433. Esa asimetria es el defecto, y se cobro una corrida real:
  * el trabajo `motor` de `infra.yml` levanta TRES motores seguidos desde que #435 metio la
