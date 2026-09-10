@@ -1,9 +1,16 @@
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ENVIRONMENTS, SISTEMAS_CON_IMAGEN, claveDeVersion } from "../config";
 import { SISTEMAS } from "../descriptor/sistemas";
+import { namespacesDelAmbiente } from "../descriptor/entorno";
 import {
+  cargasConImagenDelProducto,
   espaciosConCredencialDeRegistro,
+  espaciosDeclaradosEn,
   etiquetasQueNoIdentifican,
+  fuenteDeLosEspaciosConCredencial,
   podsSinCredencial,
   imagenesPedidas,
   imagenesQuePublica,
@@ -21,6 +28,8 @@ import {
  * recibe la lista de imagenes y el inventario de publicadores, asi que una imagen inventada no
  * exige tocar un stack ni un clon hermano.
  */
+
+const RAIZ_DEL_REPO = resolve(__dirname, "..", "..");
 
 const UN_SHA = "0123456789abcdef0123456789abcdef01234567";
 
@@ -199,85 +208,239 @@ describe("la lista de sistemas con version declarada es la de los descriptores",
 
 describe("quien puede traerse una imagen privada", () => {
   /**
-   * La credencial de `ghcr.io` no vive en ningun `spec`: `index.ts` parchea el `ServiceAccount`
-   * `default` del espacio de nombres de LA PLATAFORMA (#257). Esta prueba ata esa exencion al
-   * codigo — la usa `comprobar-imagenes.sh` para no acusar al monolito de no poder traerse sus
-   * tres imagenes privadas, que si puede.
+   * Un `index.ts` de mentira con la forma buena, para poder romperla sin tocar el de verdad.
+   *
+   * Es la misma disciplina que `comun-verificaciones` aplica a sus reglas: una guarda que solo se
+   * puede ejercitar contra el archivo bueno no se puede ejercitar contra uno defectuoso.
    */
-  it("el parche llega a UN espacio de nombres, y es el de la plataforma", () => {
-    expect(espaciosConCredencialDeRegistro()).toEqual(["namespace"]);
+  const BUENO = `
+    for (const espacio of namespacesDelAmbiente(env)) {
+      const secretoDeRegistro = new k8s.core.v1.Secret(
+        resourceName(env, "registro-credenciales"),
+        { metadata: { name: "x", namespace: espacio }, type: "kubernetes.io/dockerconfigjson" },
+      );
+      new k8s.core.v1.ServiceAccountPatch(
+        resourceName(env, "default-registro"),
+        { metadata: { name: "default", namespace: espacio }, imagePullSecrets: [{ name: "x" }] },
+      );
+    }
+  `;
+
+  it("la muestra en regla se lee, y la fuente sale entera", () => {
+    // El parentesis de dentro es lo que rompio la primera version: cortando en el primer `)` la
+    // expresion salia «namespacesDelAmbiente(env», que no es el nombre de ninguna funcion.
+    expect(espaciosDeclaradosEn(BUENO)).toEqual(["namespacesDelAmbiente(env)"]);
   });
 
   /**
-   * Y la otra mitad, que es el hueco: los sistemas viven en el suyo desde ADR-0031, y ni
-   * el `Secret` ni el parche llegan alli. Hasta ADR-0039 esto funcionaba porque sus paquetes son
-   * publicos; hacerlos privados —que es lo que deberian ser— deja sus cargas en
-   * `ImagePullBackOff`.
-   *
-   * **Y con `identidad` el hueco deja de ser hipotetico, y esto se MIDIO en vez de suponerse.**
-   * El 2026-09-09, con un token ANONIMO de `ghcr.io/token`:
-   *
-   *   - `kamayuk-caja:5db1db30…` y `kamayuk-rentas:0fa7d034…` contestan **200**;
-   *   - `kamayuk-caja` con una etiqueta que no existe contesta **404**;
-   *   - `kamayuk-identidad` y `kamayuk-identidad-migrador`, con el `sha` que los dos stacks
-   *     declaran **y** con `latest`, contestan **403**.
-   *
-   * Y **403 no permite concluir que sean privadas**: un nombre de paquete que no existe
-   * (`kamayuk-esto-no-existe-jamas`) contesta 403 tambien, igual que los tres del monolito. Es el
-   * tercer desenlace que D-23 dejo escrito. Lo que si se puede afirmar es lo que decide si el pod
-   * arranca: **hoy esas dos NO se pueden bajar sin credencial**, al reves que las de los otros
-   * cuatro, y `hneyra/identidad` es ademas un repositorio PRIVADO, asi que sus paquetes nacen
-   * privados por omision. Quien lo cierra es `yarn imagenes --ambiente <amb>` con
-   * `REGISTRY_PULL_TOKEN` —el PAT que el NODO usa—, que es la unica pregunta que vale: «¿la puede
-   * bajar quien va a bajarla?».
-   *
-   * Esta prueba NO fosiliza el estado: exige que, mientras ningun pod de un sistema declare
-   * credencial propia, el manifiesto no contenga ninguna — de modo que quien la anada tenga que
-   * venir aqui y decidir si el hueco queda cerrado.
+   * **Y la prosa que explica el mecanismo NO cuenta.** El javadoc de `index.ts` escribe
+   * `imagePullSecrets`, `dockerconfigjson` y `namespacesDelAmbiente` para explicar por que estan;
+   * una guarda que se satisface con el comentario que la justifica es la que alguien acaba
+   * apagando borrando el comentario (#16 con `proxy_pass`, #10 con los rotulos del panel).
    */
-  it.each(ENVIRONMENTS)("y a ninguno de los cinco sistemas, en «%s»", (ambiente) => {
-    const sin = podsSinCredencial(ambiente);
-    // Las DIECINUEVE cargas de los cinco sistemas: SIETE Deployment, diez Job y dos CronJob.
-    // Las tres que suma `identidad` (ADR-0039) son su `Deployment` web y sus dos `Job` —de
-    // migracion y de implantacion—; no tiene interfaz ni ningun `CronJob`, y eso es una
-    // afirmacion de su descriptor y no una casilla vacia. Eran DIECISEIS y antes de eso
-    // catorce hasta que `caja` estreno su interfaz de ventanilla (#16) y quince hasta que
-    // `rentas` estreno la suya (I-44) — y su imagen es tan privada-o-publica como las otras, asi
-    // que el hueco crece con cada sistema y con cada interfaz en vez de quedarse quieto.
-    //
-    // Esta cifra es el censo de lo que costaria cerrar el hueco, y por eso se toca a mano: cada
-    // interfaz nueva pasa por aqui y por la decision de si sigue abierto.
-    //
-    // Y la SIGUIENTE ya se sabe cuanto cuesta, que es el AC-4 de #12: `catastro` publica
-    // `kamayuk-catastro-web` y ningun descriptor la despliega todavia; el dia que lo haga esta
-    // cifra pasa a DIECISIETE. No hay que declararla en `espaciosConCredencialDeRegistro()`
-    // porque **es publica, y eso se midio en vez de suponerse**: el 2026-09-07, con un token
-    // ANONIMO de `ghcr.io/token` y el `sha` que los dos stacks declaran
-    // (`37cc08b25712db92a72c3b375d76158665c3a418`), las tres de `catastro` contestan 200 —
-    // `kamayuk-catastro`, `kamayuk-catastro-migrador` y `kamayuk-catastro-web`—. O sea que la
-    // tercera nace con la MISMA condicion que las otras dos: hereda el hueco de D-23 en vez de
-    // necesitar credencial, y hacerlas privadas las deja a las diecisiete en ImagePullBackOff.
-    //
-    // Y VEINTITRES desde la etapa 4 de ADR-0039 (identidad#4): los cuatro que suma son los
-    // cuatro `CronJob` consumidores del buzon de `identidad`, uno por satelite, cada uno con la
-    // MISMA imagen que su aplicacion en perfil `batch` (ADR-0003: un artefacto, dos perfiles).
-    // No traen una imagen nueva —`podsSinCredencial` cuenta CARGAS, no imagenes—, asi que el
-    // hueco no cambia de forma: hacer privadas las cuatro imagenes de los satelites deja
-    // ademas a sus consumidores sin poder arrancar, o sea la copia local de la autorizacion
-    // congelada en los cuatro sin que un `ImagePullBackOff` de un CronJob lo diga en ningun
-    // panel. `identidad` sigue en tres: sirve el buzon y no tiene CronJob.
-    expect(sin).toHaveLength(23);
-    expect([...new Set(sin.map((p) => p.espacio))].sort()).toEqual([
+  it("un comentario que nombra las tres cosas no basta", () => {
+    const soloProsa = `
+      // for (const espacio of namespacesDelAmbiente(env)) {
+      //   new k8s.core.v1.Secret(..., { namespace: espacio }, "dockerconfigjson")
+      //   new k8s.core.v1.ServiceAccountPatch(..., { namespace: espacio, imagePullSecrets: [] })
+      // }
+      /* Lo mismo en bloque: dockerconfigjson, imagePullSecrets, namespacesDelAmbiente(env). */
+      const literal = "for (const espacio of namespacesDelAmbiente(env)) { imagePullSecrets }";
+    `;
+    expect(espaciosDeclaradosEn(soloProsa)).toEqual([]);
+  });
+
+  it("un `Secret` fuera del bucle no cuenta: el parche apuntaria a lo que no esta", () => {
+    const soloElParche = BUENO.replace(/const secretoDeRegistro[\s\S]*?\);\n/, "");
+    expect(espaciosDeclaradosEn(soloElParche)).toEqual([]);
+  });
+
+  it("y un `namespace` que no es el del bucle tampoco: escribiria seis veces en el mismo sitio", () => {
+    expect(espaciosDeclaradosEn(BUENO.replace("namespace: espacio }, imagePullSecrets", "namespace: namespace }, imagePullSecrets"))).toEqual([]);
+  });
+
+  /**
+   * La lectura sobre el `index.ts` de VERDAD. Lo que se afirma es de donde salen los espacios de
+   * nombres, no cuales son: los cuales los da ejecutar esa misma funcion, un renglon mas abajo.
+   *
+   * Escribirlos aqui seria un segundo sitio con la misma verdad, y el que se queda viejo el dia
+   * que entre un sexto sistema — que es exactamente el defecto que esta guarda vino a cerrar.
+   */
+  it("`index.ts` los saca de `namespacesDelAmbiente`, o sea de SISTEMAS_DEL_PRODUCTO", () => {
+    expect(fuenteDeLosEspaciosConCredencial()).toBe("namespacesDelAmbiente(env)");
+  });
+
+  /**
+   * Y una fuente que esta guarda no sepa ejecutar **lanza nombrandola**, en vez de colarse como
+   * si fuera un espacio de nombres.
+   *
+   * Medido: con `index.ts` recorriendo `[...namespacesDelAmbiente(env), "kube-system"]`, la
+   * primera version devolvia esa expresion **como si fuera un espacio de nombres** y la
+   * comprobacion de «ni `kube-system` ni el ambiente hermano» pasaba en VERDE —porque el literal
+   * va blanqueado y la cadena «kube-system» ni siquiera aparecia—. Pasaba por el motivo
+   * equivocado, que es peor que fallar.
+   */
+  it("y una fuente que no sabe ejecutar lanza nombrandola", () => {
+    const otra = BUENO.replace(
+      "namespacesDelAmbiente(env)",
+      "[...namespacesDelAmbiente(env), \"kube-system\"]",
+    );
+    expect(espaciosDeclaradosEn(otra)).toEqual(['[...namespacesDelAmbiente(env), "           "]']);
+  });
+
+  /**
+   * Y la credencial llega a los SEIS espacios del ambiente: el de la plataforma y el de cada
+   * sistema (ADR-0031).
+   *
+   * **Esto era «UNO, y es el de la plataforma»**, y con `identidad` dejo de ser sostenible:
+   * medido el 2026-09-10 a las 02:14 UTC con un token ANONIMO de `ghcr.io/token`,
+   * `kamayuk-identidad` y `kamayuk-identidad-migrador` contestan **403** con el `sha` que los dos
+   * stacks declaran y con `latest`, mientras las nueve de los otros cuatro sistemas contestan
+   * **200** y `kamayuk-rentas` con una etiqueta inexistente contesta **404**. Es el primer paquete
+   * privado del producto, y sus tres cargas quedaban en `ImagePullBackOff` con el `up` en verde.
+   *
+   * Lo que cuesta queda dicho aqui y en `index.ts`: **la credencial de pull pasa a vivir en seis
+   * espacios de nombres en vez de uno**, o sea seis sitios de donde puede salir en vez de uno. La
+   * otra salida era publicar los dos paquetes, y no da lo que esta da: que el despliegue funcione
+   * sea cual sea la visibilidad del paquete.
+   */
+  it.each(ENVIRONMENTS)("los SEIS espacios de «%s», derivados y no escritos", (ambiente) => {
+    expect(espaciosConCredencialDeRegistro(ambiente)).toEqual(namespacesDelAmbiente(ambiente));
+    expect(espaciosConCredencialDeRegistro(ambiente)).toEqual([
+      `kamayuk-${ambiente}`,
+      `kamayuk-rentas-${ambiente}`,
+      `kamayuk-catastro-${ambiente}`,
+      `kamayuk-normativa-${ambiente}`,
+      `kamayuk-caja-${ambiente}`,
+      `kamayuk-identidad-${ambiente}`,
+    ]);
+  });
+
+  /**
+   * **El contraste, y sin el la guarda se cumple ponisendosela a todo el mundo.**
+   *
+   * «Todos los espacios de nombres tienen credencial» es trivialmente cierto si la respuesta es
+   * «todos los que existen». Lo que se afirma aqui es que la lista NO es universal: `kube-system`
+   * —donde vive el `traefik` que este stack toca— se queda fuera, y el ambiente hermano tambien.
+   * Un `for` sobre algo mas ancho pondria esto rojo.
+   */
+  it.each(ENVIRONMENTS)("y a nadie mas: ni `kube-system` ni el ambiente hermano, en «%s»", (ambiente) => {
+    const otro = ENVIRONMENTS.find((a) => a !== ambiente)!;
+    const espacios = espaciosConCredencialDeRegistro(ambiente);
+    expect(espacios).not.toContain("kube-system");
+    expect(espacios.filter((e) => e.endsWith(`-${otro}`))).toEqual([]);
+    // Y que el contraste tenga sujeto: el ambiente hermano compone espacios de verdad.
+    expect(namespacesDelAmbiente(otro).length).toBeGreaterThan(0);
+  });
+
+  /**
+   * El censo, que es el SUJETO de la afirmacion de abajo.
+   *
+   * Todo lo que este bloque dice sobre la credencial es cierto sobre el conjunto vacio: si el
+   * recorrido dejara de encontrar cargas —un `kind` que se deja de reconocer, un manifiesto que
+   * cambia de forma—, «ninguna se queda sin credencial» seguiria pasando en verde y nadie lo
+   * diria. Es C-15/C-16, y por eso la cifra se cuenta antes.
+   *
+   * VEINTITRES: siete `Deployment`, diez `Job` y seis `CronJob`, y las **veintitres** viven
+   * fuera del espacio de nombres de la plataforma —donde desde `E` no queda ninguna imagen del
+   * producto—. Las tres que suma `identidad` (ADR-0039) son su `Deployment` web y sus dos `Job`.
+   *
+   * **Eran DIECINUEVE hasta la etapa 4** (`identidad`#4): los cuatro que suma son los cuatro
+   * `CronJob/kamayuk-<sistema>-consumidor-de-identidad`, uno por satelite, cada uno con la MISMA
+   * imagen que su aplicacion en perfil `batch` (ADR-0003: un artefacto, dos perfiles). **No traen
+   * una imagen nueva —este censo cuenta CARGAS, no imagenes—**, y `identidad` sigue en tres:
+   * sirve el buzon y no tiene ningun `CronJob`.
+   *
+   * **Y la cifra de la etapa 4 vive AQUI y no en la afirmacion de abajo, que es lo que cambia al
+   * traer `57771a2`.** Hasta entonces el censo y el hueco eran el mismo numero —las cargas del
+   * producto viven todas fuera del espacio de la plataforma, que era el unico que llevaba
+   * credencial, asi que «cuantas hay» y «cuantas no la tienen» daban lo mismo—, y por eso la
+   * etapa 4 subio a 23 lo unico que habia entonces: `podsSinCredencial`. Con la credencial en los
+   * seis espacios ese hueco es **cero POR DERIVACION** y deja de poder llevar un censo dentro; lo
+   * que sigue teniendo que crecer con cada carga es esto, que es el sujeto. Medido despues del
+   * merge y no deducido —la cifra a cero y el «but was» leido—: `expected [ … ] to have a length
+   * of +0 but got 23`, en los dos ambientes, y las veintitres con `credencial: true`.
+   *
+   * Esta cifra se toca a mano y con su motivo, como manda su antecesora: cada carga nueva pasa
+   * por aqui.
+   */
+  it.each(ENVIRONMENTS)("las VEINTITRES cargas que traen una imagen del producto, en «%s»", (ambiente) => {
+    const todas = cargasConImagenDelProducto(ambiente);
+    expect(todas).toHaveLength(23);
+    expect([...new Set(todas.map((p) => p.espacio))].sort()).toEqual([
       `kamayuk-caja-${ambiente}`,
       `kamayuk-catastro-${ambiente}`,
       `kamayuk-identidad-${ambiente}`,
       `kamayuk-normativa-${ambiente}`,
       `kamayuk-rentas-${ambiente}`,
     ]);
-    // Y ninguna es de la plataforma: los tres del monolito heredan la credencial del
-    // `ServiceAccount` `default`, que es lo que la prueba de arriba ata a `index.ts`.
-    expect(sin.filter((p) => p.espacio === `kamayuk-${ambiente}`)).toEqual([]);
   });
+
+  /**
+   * Y ninguna se queda sin poder bajarla.
+   *
+   * Eran **TODAS** —el parche llegaba solo al espacio de la plataforma y ninguna carga del
+   * producto vive alli, asi que este hueco era el censo entero: diecinueve antes de la etapa 4 y
+   * veintitres con ella—, y son **cero** desde que `index.ts` la crea en los seis espacios. La
+   * cifra no se ajusto para que pasara: lo que cambio es el despliegue, y el censo de arriba es
+   * lo que impide que este cero signifique «no se miro nada».
+   *
+   * Por eso aqui no hay numero y arriba si: este cero lo dice la DERIVACION —la credencial llega
+   * a `namespacesDelAmbiente(env)`, o sea a los seis—, y una carga nueva no lo mueve; el censo,
+   * en cambio, tiene que moverse con cada carga o deja de ser sujeto de nada.
+   */
+  it.each(ENVIRONMENTS)("y NINGUNA se queda sin credencial, en «%s»", (ambiente) => {
+    expect(podsSinCredencial(ambiente)).toEqual([]);
+  });
+});
+
+/**
+ * Y la mitad de shell, que es donde estaba escrita la regla vieja.
+ *
+ * `comprobar-imagenes.sh` decide si un pod puede bajarse una imagen privada, y para eso necesita
+ * saber que espacios de nombres llevan la credencial. Lo tenia escrito a mano —`espacio ==
+ * "kamayuk-<ambiente>"`—, que era cierto mientras la credencial llegaba a un solo sitio y es falso
+ * desde que llega a los seis. Ahora **pregunta**, y quien contesta es la misma derivacion.
+ *
+ * Es la forma de `infra/bases.sh` (#15/#16): dos lenguajes, una sola fuente, y ningun sitio donde
+ * puedan discrepar en silencio. Y se comprueba **ejecutando**, no leyendo (M10 de C-19): una
+ * prueba que solo mirara que el guion nombra la herramienta pasaria igual con la herramienta rota.
+ */
+describe("el guion del registro pregunta en vez de saberselo", () => {
+  const GUION = join(RAIZ_DEL_REPO, "infra", "verificaciones", "imagenes", "comprobar-imagenes.sh");
+
+  it("no lleva ninguna regla de pertenencia escrita a mano", () => {
+    const texto = readFileSync(GUION, "utf8");
+    // La forma exacta que tenia, y la familia entera: comparar el espacio de nombres del pod
+    // contra el de la plataforma compuesto en el propio guion.
+    expect(texto).not.toMatch(/espacio\s*==\s*plataforma/);
+    expect(texto).not.toMatch(/plataforma\s*=\s*"kamayuk-"/);
+    expect(texto).toContain('yarn --silent espacios-con-credencial --ambiente "$AMBIENTE"');
+    // Y que lo que pregunta llegue de verdad a la decision, no que se quede en una variable
+    // muerta: es lo que #10 midio con el `selector` declarado y nunca consultado.
+    expect(texto).toContain("espacio in con_credencial");
+    expect(texto).toContain('con_credencial = set(a for a in sys.argv[2].split("\\n") if a)');
+  });
+
+  /**
+   * Ejecutado de verdad, con `--ambiente stg`. Cuesta ~1,3 s porque levanta `vite-node`, asi que
+   * lleva su propio techo: el de 5 s de Vitest es para funciones puras.
+   */
+  it(
+    "y lo que imprime es exactamente lo que la guarda deriva",
+    () => {
+      const salida = execFileSync("yarn", ["--silent", "espacios-con-credencial", "--ambiente", "stg"], {
+        cwd: join(RAIZ_DEL_REPO, "infra"),
+        encoding: "utf8",
+      });
+      const impresos = salida.split("\n").filter((l) => l.trim() !== "");
+      expect(impresos).toEqual(espaciosConCredencialDeRegistro("stg"));
+      // Con sujeto: una salida vacia haria pasar la igualdad de arriba si la guarda tambien lo
+      // estuviera, y el guion daria por bueno que ningun pod tiene credencial.
+      expect(impresos.length).toBeGreaterThan(1);
+    },
+    20_000,
+  );
 });
 
 /**

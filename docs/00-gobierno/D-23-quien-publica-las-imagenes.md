@@ -195,6 +195,18 @@ exactamente cuando el `up` fallaría. Cerrarlo del todo es: replicar el `Secret`
 `dockerconfigjson` en los cuatro espacios de nombres y referenciarlo desde cada pod, y sólo
 entonces cambiar la visibilidad de los cuatro paquetes.
 
+> **Anotado el 2026-09-10, y este epígrafe deja de describir el estado.** No se reescribe —es el
+> registro de lo que D-23 midió entonces— pero lo que dice de los espacios de nombres ya no es
+> cierto: `identidad` (ADR-0039) es el **primer paquete privado del producto** —medido con un
+> token anónimo de `ghcr.io/token`: `kamayuk-identidad` y `kamayuk-identidad-migrador` contestan
+> **403** con el `sha` de los dos stacks y con `latest`— y el hueco dejó de ser hipotético. Desde
+> [`identidad`#1](https://github.com/hneyra/identidad/issues/1), `index.ts` crea el `Secret` y
+> parchea el `ServiceAccount` `default` en **los seis** espacios de nombres del ambiente,
+> derivados de `SISTEMAS_DEL_PRODUCTO`, y `podsSinCredencial` pasa de **19 a 0**. La salida no fue
+> la que este epígrafe anticipaba —«referenciarlo desde cada pod»—: referenciarlo desde el pod
+> obliga a acordarse en cada carga nueva, y el `ServiceAccount` no. Lo que cuesta está escrito
+> donde se hace: **la credencial de pull vive ahora en seis espacios de nombres en vez de uno**.
+
 ---
 
 ## 6 · Lo que falta, y lo que este trabajo NO hizo
