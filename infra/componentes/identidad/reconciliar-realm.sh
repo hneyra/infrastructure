@@ -37,7 +37,11 @@ set -euo pipefail
 : "${KC_ADMIN:?falta KC_ADMIN}"
 : "${KC_CLAVE:?falta KC_CLAVE}"
 
-KCADM=/opt/keycloak/bin/kcadm.sh
+# El `kcadm` de la imagen. Se puede apuntar a otro **para poder ejercer este guion sin
+# Keycloak**: es como se midio el paso de los ambitos, con un `kcadm` de mentira que anota
+# lo que recibe —el mismo recurso con que se ejercen `crear-extensiones.sh` y
+# `diagnostico-del-namespace.sh`—. Dentro del contenedor no hay otro que apuntar.
+KCADM=${KCADM:-/opt/keycloak/bin/kcadm.sh}
 DIRECTORIO=${KC_DIRECTORIO:-/realm}
 
 # ---------------------------------------------------------------------------
@@ -57,6 +61,7 @@ case "$CUAL" in
         ARCHIVO_REALM="$DIRECTORIO/realm.json"
         ARCHIVO_PERFIL="$DIRECTORIO/perfil-de-usuario.json"
         ARCHIVO_CLIENTES="$DIRECTORIO/clientes.json"
+        PREFIJO_AMBITOS="ambito--"
         # Ya viene de las variables de entorno del pod.
         CLAIM=${KC_CLAIM:-municipalidad_id}
         ;;
@@ -66,6 +71,7 @@ case "$CUAL" in
         ARCHIVO_REALM="$DIRECTORIO/realm-ciudadano.json"
         ARCHIVO_PERFIL="$DIRECTORIO/perfil-de-usuario-ciudadano.json"
         ARCHIVO_CLIENTES="$DIRECTORIO/clientes-ciudadano.json"
+        PREFIJO_AMBITOS="ambito-ciudadano--"
         KC_REALM=$KC_REALM_CIUDADANO
         KC_CLIENTES=$KC_CLIENTES_CIUDADANO
         # El claim del que sale el SUJETO del portal. Sin el, el backend
@@ -106,6 +112,83 @@ fi
 # El perfil de usuario declara el atributo del que sale el claim. Sin el, el
 # mapeador leeria un atributo que el realm no admite y el claim saldria vacio.
 "$KCADM" update "users/profile" -r "$KC_REALM" -f "$ARCHIVO_PERFIL"
+
+# ---------------------------------------------------------------------------
+# Los ambitos que el realm declara. **`update realms` NO los importa.**
+#
+# Un `clientScope` del archivo versionado entra al CREAR el realm y en ningun otro
+# momento: `kcadm update realms/<realm> -f realm.json` actualiza los ajustes y deja
+# los ambitos como estaban. Asi que un ambito anadido despues del primer arranque
+# no llega NUNCA a un ambiente que ya existe, que es exactamente el agujero por el
+# que este guion se escribio para el resto del realm (#151).
+#
+# Medido en `stg` el 2026-09-10: el `Job` imprimio «El realm ya existe: se
+# actualizan sus ajustes.» y despues murio en `reconciliar-identidades.sh
+# servicios` con «FALLO: el realm «sgtm» no tiene el ambito «kamayuk-servicio»» —el
+# que #21 anadio al archivo versionado—, y con el se quedaron sin correr los tres
+# modos que van detras, porque el contenedor los encadena con `&&`. Sin ese ambito
+# no hay cliente de servicio que emita `municipalidad_id`, o sea que ninguno de los
+# cuatro consumidores del buzon de `identidad` puede pedir un token acotado a su
+# municipalidad (ADR-0028 §2).
+#
+# Se leen del NOMBRE DEL ARCHIVO y no del JSON: la imagen de Keycloak no trae `jq`
+# ni `python`, que es lo mismo que obliga a derivar los TSV de identidades fuera
+# (#21). `Identidad.ts` emite un documento por ambito y uno por mapeador.
+#
+# Idempotente por construccion: lo que ya esta no se toca, y lo que falta se crea.
+# Nunca borra un ambito —podria estar concedido a clientes que este guion no
+# conoce—, asi que un ambito que exista SIN su mapeador se repara anadiendoselo.
+# ---------------------------------------------------------------------------
+idDelAmbito() {
+    # Por `id,name` y comparando el nombre, y no con `-q name=`: asi no depende de que
+    # el filtro lo aplique el servidor. Una coincidencia equivocada aqui devolveria el
+    # id de OTRO ambito y los mapeadores acabarian en el sitio que no es.
+    "$KCADM" get client-scopes -r "$KC_REALM" --fields id,name --format csv --noquotes \
+        2>/dev/null | awk -F, -v n="$1" '$2 == n { print $1; exit }'
+}
+
+for ARCHIVO_AMBITO in "$DIRECTORIO/$PREFIJO_AMBITOS"*.json; do
+    [ -e "$ARCHIVO_AMBITO" ] || continue
+    BASE=${ARCHIVO_AMBITO##*/}
+    BASE=${BASE%.json}
+    # Los mapeadores viven en archivos con el mismo prefijo y se tratan dentro del bucle
+    # de su ambito, no como si fueran uno.
+    case "$BASE" in *--mapeador--*) continue ;; esac
+    AMBITO=${BASE#"$PREFIJO_AMBITOS"}
+
+    ID_AMBITO=$(idDelAmbito "$AMBITO")
+    if [ -z "$ID_AMBITO" ]; then
+        "$KCADM" create client-scopes -r "$KC_REALM" -f "$ARCHIVO_AMBITO" >/dev/null
+        ID_AMBITO=$(idDelAmbito "$AMBITO")
+        if [ -z "$ID_AMBITO" ]; then
+            echo "FALLO: se creo el ambito «$AMBITO» y no se le encuentra el id." >&2
+            exit 1
+        fi
+        echo "Ambito «$AMBITO»: creado."
+    else
+        echo "Ambito «$AMBITO»: ya esta."
+    fi
+
+    MAPEADORES=$("$KCADM" get "client-scopes/$ID_AMBITO/protocol-mappers/models" \
+        -r "$KC_REALM" 2>/dev/null | tr -d ' \n' || true)
+    for ARCHIVO_MAPEADOR in "$DIRECTORIO/$BASE--mapeador--"*.json; do
+        [ -e "$ARCHIVO_MAPEADOR" ] || continue
+        NOMBRE=${ARCHIVO_MAPEADOR##*/}
+        NOMBRE=${NOMBRE%.json}
+        NOMBRE=${NOMBRE#"$BASE--mapeador--"}
+        case "$MAPEADORES" in
+            *"\"name\":\"$NOMBRE\""*)
+                echo "  = mapeador «$NOMBRE»"
+                continue
+                ;;
+        esac
+        # Un ambito que existe sin su mapeador emite tokens validos y SIN el claim, y el
+        # sintoma aparece despues y en otro sitio: un 403 del sistema llamado (#21).
+        "$KCADM" create "client-scopes/$ID_AMBITO/protocol-mappers/models" \
+            -r "$KC_REALM" -f "$ARCHIVO_MAPEADOR" >/dev/null
+        echo "  + mapeador «$NOMBRE»"
+    done
+done
 
 "$KCADM" create partialImport -r "$KC_REALM" -f "$ARCHIVO_CLIENTES"
 
