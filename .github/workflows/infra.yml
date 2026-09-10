@@ -1315,8 +1315,24 @@ jobs:
         if: steps.credenciales.outputs.hay == 'si'
         run: infrastructure/infra/verificaciones/ambiente/verificar-el-ambiente.sh --ambiente stg
 
-      - name: Qué quedó a medias, si algo falló
-        if: failure() && steps.credenciales.outputs.hay == 'si'
+      # `cancelled()` ademas de `failure()`, y NO es una precaucion: se midio. El
+      # 2026-09-10 el `pulumi up` de `183f95d` agoto el tope de 15 minutos declarado
+      # arriba y GitHub cerro el trabajo con conclusion **cancelled**, no *failure* — asi
+      # que este paso, escrito con `failure()` a secas, no llego a correr. O sea que el
+      # unico caso para el que ese tope existe —«las corridas que NO terminan», #252— era
+      # exactamente el que se quedaba sin diagnostico: quince minutos de espera y ni una
+      # linea sobre que pod la tenia parada.
+      #
+      # Lo que el registro de `pulumi` dejo ver aquella vez —y no basta—: el `Deployment`
+      # `kamayuk-identidad-web` fallo («container "identidad" terminated … Error: exit
+      # code 143») y el `Job` del realm salio con codigo 1 y seguia reintentando cuando
+      # cayo el tope. POR QUE lo dice este guion, con `kubectl logs` del pod que no
+      # arranco (#40), y no lo dice nadie mas.
+      #
+      # Cubre ademas la cancelacion a mano y la del grupo de concurrencia. No cuesta:
+      # el guion es de solo lectura y tarda segundos; callar cuesta la corrida entera.
+      - name: Qué quedó a medias, si algo falló o se agotó el tope
+        if: (failure() || cancelled()) && steps.credenciales.outputs.hay == 'si'
         run: infrastructure/.github/diagnostico-del-namespace.sh --ambiente stg
 
   aplicar-prod:
@@ -1572,8 +1588,11 @@ jobs:
         if: steps.brecha.outputs.declarada != 'si'
         run: infrastructure/infra/verificaciones/ambiente/verificar-el-ambiente.sh --ambiente prod
 
-      - name: Qué quedó a medias, si algo falló
-        if: failure()
+      # Ver el motivo entero en el paso equivalente de `aplicar-stg`: un tope agotado
+      # cierra el trabajo como *cancelled* y no como *failure*, asi que con `failure()` a
+      # secas el diagnostico no corre justo en la corrida que mas lo necesita.
+      - name: Qué quedó a medias, si algo falló o se agotó el tope
+        if: failure() || cancelled()
         run: infrastructure/.github/diagnostico-del-namespace.sh --ambiente prod
 
   deteccion-de-deriva:
@@ -1730,6 +1749,7 @@ jobs:
         if: ${{ !cancelled() && steps.credenciales.outputs.hay == 'si' }}
         run: infrastructure/infra/verificaciones/ambiente/verificar-el-ambiente.sh --ambiente prod
 
-      - name: Qué quedó a medias, si algo falló
-        if: failure() && steps.credenciales.outputs.hay == 'si'
+      # Ver el motivo entero en el paso equivalente de `aplicar-stg`.
+      - name: Qué quedó a medias, si algo falló o se agotó el tope
+        if: (failure() || cancelled()) && steps.credenciales.outputs.hay == 'si'
         run: infrastructure/.github/diagnostico-del-namespace.sh --ambiente prod

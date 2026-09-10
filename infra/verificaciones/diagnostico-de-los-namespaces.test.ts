@@ -29,6 +29,7 @@ interface Paso {
   name?: string;
   uses?: string;
   run?: string;
+  if?: string | boolean;
 }
 
 /** Las invocaciones del guion en el flujo, con el trabajo donde viven. */
@@ -47,6 +48,26 @@ function invocaciones(): { trabajo: string; linea: string }[] {
     }
   }
   return encontradas;
+}
+
+/** Los pasos que invocan el guion, con la condicion que decide si corren. */
+function pasosQueDiagnostican(): { trabajo: string; nombre: string; condicion: string }[] {
+  const flujo = load(readFileSync(FLUJO, "utf8")) as {
+    jobs: Record<string, { steps?: Paso[] }>;
+  };
+  const encontrados: { trabajo: string; nombre: string; condicion: string }[] = [];
+  for (const [trabajo, cuerpo] of Object.entries(flujo.jobs)) {
+    for (const paso of cuerpo.steps ?? []) {
+      if ((paso.run ?? "").includes("diagnostico-del-namespace.sh")) {
+        encontrados.push({
+          trabajo,
+          nombre: paso.name ?? "(sin nombre)",
+          condicion: String(paso.if ?? ""),
+        });
+      }
+    }
+  }
+  return encontrados;
 }
 
 describe("#40 · el diagnostico cubre los CINCO espacios de nombres", () => {
@@ -127,5 +148,36 @@ describe("#40 · el diagnostico cubre los CINCO espacios de nombres", () => {
     const guion = readFileSync(GUION, "utf8");
     expect(guion).toMatch(/NINGUN espacio de nombres lleva/);
     expect(guion, "no distingue «no se pudo mirar» de «esta bien»").toMatch(/NO es «todo bien»/);
+  });
+
+  /**
+   * Y el diagnostico corre tambien cuando el trabajo se cierra por **agotar su tope**.
+   *
+   * `failure()` de GitHub es falso en una cancelacion, y un `timeout-minutes` agotado cierra el
+   * trabajo con conclusion `cancelled`. Medido el 2026-09-10: el `pulumi up en stg` de `183f95d`
+   * se paso los 15 minutos esperando un `Deployment` que no podia quedar `Ready`, GitHub lo
+   * cancelo, y este paso —escrito entonces con `failure()` a secas— **no corrio**: la corrida que
+   * el tope existe para cortar (#252) era justo la que se quedaba sin decir que la tenia parada.
+   *
+   * Es la misma familia que C-15/C-16 y que la prueba de arriba: «no se pudo comprobar» no puede
+   * leerse igual que «esta bien» — y aqui ni siquiera se llegaba a leer nada.
+   */
+  it("el diagnostico corre tambien cuando el trabajo se CANCELA por agotar su tope", () => {
+    const pasos = pasosQueDiagnostican();
+    expect(
+      pasos.length,
+      "ningun paso del flujo invoca `diagnostico-del-namespace.sh`: esta guarda se quedaria sin " +
+        "sujeto y se cumpliria sola",
+    ).toBeGreaterThan(0);
+
+    const mudos = pasos.filter((p) => !p.condicion.includes("cancelled()"));
+    expect(
+      mudos,
+      "estos pasos solo diagnostican con `failure()`:\n  " +
+        mudos.map((p) => `${p.trabajo}: ${p.nombre} → «${p.condicion}»`).join("\n  ") +
+        "\n  Un `timeout-minutes` agotado cierra el trabajo como CANCELLED, no como *failure*, " +
+        "asi que ahi no corren: la corrida que se pasa quince minutos esperando termina sin una " +
+        "linea sobre que pod la tenia parada. Remedio: `failure() || cancelled()`.",
+    ).toEqual([]);
   });
 });
