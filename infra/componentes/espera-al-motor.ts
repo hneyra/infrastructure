@@ -43,11 +43,57 @@ import type { Contenedor, EspecificacionDePod, Manifiesto } from "./tipos";
  * No se compone aparte. Si se compusiera, un `Job` que apuntara a otro sitio esperaria al motor
  * equivocado y arrancaria igual — y el sintoma seria el mismo `Connection refused`, con una
  * espera en verde delante diciendo que todo esta bien.
+ *
+ * ## Y por que el UID va ESCRITO, medido contra `stg`
+ *
+ * Esta espera corre con la imagen del motor, y **esa imagen arranca como root a proposito**: su
+ * `entrypoint` toma posesion de PGDATA con `chown` antes de bajar privilegios el mismo con
+ * `gosu`, que es lo que `BaseDeDatos.ts` explica al omitirle `runAsNonRoot` al contenedor del
+ * motor. Asi que no declara ningun `USER`, y un `runAsNonRoot: true` **sin `runAsUser`** deja al
+ * kubelet sin forma de comprobar que no es root: se niega a crear el contenedor.
+ *
+ * Nacio asi en #44 y **el ambiente entero llevaba desde entonces sin poder desplegarse**. Medido
+ * en `stg` el 2026-09-10, en el diagnostico que el tope de `aplicar-stg` dejo volcar por primera
+ * vez: `Warning Failed (x395 over 89m) kubelet spec.initContainers{espera-al-motor}: Error:
+ * container has runAsNonRoot and image will run as root`, en **todos** los `Job` de migracion e
+ * implantacion y en los `CronJob` de `identidad`, `normativa`, `rentas` y `catastro`. Ninguno
+ * llego a crear su contenedor, asi que la migracion de `identidad` nunca corrio y su base se
+ * quedo sin esquema. La espera puesta para que un `Job` no muriera por una carrera es la que no
+ * dejaba arrancar a ninguno.
+ *
+ * Es la leccion de #157 y de #268 por tercera vez —`curlimages/curl` con su `USER` por nombre, y
+ * `mailpit` sin ninguno—, y las dos veces anteriores se cerraron con el mismo remedio: un
+ * `runAsUser` numerico en el manifiesto. `runAsNonRoot` a secas delega en la imagen la respuesta
+ * a si el pod arranca; con el UID puesto, la decide este archivo.
+ *
+ * Y con el UID puesto, `pg_isready` **tiene que decir con que usuario pregunta**: sin `-U`, libpq
+ * resuelve el usuario por omision del UID que corre, y un UID que la imagen no tenga en su
+ * `/etc/passwd` deja la consulta en `PQPING_NO_ATTEMPT` —codigo 3— que este bucle no distingue de
+ * «el motor no contesta»: cinco minutos de espera y despues un mensaje que acusa al motor de algo
+ * que no ha hecho. Con `-U` no hay lookup que pueda fallar. No autentica nada: `pg_isready`
+ * devuelve «acepta conexiones» en cuanto el servidor contesta al paquete de arranque, aunque
+ * fuera a rechazar esa cuenta.
  */
 
 /** Cuantas veces se pregunta antes de rendirse, y cada cuanto. */
 const INTENTOS = 60;
 const CADA_SEGUNDOS = 2;
+
+/**
+ * El UID con el que corre la espera, escrito y no delegado en la imagen.
+ *
+ * 65534 —`nobody`— es el que este repositorio ya usa para toda imagen que no declara un `USER`
+ * numerico: `mailpit`, `curlimages/curl` y los cuatro exportadores de observabilidad. La espera
+ * no necesita nada de la imagen: pregunta por TCP y duerme, con el sistema de archivos de solo
+ * lectura.
+ */
+const UID_SIN_PRIVILEGIO = 65534;
+
+/**
+ * El usuario con el que se pregunta. No autentica: quita el `getpwuid` que libpq haria si no se
+ * le dice ninguno (ver el epigrafe del UID, arriba).
+ */
+const USUARIO_DE_LA_PREGUNTA = "postgres";
 
 /**
  * El nombre del contenedor. Se cita desde la guarda, asi que vive aqui y no en dos sitios.
@@ -77,7 +123,7 @@ export function contenedorDeEspera(
   puerto: number,
 ): Contenedor {
   const guion =
-    `i=0; until pg_isready -h ${anfitrion} -p ${puerto} -q; do ` +
+    `i=0; until pg_isready -h ${anfitrion} -p ${puerto} -U ${USUARIO_DE_LA_PREGUNTA} -q; do ` +
     `i=$((i+1)); ` +
     `if [ "$i" -ge ${INTENTOS} ]; then ` +
     `echo "El motor ${anfitrion}:${puerto} no acepta conexiones tras ` +
@@ -98,7 +144,7 @@ export function contenedorDeEspera(
       requests: { cpu: "10m", memory: "32Mi" },
       limits: { cpu: "100m", memory: "64Mi" },
     },
-    securityContext: seguridadSinRoot({ readOnlyRootFilesystem: true }),
+    securityContext: seguridadSinRoot({ readOnlyRootFilesystem: true, runAsUser: UID_SIN_PRIVILEGIO }),
   };
 }
 

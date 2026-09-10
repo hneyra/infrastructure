@@ -142,6 +142,22 @@ describe("#44 · esperar no es esperar para siempre", () => {
     return [(contenedor.command ?? []).join(" "), ...enElManifiesto].join("\n");
   };
 
+  /**
+   * Y pregunta **con un usuario escrito**, que es lo que la vuelve independiente del UID.
+   *
+   * Desde que la espera corre con un `runAsUser` que la imagen no tiene en su `/etc/passwd`, un
+   * `pg_isready` sin `-U` intentaria resolver el usuario por omision, fallaria el `getpwuid` y
+   * devolveria codigo 3 —«no attempt»— que este bucle no distingue de «el motor no contesta»:
+   * cinco minutos de espera y luego un mensaje que acusa al motor de algo que no ha hecho.
+   */
+  it.each(ENVIRONMENTS)("«%s»: pregunta con un usuario escrito", (ambiente) => {
+    expect(
+      guionDe(ambiente),
+      "`pg_isready` sin `-U` resuelve el usuario del UID que corre, y ese UID lo pone el " +
+        "manifiesto y no la imagen: el fallo se leeria como «el motor no contesta»",
+    ).toMatch(/pg_isready .*-U \w+/);
+  });
+
   it.each(ENVIRONMENTS)("«%s»: el bucle cuenta, y sale con codigo 1 al agotarse", (ambiente) => {
     const guion = guionDe(ambiente);
     expect(guion, "el bucle no lleva cuenta: esperaria para siempre").toMatch(/i=\$\(\(i\+1\)\)/);
