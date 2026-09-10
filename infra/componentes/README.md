@@ -43,7 +43,7 @@ Seis fuentes se **leen de donde están**; cinco entran tal cual a un `ConfigMap`
 |---|---|---|
 | `crear-roles.sql` | `backend/sgtm-esquema` | Una copia sería un segundo sitio donde olvidar que el rol no puede ser superusuario |
 | `20-asignar-claves.sh` | `despliegue/inicializacion-del-motor` | El compose ya lo ejecuta; en k3s hay que **reproducirlo, no reinventarlo** |
-| `realm-sgtm.json` | `despliegue/identidad` | Un segundo realm versionado es un mapeador de `municipalidad_id` que se pierde |
+| `realm-kamayuk.json` | `despliegue/identidad` | Un segundo realm versionado es un mapeador de `municipalidad_id` que se pierde |
 | `reconciliar-identidades.sh` | `despliegue/identidad` | El compose usa el mismo guion para el alta declarativa: un solo guion, dos modos (ADR-0012) |
 | `municipalidades/*.json` | `despliegue/identidad` | La fuente versionada de personas y grupos, sin credenciales; `Identidad.ts` los deriva al `identidades.tsv` del `ConfigMap` |
 

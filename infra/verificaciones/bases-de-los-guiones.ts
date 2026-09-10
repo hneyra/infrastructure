@@ -30,8 +30,8 @@ import { raizDeInfra, raizDelRepositorio } from "../componentes/fuentes";
  *
  * ## Lo que NO es una base, y por que hay que decirlo
  *
- * `KC_REALM:-sgtm` en `reconciliar-identidades.sh` nombra un **realm de Keycloak**, no una
- * base, y es correcto: el realm se llama asi y no se renombro. Ninguna de las seis formas de
+ * `KC_REALM:-kamayuk` en `reconciliar-identidades.sh` nombra un **realm de Keycloak**, no
+ * una base, y es correcto: se llama asi porque es el nombre del producto. Ninguna de las seis formas de
  * arriba lo alcanza, y hay una prueba que lo afirma sobre ese archivo — porque «no sale
  * rojo» tambien seria cierto si el barrido no hubiera leido el archivo.
  */

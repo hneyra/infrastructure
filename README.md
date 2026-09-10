@@ -64,8 +64,8 @@ conviene tenerla escrita antes de que alguien mueva uno:
 | Archivo | Quién lo lee | ¿Entra en los manifiestos? |
 |---|---|---|
 | `despliegue/inicializacion-del-motor/20-asignar-claves.sh` | `fuentes.ts` | **Sí** |
-| `despliegue/identidad/realm-sgtm.json` | `fuentes.ts` | **Sí** |
-| `despliegue/identidad/realm-sgtm-ciudadano.json` | `fuentes.ts` | **Sí** |
+| `despliegue/identidad/realm-kamayuk.json` | `fuentes.ts` | **Sí** |
+| `despliegue/identidad/realm-kamayuk-ciudadano.json` | `fuentes.ts` | **Sí** |
 | `despliegue/identidad/reconciliar-identidades.sh` | `fuentes.ts` | **Sí** |
 | `despliegue/identidad/municipalidades/` | `fuentes.ts` | **Sí** |
 | `despliegue/identidad/ciudadanos/` | `fuentes.ts` | **Sí** |
@@ -174,7 +174,7 @@ running /docker-entrypoint-initdb.d/20-asignar-claves.sh
 | Las extensiones **en cada una** | `btree_gist pg_trgm postgis unaccent`, las cuatro |
 | Los cuatro roles | `kamayuk_owner`, `kamayuk_app`, `rol_carga_parametros` y `kamayuk_readonly`, todos con `super=false bypassrls=false`; `kamayuk_readonly` **sin login** |
 | Keycloak con **los dos realms** | `Realm 'sgtm' imported`, `Realm 'sgtm-ciudadano' imported` |
-| Y que son **dos emisores**, no dos clientes de uno | `/realms/sgtm` y `/realms/sgtm-ciudadano` responden con `public_key` propia |
+| Y que son **dos emisores**, no dos clientes de uno | `/realms/kamayuk` y `/realms/kamayuk-ciudadano` responden con `public_key` propia |
 | El **enrutado por prefijo** de ADR-0030 §2 | `/catastro/predios` → `catastro-web`, `/rentas/contribuyentes` → `rentas-web`, `/normativa/conjuntos` → **404** porque nadie lo reclama |
 
 ### 5.1 `verificar-el-motor.sh`, ejecutado — por el camino de Docker

@@ -198,8 +198,8 @@ describe("la plataforma levanta lo que todo el mundo necesita", () => {
 
   it("Keycloak siembra LOS DOS realms: son dos emisores, no dos clientes de uno", () => {
     const montajes = PLATAFORMA.services["identidad"]?.volumes?.join("\n") ?? "";
-    expect(montajes).toContain("realm-sgtm.json");
-    expect(montajes).toContain("realm-sgtm-ciudadano.json");
+    expect(montajes).toContain("realm-kamayuk.json");
+    expect(montajes).toContain("realm-kamayuk-ciudadano.json");
   });
 
   it("hay ingreso, y enruta por prefijo", () => {

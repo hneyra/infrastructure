@@ -189,7 +189,7 @@ contenedor.
 
 ## La identidad
 
-El realm está versionado en [`identidad/realm-sgtm.json`](identidad/realm-sgtm.json)
+El realm está versionado en [`identidad/realm-kamayuk.json`](identidad/realm-kamayuk.json)
 y se importa al arrancar: un realm configurado a mano en una pantalla no es
 reproducible. Fija los dos clientes, el PKCE obligatorio y **el mapeador que pone
 `municipalidad_id` en el token**, que es el claim del que sale el `SET LOCAL` y con

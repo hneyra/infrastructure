@@ -7,7 +7,7 @@
 
 [`ADR-0005`](ADR-0005-identidad-y-acceso.md) separó autenticación (OIDC, en Keycloak) de
 autorización (el modelo del manual, en la base). El realm quedó **como código**
-([`despliegue/identidad/realm-sgtm.json`](../../../despliegue/identidad/realm-sgtm.json), issue
+([`despliegue/identidad/realm-kamayuk.json`](../../../despliegue/identidad/realm-kamayuk.json), issue
 #151): fija los clientes, el PKCE obligatorio y el mapeador que pone `municipalidad_id` en el
 token. Lo que el realm **no** trae, a propósito, es «ni un usuario ni una clave»: un realm
 versionado con contraseñas es la forma más cómoda de que una contraseña acabe en producción.
@@ -37,7 +37,7 @@ Un archivo por municipalidad,
 con el ubigeo, el `municipalidadId`, el nombre del grupo y la lista de usuarios (cuenta, nombre,
 apellido, correo, cuál es el administrador). **Sin `credentials`, sin `password`, sin
 `enabled:false`.** Es el mismo formato que comparten el compose y el clúster, como
-`realm-sgtm.json`.
+`realm-kamayuk.json`.
 
 El `municipalidadId` es **numérico** —el claim es `jsonType.label: "long"` y se usa como
 `::bigint` en RLS— y lo asigna la implantación en la base. Va en el archivo: el operador lo copia

@@ -17,7 +17,7 @@ import {
   ciudadanosJson,
   municipalidadesJson,
   realmCiudadanoJson,
-  realmSgtmJson,
+  realmDeFuncionariosJson,
   reconciliarIdentidadesSh,
   reconciliarRealmSh,
 } from "./fuentes";
@@ -110,10 +110,10 @@ export interface IdentidadArgs {
 }
 
 /** El cliente que existe solo para que CI consiga un token sin navegador. */
-export const CLIENTE_DE_VERIFICACION = "sgtm-verificacion";
+export const CLIENTE_DE_VERIFICACION = "kamayuk-verificacion";
 
 /** El cliente con el que entran las personas. */
-export const CLIENTE_DEL_BACKOFFICE = "sgtm-backoffice";
+export const CLIENTE_DEL_BACKOFFICE = "kamayuk-backoffice";
 
 /** Ruta bajo la que cuelga Keycloak. La comparte con `publicar-imagenes.yml`. */
 export const RUTA_DE_IDENTIDAD = "/keycloak";
@@ -187,8 +187,8 @@ export interface DocumentosDelRealm {
    * Estan ademas dentro de `realm`, y eso no sobra: ahi es como llegan cuando el realm se
    * CREA. Lo que no hacen es llegar cuando ya existe — medido en `stg` el 2026-09-10, con
    * el ambito `kamayuk-servicio` que #21 anadio al archivo versionado: el `Job` hizo
-   * `kcadm update realms/sgtm` y despues `reconciliar-identidades.sh servicios` murio con
-   * «el realm «sgtm» no tiene el ambito «kamayuk-servicio»». `update realms` no importa los
+   * `kcadm update realms/kamayuk` y despues `reconciliar-identidades.sh servicios` murio con
+   * «el realm «kamayuk» no tiene el ambito «kamayuk-servicio»». `update realms` no importa los
    * `clientScopes`; solo el `create` lo hace.
    *
    * Van sueltos para que el guion pueda crear el que falte **sin analizar JSON**: la imagen
@@ -246,7 +246,7 @@ export function documentosDelRealm(args: {
    */
   fuente?: string;
 }): DocumentosDelRealm {
-  const versionado = JSON.parse(args.fuente ?? realmSgtmJson()) as RealmVersionado;
+  const versionado = JSON.parse(args.fuente ?? realmDeFuncionariosJson()) as RealmVersionado;
 
   // El `smtpServer` del archivo versionado apunta al buzon `correo` del compose y NUNCA
   // llega asi al clúster: o lo decide el stack (ADR-0012), o el ambiente no tiene relay
@@ -272,7 +272,7 @@ export function documentosDelRealm(args: {
           host: args.smtp.host,
           port: String(args.smtp.port),
           from: args.smtp.from,
-          fromDisplayName: "SGTM",
+          fromDisplayName: "Kamayuk",
           ssl: "false",
           starttls: String(args.smtp.startTls),
           auth: String(args.smtp.auth),
@@ -323,7 +323,7 @@ export function documentosDelRealm(args: {
       {
         ...ajustes,
         realm: args.realm,
-        displayName: "SGTM",
+        displayName: "Kamayuk",
         ...(smtpServer === undefined ? {} : { smtpServer }),
       },
       null,
@@ -771,12 +771,12 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
     domain,
     realm: realmDelCiudadano(realm),
     // `false` SIEMPRE, tambien en `stg`, y a diferencia del realm de funcionarios.
-    // El archivo versionado si trae un `sgtm-verificacion` —es como la escalera del
+    // El archivo versionado si trae un `kamayuk-verificacion` —es como la escalera del
     // compose consigue un token de ciudadano sin abrir un navegador (#415)—, y aqui se
     // filtra: el del ciudadano es el realm de cara al publico, y un cliente con
     // concesion directa de credenciales ahi es una puerta que nadie necesita en el
     // clúster. Lo comprueba `componentes.test.ts`: los clientes que llegan son
-    // exactamente `["sgtm-portal"]`.
+    // exactamente `["kamayuk-portal"]`.
     clienteDeVerificacion: false,
     ...(smtp === undefined ? {} : { smtp }),
     fuente: realmCiudadanoJson(),

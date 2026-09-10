@@ -101,7 +101,7 @@ config:
   kamayuk:postgresImage: postgis/postgis:16-3.4-alpine
   kamayuk:postgresStorageSize: 20Gi
   kamayuk:keycloakImage: quay.io/keycloak/keycloak:26.0
-  kamayuk:keycloakRealm: sgtm
+  kamayuk:keycloakRealm: kamayuk
   kamayuk:keycloakSeedTestUsers: "true"
   # El relay SMTP del alta declarativa de usuarios (ADR-0012). En stg es un buzón
   # Mailpit del propio clúster —`Identidad.ts` lo despliega— sin autenticación: la

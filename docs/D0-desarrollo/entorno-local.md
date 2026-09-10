@@ -112,8 +112,8 @@ psql -h 127.0.0.1 -U postgres -d catastro -tAc "select extname from pg_extension
 #   btree_gist · pg_trgm · plpgsql · postgis · unaccent
 
 # Los dos realms
-curl -s http://localhost:8180/realms/sgtm/.well-known/openid-configuration | head -c 60
-curl -s http://localhost:8180/realms/sgtm-ciudadano/.well-known/openid-configuration | head -c 60
+curl -s http://localhost:8180/realms/kamayuk/.well-known/openid-configuration | head -c 60
+curl -s http://localhost:8180/realms/kamayuk-ciudadano/.well-known/openid-configuration | head -c 60
 
 # Traefik: 404 es lo CORRECTO, esta vivo y no hay ningun sistema detras
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/rentas
@@ -130,7 +130,7 @@ este compose, así que `--wait` sólo comprueba que el contenedor corre. Espera 
 necesitas:
 
 ```bash
-until curl -sf http://localhost:8180/realms/sgtm/.well-known/openid-configuration > /dev/null
+until curl -sf http://localhost:8180/realms/kamayuk/.well-known/openid-configuration > /dev/null
 do sleep 5; done
 ```
 

@@ -1,7 +1,7 @@
 {
-  "realm": "sgtm",
+  "realm": "kamayuk",
   "enabled": true,
-  "displayName": "SGTM — marcha blanca",
+  "displayName": "Kamayuk — marcha blanca",
   "sslRequired": "external",
   "registrationAllowed": false,
   "resetPasswordAllowed": true,
@@ -10,16 +10,16 @@
   "smtpServer": {
     "host": "correo",
     "port": "1025",
-    "from": "no-responder@sgtm.local",
-    "fromDisplayName": "SGTM",
+    "from": "no-responder@kamayuk.local",
+    "fromDisplayName": "Kamayuk",
     "ssl": "false",
     "starttls": "false",
     "auth": "false"
   },
   "clients": [
     {
-      "clientId": "sgtm-backoffice",
-      "name": "Backoffice del SGTM",
+      "clientId": "kamayuk-backoffice",
+      "name": "Backoffice de Kamayuk",
       "enabled": true,
       "publicClient": true,
       "standardFlowEnabled": true,
@@ -56,7 +56,7 @@
       ]
     },
     {
-      "clientId": "sgtm-verificacion",
+      "clientId": "kamayuk-verificacion",
       "name": "Cliente de verificacion del despliegue",
       "description": "Solo para que CI consiga un token sin navegador. Sin redireccion: no sirve para personas.",
       "enabled": true,
@@ -87,7 +87,7 @@
   "clientScopes": [
     {
       "name": "kamayuk-servicio",
-      "description": "El ambito de una identidad de servicio (ADR-0028 §2). Lleva `municipalidad_id` al token desde el atributo de la CUENTA DE SERVICIO, que es lo que acota la corrida a una municipalidad. No declara ningun cliente: los clientes por municipalidad los crea `reconciliar-identidades.sh servicios` desde `municipalidades/<ubigeo>.json`, porque una clave de cliente no puede vivir en git (ADR-0012).",
+      "description": "El ambito de una identidad de servicio (ADR-0028 §2). Lleva `municipalidad_id` al token desde el atributo de la cuenta de servicio. Los clientes por municipalidad los crea `reconciliar-identidades.sh servicios` (ADR-0012).",
       "protocol": "openid-connect",
       "attributes": {
         "include.in.token.scope": "true",

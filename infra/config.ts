@@ -586,7 +586,7 @@ export function readInvariants(environment: Environment, reader: ConfigReader): 
     },
     identity: {
       image: requireText(reader, "keycloakImage", "la imagen de Keycloak, con su versión fijada"),
-      realm: reader.text("keycloakRealm") ?? "sgtm",
+      realm: reader.text("keycloakRealm") ?? "kamayuk",
       developmentMode: reader.boolean("keycloakDevelopmentMode") ?? false,
       seedTestUsers: reader.boolean("keycloakSeedTestUsers") ?? false,
       // Opcional: sin `keycloakSmtpHost` no hay relay, y el alta declarativa crea el

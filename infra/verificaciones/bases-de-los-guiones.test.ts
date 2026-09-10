@@ -197,12 +197,12 @@ describe("#16 · ningun guion nombra una base que no existe", () => {
   /**
    * **Y un realm no es una base.**
    *
-   * `KC_REALM:-sgtm` en `reconciliar-identidades.sh` es correcto: ese realm se llama asi y no
-   * se renombro. Se afirma que el barrido **leyo el archivo** antes de afirmar que no salio
+   * `KC_REALM:-kamayuk` en `reconciliar-identidades.sh` es correcto: ese realm se llama asi
+   * porque es el nombre del producto (#70). Se afirma que el barrido **leyo el archivo** antes de afirmar que no salio
    * rojo — «no sale rojo» tambien seria cierto si el archivo no se hubiera mirado, que es la
    * forma en que una guarda se queda sin sujeto y se da por buena.
    */
-  it("`reconciliar-identidades.sh` se lee, y su `KC_REALM:-sgtm` no sale", () => {
+  it("`reconciliar-identidades.sh` se lee, y su `KC_REALM:-kamayuk` no sale", () => {
     const archivo = "despliegue/identidad/reconciliar-identidades.sh";
     expect(GUIONES, "el barrido no llego a leer el guion del realm").toContain(archivo);
     expect(
