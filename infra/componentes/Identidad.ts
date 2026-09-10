@@ -149,9 +149,16 @@ interface ClienteDelRealm {
   [clave: string]: unknown;
 }
 
+interface AmbitoDelRealm {
+  name: string;
+  protocolMappers?: MapeadorDeProtocolo[];
+  [clave: string]: unknown;
+}
+
 interface RealmVersionado {
   realm: string;
   clients?: ClienteDelRealm[];
+  clientScopes?: AmbitoDelRealm[];
   components?: Record<string, { config?: Record<string, string[]> }[]>;
   [clave: string]: unknown;
 }
@@ -174,6 +181,52 @@ export interface DocumentosDelRealm {
   clientes: string;
   /** Los `clientId` que el Job comprueba al terminar. */
   clientesComprobados: string[];
+  /**
+   * Los ambitos que el realm declara, **cada uno en su propio documento**.
+   *
+   * Estan ademas dentro de `realm`, y eso no sobra: ahi es como llegan cuando el realm se
+   * CREA. Lo que no hacen es llegar cuando ya existe — medido en `stg` el 2026-09-10, con
+   * el ambito `kamayuk-servicio` que #21 anadio al archivo versionado: el `Job` hizo
+   * `kcadm update realms/sgtm` y despues `reconciliar-identidades.sh servicios` murio con
+   * «el realm «sgtm» no tiene el ambito «kamayuk-servicio»». `update realms` no importa los
+   * `clientScopes`; solo el `create` lo hace.
+   *
+   * Van sueltos para que el guion pueda crear el que falte **sin analizar JSON**: la imagen
+   * de Keycloak no trae `jq` ni `python`, que es lo mismo que obliga a derivar aqui los TSV
+   * de identidades (#21).
+   */
+  ambitos: AmbitoDerivado[];
+}
+
+/**
+ * Las claves del `ConfigMap` de un juego de ambitos: el ambito y cada mapeador suyo.
+ *
+ * `<prefijo><nombre>.json` y `<prefijo><nombre>--mapeador--<nombre>.json`. El guion los
+ * encuentra con un glob y saca el nombre del ambito del NOMBRE DEL ARCHIVO, que es lo que le
+ * permite crearlos sin analizar JSON dentro de una imagen que no trae con que.
+ */
+export function documentosDeAmbitos(
+  prefijo: string,
+  ambitos: AmbitoDerivado[],
+): Record<string, string> {
+  const claves: Record<string, string> = {};
+  for (const ambito of ambitos) {
+    claves[`${prefijo}${ambito.nombre}.json`] = ambito.representacion;
+    for (const mapeador of ambito.mapeadores) {
+      claves[`${prefijo}${ambito.nombre}--mapeador--${mapeador.nombre}.json`] =
+        mapeador.representacion;
+    }
+  }
+  return claves;
+}
+
+/** Un ambito del realm, con sus mapeadores, listo para `kcadm create`. */
+export interface AmbitoDerivado {
+  nombre: string;
+  /** La representacion entera, incluidos sus mapeadores: es lo que se crea de una vez. */
+  representacion: string;
+  /** Y cada mapeador aparte, para reparar un ambito que exista SIN el. */
+  mapeadores: { nombre: string; representacion: string }[];
 }
 
 export function documentosDelRealm(args: {
@@ -200,6 +253,17 @@ export function documentosDelRealm(args: {
   // y el realm va sin `smtpServer` —el Job pasa `SIN_CORREO=1` (Opción B)—.
   const { clients = [], components = {}, ...ajustes } = versionado;
   delete ajustes.smtpServer;
+
+  // Los ambitos se conservan DENTRO de `ajustes` —de ahi salen al crear el realm— y ademas
+  // se emiten sueltos, porque `kcadm update realms` no los mira (ver `DocumentosDelRealm`).
+  const ambitos: AmbitoDerivado[] = (versionado.clientScopes ?? []).map((a) => ({
+    nombre: a.name,
+    representacion: JSON.stringify(a, null, 2),
+    mapeadores: (a.protocolMappers ?? []).map((m) => ({
+      nombre: m.name,
+      representacion: JSON.stringify(m, null, 2),
+    })),
+  }));
 
   const smtpServer: Record<string, string> | undefined =
     args.smtp === undefined
@@ -269,6 +333,7 @@ export function documentosDelRealm(args: {
     // `OVERWRITE` reemplaza el cliente, no el realm: los usuarios no se tocan.
     clientes: JSON.stringify({ ifResourceExists: "OVERWRITE", clients: clientes }, null, 2),
     clientesComprobados: clientes.map((c) => c.clientId),
+    ambitos,
   };
 }
 
@@ -738,6 +803,11 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
       "realm-ciudadano.json": documentosDelCiudadano.realm,
       "perfil-de-usuario-ciudadano.json": documentosDelCiudadano.perfilDeUsuario,
       "clientes-ciudadano.json": documentosDelCiudadano.clientes,
+      // Los ambitos de los dos realms, uno por documento y sus mapeadores aparte. El
+      // prefijo separa los dos realms —`ambito--` y `ambito-ciudadano--`— porque el guion
+      // los recorre con un glob y no sabe leer JSON: la imagen de Keycloak no trae `jq`.
+      ...documentosDeAmbitos("ambito--", documentos.ambitos),
+      ...documentosDeAmbitos("ambito-ciudadano--", documentosDelCiudadano.ambitos),
       "reconciliar-realm.sh": reconciliarRealmSh(),
       // El alta declarativa de usuarios (ADR-0012): el mismo guion que el compose y el
       // TSV que `documentosDeIdentidades` deriva del archivo versionado.
@@ -998,21 +1068,23 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
     ],
   };
 
+  // La huella se DERIVA de lo que el Job aplica, y no de una lista escrita al lado.
+  //
+  // Escrita a mano, la lista se queda corta y su modo de fallo es mudo: el nombre del Job
+  // no cambia, `pulumi up` lo ve existir y no lo recrea, y **el cambio no llega nunca al
+  // cluster** — que es literalmente el defecto por el que este Job existe («--import-realm
+  // solo importa la PRIMERA vez», #151), un escalon mas arriba. Medido: hasta #63 la lista
+  // no incluia `reconciliar-realm.sh`, asi que arreglar ESE guion no creaba un Job nuevo y
+  // el arreglo se quedaba en el manifiesto. Y con un Job que ya agoto su `backoffLimit`
+  // —el estado de `stg` el 2026-09-10— tampoco lo reintenta nadie.
+  //
+  // Derivada del `ConfigMap` entero, olvidarse de algo deja de ser posible: lo que el Job
+  // monta ES lo que la huella cuenta. Las claves se ordenan para que la huella no dependa
+  // del orden en que se escribieron.
   const huella = huellaDeIdentidad([
-    documentos.realm,
-    documentos.perfilDeUsuario,
-    documentos.clientes,
-    // Y los del ciudadano: un cambio suyo tiene que crear un Job nuevo, o el
-    // realm versionado no llegaria nunca al clúster (que es el defecto que este
-    // Job existe para no repetir).
-    documentosDelCiudadano.realm,
-    documentosDelCiudadano.perfilDeUsuario,
-    documentosDelCiudadano.clientes,
-    identidades.tsv,
-    // Y el enrolamiento: enrolar a alguien tiene que crear un Job nuevo, o el ciudadano
-    // se declara en el repositorio y **no puede entrar** —el alta no llega al clúster—.
-    identidades.ciudadanos,
-    reconciliarIdentidadesSh(),
+    ...Object.entries(configuracionDelRealm.data)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .flat(),
     // Y el pod que los aplica, no solo lo que aplica. Ver el docstring de arriba.
     JSON.stringify(plantillaDeReconciliacion),
   ]);

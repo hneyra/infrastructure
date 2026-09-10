@@ -1181,16 +1181,14 @@ describe("#415 · enrolamiento del ciudadano", () => {
 
     expect(cm.data["ciudadanos.tsv"]).toContain("CIUDADANO\t");
 
+    // Se recompone del `ConfigMap` ENTERO y no de una lista de claves, porque esa es la
+    // regla desde #63: la huella cubre todo lo que el Job monta. Una lista escrita aqui
+    // volveria a dejar fuera lo que se anada manana —a `reconciliar-realm.sh` le paso, y su
+    // arreglo no llegaba al cluster porque el Job no cambiaba de nombre—.
     const recompuesta = huellaDeIdentidad([
-      cm.data["realm.json"] ?? "",
-      cm.data["perfil-de-usuario.json"] ?? "",
-      cm.data["clientes.json"] ?? "",
-      cm.data["realm-ciudadano.json"] ?? "",
-      cm.data["perfil-de-usuario-ciudadano.json"] ?? "",
-      cm.data["clientes-ciudadano.json"] ?? "",
-      cm.data["identidades.tsv"] ?? "",
-      cm.data["ciudadanos.tsv"] ?? "",
-      cm.data["reconciliar-identidades.sh"] ?? "",
+      ...Object.entries(cm.data)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .flat(),
       JSON.stringify(plantilla),
     ]);
 
