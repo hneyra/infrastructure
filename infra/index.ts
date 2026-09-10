@@ -281,16 +281,55 @@ new k8s.core.v1.Secret(
 /**
  * La credencial de pull del registro (issue #257), la segunda excepción de «Lo que
  * este archivo NO crea» de arriba. Misma clasificación que la de arriba: sin esto, un
- * clúster nuevo no puede traer `sgtm-aplicacion`, `sgtm-migrador` ni `sgtm-interfaz`
- * —los tres son privados en `ghcr.io/hneyra`— y cada `Deployment`/`Job` se queda en
- * `ImagePullBackOff` o `ErrImagePull` con un `401` de fondo, sin que nada en este
- * repositorio lo explicara hasta ahora.
+ * clúster nuevo no puede traer una imagen privada de `ghcr.io/hneyra` y cada
+ * `Deployment`/`Job` que la pida se queda en `ImagePullBackOff` o `ErrImagePull` con un
+ * `401` de fondo, sin que nada en este repositorio lo explicara hasta ahora.
  *
  * Va como `Secret` de `kubernetes.io/dockerconfigjson` más un `ServiceAccountPatch`
  * sobre `default` —la que usan todos los `Deployment`/`Job` de arriba, ninguno declara
  * `serviceAccountName`— en vez de repetir `imagePullSecrets` en cada manifiesto. El
  * `ServiceAccountPatch` usa Server-Side Apply: no reclama la cuenta entera, que crea
  * Kubernetes al crear el `Namespace`, solo el campo que le falta.
+ *
+ * ## En TODOS los espacios de nombres del ambiente, y no solo en el de la plataforma
+ *
+ * Esto llegaba a **uno**: el de la plataforma. Desde ADR-0031 cada sistema vive en el
+ * suyo, y allí no había ni `Secret` ni parche — funcionaba porque los ocho paquetes de
+ * los cuatro sistemas del corte son **públicos**, medido con un token anónimo de
+ * `ghcr.io/token`.
+ *
+ * `identidad` (ADR-0039) es el **primer paquete privado del producto**: medido el
+ * 2026-09-10 a las 02:14 UTC, `kamayuk-identidad` y `kamayuk-identidad-migrador`
+ * contestan **403** a un anónimo con el `sha` que los dos stacks declaran y con
+ * `latest`, mientras las nueve de los otros cuatro contestan 200 — y su repositorio es
+ * el único privado de los cinco, así que sus paquetes nacen privados por omisión. Sus
+ * **tres cargas** —el `Deployment` web y sus dos `Job`, en cada ambiente— quedarían en
+ * `ImagePullBackOff` con el `up` en verde.
+ *
+ * La lista **se deriva** de `namespacesDelAmbiente()` —o sea de `SISTEMAS_DEL_PRODUCTO`—
+ * y no se escribe aquí: una lista de «quién la necesita» se queda vieja el día que otro
+ * paquete pase a privado, y ese defecto no se ve hasta que un pod no arranca.
+ *
+ * **Lo que cuesta, y hay que decirlo: la credencial de pull pasa a vivir en SEIS
+ * espacios de nombres en vez de uno.** Son seis sitios de donde puede salir en vez de
+ * uno, y esa es la contrapartida frente a la otra salida —publicar los dos paquetes de
+ * `identidad`, que deja el backend del padrón de una municipalidad al alcance de
+ * cualquiera—. Lo que compra es que el despliegue funcione **sea cual sea la
+ * visibilidad del paquete**, que es justo lo que la otra salida no da: publicar cierra
+ * el caso de hoy y deja el siguiente paquete privado exactamente donde estaba.
+ *
+ * **El orden, y por qué no hace falta declararlo.** Los cinco espacios de nombres de sistema los
+ * crea el `ConfigGroup` de arriba, y el `ServiceAccount` `default` lo crea Kubernetes al crear
+ * cada `Namespace`; estos once recursos no declaran `dependsOn` hacia él por el mismo motivo que
+ * el `Secret` de respaldo (issue #158): el `ConfigGroup` no se da por creado hasta que **todos**
+ * sus `Deployment` quedan `Ready`, así que depender de él sería un círculo. Sin dependencia
+ * declarada corren en paralelo y el proveedor reintenta con backoff — se observó tolerando bien
+ * más de un minuto, y un `Namespace` lo crea el `ConfigGroup` en sus primeros segundos.
+ *
+ * Y no van como manifiestos a propósito: `yarn manifiestos` imprime, compara y guarda su
+ * salida, así que un `Secret` con el token dentro sería publicarlo. Como recursos de
+ * Pulumi el valor vive cifrado en el estado, igual que los otros dos `Secret` de este
+ * archivo, y `yarn manifiestos` sale **idéntico byte a byte**.
  *
  * **`pulumi.com/patchForce`, y por qué es intencional (issue #257, primer `pulumi up`
  * real contra `stg`):** el `ServiceAccount` `default` de `stg` YA tenía
@@ -308,48 +347,59 @@ const registroDeImagenes = pulumi
   .output(settings.application.imageRepository)
   .apply((repo) => repo.split("/")[0] ?? repo);
 
-const secretoDeRegistro = new k8s.core.v1.Secret(
-  resourceName(env, "registro-credenciales"),
-  {
-    metadata: {
-      name: resourceName(env, "registro-credenciales"),
-      namespace,
-      labels: commonLabels(env, "registro"),
-    },
-    type: "kubernetes.io/dockerconfigjson",
-    stringData: {
-      ".dockerconfigjson": pulumi
-        .all([registroDeImagenes, settings.registryCredentials.token])
-        .apply(([servidor, token]: [string, string]) =>
-          JSON.stringify({
-            auths: {
-              [servidor]: {
-                username: settings.registryCredentials.username,
-                password: token,
-                auth: Buffer.from(`${settings.registryCredentials.username}:${token}`).toString(
-                  "base64",
-                ),
-              },
-            },
-          }),
-        ),
-    },
-  },
-  { provider: proveedor },
-);
+const dockerconfigjson = pulumi
+  .all([registroDeImagenes, settings.registryCredentials.token])
+  .apply(([servidor, token]: [string, string]) =>
+    JSON.stringify({
+      auths: {
+        [servidor]: {
+          username: settings.registryCredentials.username,
+          password: token,
+          auth: Buffer.from(`${settings.registryCredentials.username}:${token}`).toString("base64"),
+        },
+      },
+    }),
+  );
 
-new k8s.core.v1.ServiceAccountPatch(
-  resourceName(env, "default-registro"),
-  {
-    metadata: {
-      name: "default",
-      namespace,
-      annotations: { "pulumi.com/patchForce": "true" },
+for (const espacio of namespacesDelAmbiente(env)) {
+  // El nombre LÓGICO del recurso de la plataforma no cambia, y no es cosmético: los dos
+  // stacks ya tienen creados `kamayuk-<amb>-registro-credenciales` y
+  // `kamayuk-<amb>-default-registro`, y renombrarlos es para Pulumi un recurso distinto —
+  // crea el nuevo, choca con el objeto que ya existe, y al borrar el viejo se lleva por
+  // delante el objeto de Kubernetes con él—. Los cinco nuevos llevan su espacio de nombres
+  // dentro, que es lo único que los distingue sin repetir una convención.
+  const sufijo = espacio === namespace ? "" : `-${espacio}`;
+
+  // El `metadata.name` SÍ es el mismo en los seis: un `Secret` es de su espacio de nombres,
+  // así que no colisiona, y que se llame igual en todos es lo que permite que
+  // `imagePullSecrets` se escriba una vez.
+  const secretoDeRegistro = new k8s.core.v1.Secret(
+    resourceName(env, `registro-credenciales${sufijo}`),
+    {
+      metadata: {
+        name: resourceName(env, "registro-credenciales"),
+        namespace: espacio,
+        labels: commonLabels(env, "registro"),
+      },
+      type: "kubernetes.io/dockerconfigjson",
+      stringData: { ".dockerconfigjson": dockerconfigjson },
     },
-    imagePullSecrets: [{ name: secretoDeRegistro.metadata.name }],
-  },
-  { provider: proveedor },
-);
+    { provider: proveedor },
+  );
+
+  new k8s.core.v1.ServiceAccountPatch(
+    resourceName(env, `default-registro${sufijo}`),
+    {
+      metadata: {
+        name: "default",
+        namespace: espacio,
+        annotations: { "pulumi.com/patchForce": "true" },
+      },
+      imagePullSecrets: [{ name: secretoDeRegistro.metadata.name }],
+    },
+    { provider: proveedor },
+  );
+}
 
 // Salidas del stack. Sirven de comprobante de que la configuración se leyó, se validó y
 // los manifiestos pasaron la auditoría: si algo contradijera la documentación,
