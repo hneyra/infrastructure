@@ -104,8 +104,28 @@ describe("lo que necesita los descriptores se DERIVA", () => {
     expect(fuera.map(([clave]) => clave)).toEqual([]);
   });
 
-  it("las tres herramientas que cargan el descriptor, mas pulumi y verificar", () => {
-    expect(HERRAMIENTAS).toEqual(["capacidad", "grafo", "manifiestos", "pulumi", "secretos", "verificar"]);
+  /**
+   * El censo se toca A MANO y con su motivo, que es lo que su docblock manda: una herramienta
+   * nueva que cargue los descriptores obliga a pasar por aqui y a decidir si el trabajo que la
+   * invoca clona a los hermanos o no.
+   *
+   * `espacios-con-credencial` es la CUARTA (2026-09-10, ADR-0039): imprime los espacios de
+   * nombres cuyo `ServiceAccount` `default` lleva la credencial de `ghcr.io`, y la carga viene de
+   * que lee `imagenes-publicadas.ts`, que compone los manifiestos. Quien la invoca es
+   * `comprobar-imagenes.sh`, que ya llamaba a `yarn manifiestos` — asi que su trabajo ya clonaba
+   * a los cinco y esta linea no cambia ningun flujo. Se anota porque el dia que alguien la invoque
+   * desde otro sitio, la primera mitad de esta guarda lo pondra rojo.
+   */
+  it("las CUATRO herramientas que cargan el descriptor, mas pulumi y verificar", () => {
+    expect(HERRAMIENTAS).toEqual([
+      "capacidad",
+      "espacios-con-credencial",
+      "grafo",
+      "manifiestos",
+      "pulumi",
+      "secretos",
+      "verificar",
+    ]);
   });
 
   /**
