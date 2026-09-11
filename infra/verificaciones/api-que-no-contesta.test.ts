@@ -72,6 +72,22 @@ function correr(kubectlFalso: string): {
   }
 }
 
+/**
+ * ## El tope, con su medida
+ *
+ * Las dos pruebas ejecutan el guion de verdad con un `kubectl` de mentira, y ese guion ESPERA:
+ * su bucle de reintentos es lo que estan midiendo. Medido: **3,3 a 4,4 s** segun la carga de la
+ * maquina, contra los **5 s** por omision de vitest — o sea que viven al borde, y con algo
+ * pesado al lado (la plataforma local, o el `build` de Gradle) cruzan el tope y salen rojas
+ * **por tiempo agotado y no por su asercion**.
+ *
+ * Eso ya estaba medido y escrito en el registro de #70 —«cinco pruebas que se caen por CARGA de
+ * CPU y no por defecto […] y cada corrida senalaba unas distintas, que es lo que lo delato»—, y
+ * el tope no se subio entonces. Se sube aqui: un rojo que aparece y desaparece segun lo que
+ * corra al lado no senala nada, y entrena a mirar los rojos como ruido.
+ *
+ * Con 30 s, si esto sale rojo es porque el guion de verdad dejo de distinguir las dos cosas.
+ */
 describe("#708 — el API que no contesta se distingue de un despliegue que falla", () => {
   it("cuando `kubectl version` no completa, el fallo lo dice y no habla de secretos", () => {
     // Falla como falla `kubectl` cuando su plazo vence, con el mensaje literal que dejo
@@ -114,4 +130,4 @@ describe("#708 — el API que no contesta se distingue de un despliegue que fall
       "muere despues, que es lo que demuestra que la guarda dejo pasar",
     ).toContain("el kubectl de mentira no sabe");
   });
-});
+}, 30_000);
