@@ -143,8 +143,23 @@ idDelAmbito() {
     # Por `id,name` y comparando el nombre, y no con `-q name=`: asi no depende de que
     # el filtro lo aplique el servidor. Una coincidencia equivocada aqui devolveria el
     # id de OTRO ambito y los mapeadores acabarian en el sitio que no es.
-    "$KCADM" get client-scopes -r "$KC_REALM" --fields id,name --format csv --noquotes \
-        2>/dev/null | awk -F, -v n="$1" '$2 == n { print $1; exit }'
+    #
+    # EN BASH Y SIN `awk`, y eso no es gusto: **la imagen de Keycloak no lo trae**. Este
+    # guion corre DENTRO de esa imagen (el `Job` del cluster), y con `awk` moria aqui con
+    # «awk: command not found» — medido en `stg`: los CUATRO `Job` del realm fallaron por
+    # esto entre el 2026-09-09 y el 2026-09-11, y el sintoma aguas abajo era otro
+    # completamente («El emisor contesto 404 al pedir el token de
+    # kamayuk-<sistema>-servicio-<ubigeo>»), porque sin este guion no hay clientes de
+    # servicio que crear. Lo que la imagen SI tiene, comprobado dentro del contenedor:
+    # `sed`, `grep`, `cut`, `tr`, `head`, `tail`, `sort`. NO tiene `awk`, `python3`, `jq`
+    # ni `curl`.
+    local id nombre
+    while IFS=, read -r id nombre _; do
+        [ "$nombre" = "$1" ] || continue
+        printf '%s' "$id"
+        return 0
+    done < <("$KCADM" get client-scopes -r "$KC_REALM" --fields id,name --format csv --noquotes \
+        2>/dev/null)
 }
 
 for ARCHIVO_AMBITO in "$DIRECTORIO/$PREFIJO_AMBITOS"*.json; do

@@ -178,6 +178,19 @@ if [ -f "$DIRECTORIO/$ARCHIVO_TSV" ]; then
     TSV="$DIRECTORIO/$ARCHIVO_TSV"
     echo "Datos: $TSV (derivado por Identidad.ts)"
 else
+    # >>> SOLO-COMPOSE: aqui dentro se puede usar `python3`, y en el resto del guion NO.
+    #
+    # Este bloque es **inalcanzable en modo `directo`**, que es el que corre dentro de la
+    # imagen de Keycloak —y esa imagen no trae `python3`, ni `awk`, ni `jq`, ni `curl`—:
+    # `Identidad.ts` escribe los TRES tsv en el ConfigMap que monta en `/realm`
+    # (`identidades.tsv`, `servicios.tsv`, `ciudadanos.tsv`), asi que alli el `if` de arriba
+    # siempre se cumple y esto no se ejecuta. Y si algun dia dejara de escribirlos, lo que
+    # pasa NO es un «command not found»: es el `command -v python3` de tres lineas mas abajo,
+    # que falla diciendo que falta el tsv Y la herramienta.
+    #
+    # Los marcadores no son adorno: `herramientas-dentro-de-keycloak.test.ts` exime lo que hay
+    # entre ellos y **revisa todo lo demas**. Quitarlos pone la guarda roja, que es lo que
+    # tiene que pasar — no ensancharia la exencion en silencio.
     if [ "$CUAL" = ciudadanos ]; then
         FUENTE_DIR="${CIUDADANOS_DIR:-$AQUI/ciudadanos}"
     else
@@ -339,6 +352,7 @@ for fila in filas:
 PY
     fi
     echo "Datos: $FUENTE_DIR/*.json (leidos con python3)"
+    # <<< SOLO-COMPOSE
 fi
 
 # ══ Modo `servicios`: los clientes de maquina a maquina (#21) ═════════════════
@@ -402,8 +416,26 @@ if [ "$CUAL" = servicios ]; then
     # comprobacion no existiera, la linea que asigna `default-client-scopes` le habria
     # puesto al cliente de servicio un ambito que no emite `municipalidad_id`, con lo que
     # su token sale valido y sin el claim — que es justo el estado del que #21 sale.
-    AMBITO=$(kc get client-scopes -r "$REALM" --fields id,name 2>/dev/null \
-        | python3 -c 'import json,sys; print(next((a["id"] for a in json.load(sys.stdin) if a["name"] == "kamayuk-servicio"), ""))')
+    # EN BASH Y SIN `python3`, y es una correccion de la correccion: la version anterior
+    # de esta linea lo usaba, y **esta rama corre en los DOS modos** — incluido `directo`,
+    # que es dentro de la imagen de Keycloak, que NO TRAE python3 (ni `awk`, ni `jq`, ni
+    # `curl`; comprobado dentro del contenedor de `stg`). O sea que arreglar el `-q name=`
+    # con python3 dejaba este paso muriendo con «python3: command not found» justo en el
+    # cluster, y su sintoma aguas abajo es el que se midio en `stg` el 2026-09-11: las
+    # implantaciones de tres satelites fallando con «El emisor contesto 404 al pedir el
+    # token de kamayuk-rentas-servicio-200105», que manda a mirar el consumidor.
+    #
+    # Se pide `--format csv --noquotes`, que es lo que ya usa el resto del guion, y se
+    # parte por coma con el `IFS` del `read`. Un nombre de ambito con una coma dentro
+    # rompería esto, y tambien rompia la version con `awk` de su hermano: los nombres de
+    # ambito de este producto no llevan comas, y si algun dia las llevan el sintoma es un
+    # id vacio y el `[ -n "$AMBITO" ]` de abajo lo dice.
+    AMBITO=""
+    while IFS=, read -r _id _nombre _resto; do
+        [ "$_nombre" = "kamayuk-servicio" ] || continue
+        AMBITO="$_id"
+        break
+    done < <(kc get client-scopes -r "$REALM" --fields id,name --format csv --noquotes 2>/dev/null)
     [ -n "$AMBITO" ] || { echo "FALLO: no se pudo leer el id del ambito." >&2; exit 1; }
 
     # Y QUE EL AMBITO LLEVE SU MAPEADOR, que es una comprobacion distinta y hace falta.
