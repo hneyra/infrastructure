@@ -408,10 +408,21 @@ if [ "$CUAL" = servicios ]; then
     # El ambito viene del realm versionado. Sin el, el cliente naceria sin mapeador y su token
     # NO llevaria `municipalidad_id`: el sistema llamado responderia 403 y el sintoma —«el
     # token no trae municipalidad»— no se parece a su causa, que es un realm sin aplicar.
-    if ! kc get client-scopes -r "$REALM" --fields name 2>/dev/null | grep -q "kamayuk-servicio"; then
-        echo "FALLO: el realm «$REALM» no tiene el ambito «kamayuk-servicio»." >&2
-        echo "No falta un cliente: falta la ESTRUCTURA que el realm versionado declara." >&2
-        echo "Aplica el realm primero (reconciliar-realm.sh) y vuelve." >&2
+    # SIN `2>/dev/null`, y eso no es cosmetica: con el, CUALQUIER fallo de `kcadm` —una sesion
+    # caducada, que imprime su aviso y sale con **0**; un `docker compose exec` que no encuentra
+    # su servicio; el realm equivocado— producia esta misma frase, que acusa al realm versionado
+    # de no declarar algo. Medido en la corrida 34603… de `arranque-en-limpio`: el paso dijo «el
+    # realm «kamayuk» no tiene el ambito «kamayuk-servicio»» y el volcado de diagnostico, dos
+    # segundos despues, listo los **catorce** ambitos con `kamayuk-servicio` dentro. La frase era
+    # falsa y nadie podia saberlo, porque lo que `kcadm` dijo se habia tirado.
+    AMBITOS=$(kc get client-scopes -r "$REALM" --fields name 2>&1)
+    if ! printf '%s' "$AMBITOS" | grep -q "kamayuk-servicio"; then
+        echo "FALLO: no se encontro el ambito «kamayuk-servicio» en el realm «$REALM»." >&2
+        echo "Lo que contesto kcadm, ENTERO —y si no son ambitos, el defecto es ese y no el" >&2
+        echo "realm—:" >&2
+        printf '%s\n' "$AMBITOS" | sed 's/^/    /' >&2
+        echo "Si de verdad falta el ambito: no falta un cliente, falta la ESTRUCTURA que el" >&2
+        echo "realm versionado declara. Aplica el realm primero (reconciliar-realm.sh)." >&2
         exit 1
     fi
     # SE ELIGE POR NOMBRE EN CLIENTE, y no con `-q name=...`: ese endpoint de Keycloak
@@ -456,8 +467,10 @@ if [ "$CUAL" = servicios ]; then
     #
     # El sintoma llega despues y en otro sitio: el sistema llamado responde 403 «el token no
     # trae municipalidad», que no se parece a «al ambito le falta un mapeador».
-    if ! kc get "client-scopes/$AMBITO/protocol-mappers/models" -r "$REALM" 2>/dev/null \
-            | tr -d ' \n' | grep -q '"claim.name":"municipalidad_id"'; then
+    MAPEADORES=$(kc get "client-scopes/$AMBITO/protocol-mappers/models" -r "$REALM" 2>&1)
+    if ! printf '%s' "$MAPEADORES" | tr -d ' \n' | grep -q '"claim.name":"municipalidad_id"'; then
+        echo "── lo que contesto kcadm al pedir los mapeadores del ambito ──" >&2
+        printf '%s\n' "$MAPEADORES" | sed 's/^/    /' >&2
         echo "FALLO: el ambito «kamayuk-servicio» existe pero NO lleva un mapeador que emita" >&2
         echo "«municipalidad_id». Un cliente creado asi obtiene un token valido y SIN el claim," >&2
         echo "y el sistema llamado lo rechaza con un 403 que no dice esto. Aplica el realm." >&2
