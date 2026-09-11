@@ -24,6 +24,21 @@
 config:
   # Lo ASIGNABLE del nodo, medido — no su capacidad (`capacidad.ts`).
   #
+  # ⚠ ESTAS DOS CIFRAS SON DEL NODO ANTERIOR (`vmd120205`) Y ESTÁN PENDIENTES DE REMEDIR.
+  # `kamayuk:domain` ya apunta a `vmd206041`, un 8 CPU / 16 GB, y estas dos líneas todavía
+  # describen el 4 CPU / 8 GB que se deja. **Se quedan así a propósito hasta medir el nodo
+  # nuevo**, y no es descuido: declarar por DEBAJO de lo real está admitido y solo aprieta la
+  # comprobación, mientras que declarar de MÁS es lo único que `comprobar-lo-asignable.sh`
+  # rechaza — y ese paso corre en `aplicar-prod` SIN la condición de la brecha, así que
+  # adelantarse al nodo no despliega nada: solo cambia el paso en el que falla. Ya pasó una
+  # vez, y está contado tres párrafos más abajo.
+  #
+  # El orden es: aprovisionar → `cortafuegos.sh` → `reservar-recursos-del-nodo.sh` → medir →
+  # escribir aquí lo medido → retirar la brecha si `yarn capacidad` dice que cabe.
+  #
+  # Lo que sigue es el registro de lo medido sobre el nodo ANTERIOR, que no se reescribe: es
+  # la medición que se hizo, y es lo que explica por qué la brecha existe.
+  #
   # La memoria es la medida sobre `vmd120205` el 2026-08-23 (INF-10 §4): «memoria
   # 8 126 500 Ki → asignable 6 029 348 Ki». Son los ~6 GB que este nodo reparte, y no
   # cambian: la reserva de memoria del issue #157 —2 Gi— modela lo que el sistema
@@ -45,9 +60,12 @@ config:
   # (`RECURSOS.arranque`, 250m → 100m): eran los 500m del pico que sobraban. Lo
   # permanente (1 540m) siempre cupo; el pico ahora son 1 760m contra 1 800m.
   #
-  # La reserva del nodo sigue estando mal en `vmd120205` —reserva 2 de sus 4 núcleos por
-  # la duplicación de #252— y corregirla sigue mereciendo la pena: devuelve ~1 000m de
-  # margen. Pero ya no bloquea el despliegue. INF-10 §4 tiene el procedimiento.
+  # La reserva estaba mal en `vmd120205` —reservaba 2 de sus 4 núcleos por la duplicación de
+  # #252, y `reservar-recursos-del-nodo.sh` ya escribe el reparto corregido (500m + 500m)—.
+  # En `vmd206041` el asunto es otro: **la reserva no está aplicada todavía**, así que hay que
+  # correr ese guion en el nodo nuevo antes de medir. Es su propia ventana de mantenimiento
+  # —reinicia k3s—, pero en un nodo vacío y antes del primer `pulumi up` no cuesta nada.
+  # INF-10 §4 tiene el procedimiento, y el guion pide teclear «entiendo» a propósito.
   #
   # Volver a medirlo después de tocar el nodo o la reserva:
   #   kubectl get node -o jsonpath='{.items[0].status.allocatable.cpu}{"/"}{.items[0].status.allocatable.memory}'
@@ -102,7 +120,26 @@ config:
   # Y no se retira ninguna copia: los respaldos de `sgtm-prod-respaldos` siguen donde estan, con
   # su clave de cifrado intacta (INF-08 §4). Recuperar el monolito seria recuperar los dos
   # componentes borrados de este repositorio, no volver a poner una linea.
-  kamayuk:domain: vmd120205.contaboserver.net
+  # EL NOMBRE DEL NODO, y de aquí cuelga más de lo que parece: el `IngressRoute`, el
+  # certificado que ACME emite, el `KC_HOSTNAME` de Keycloak, los `redirectUris` y
+  # `webOrigins` del realm (`Identidad.ts` los reescribe con `enElDominio()`) y —lo que más
+  # pesa— **el emisor OIDC**, `https://<domain>/keycloak/realms/<realm>`
+  # (`convenciones.ts:682`), que es lo que los cinco sistemas validan en cada token.
+  #
+  # 2026-09-11: `vmd120205.contaboserver.net` → `vmd206041.contaboserver.net`. El nodo viejo
+  # es un 4 CPU / 8 GB donde el stack NO CABE desde que entró el quinto sistema (la brecha de
+  # más arriba); el nuevo es el 8 CPU / 16 GB que `INF-01` §2 dimensiona y que el issue #158
+  # confirmó desplegando.
+  #
+  # ⚠ Esto es el nombre que da el PROVEEDOR, así que la próxima mudanza vuelve a cambiar el
+  # emisor de los cinco sistemas. Un nombre DNS propio y estable lo evitaría, y merece
+  # decidirse antes de que haya tokens en circulación.
+  #
+  # ⚠ El DNS tiene que apuntar al nodo nuevo ANTES de que Traefik pida el certificado: ACME
+  # resuelve el desafío HTTP-01 por el puerto 80 que abre `infra/vps/cortafuegos.sh`. Y el
+  # límite de Let's Encrypt son 50 certificados por dominio registrado y semana, así que los
+  # reintentos se pagan.
+  kamayuk:domain: vmd206041.contaboserver.net
   # A QUIEN se le avisa cuando algo de operacion necesita una persona, y DONDE (C-7 §4).
   # El primero que lo consume es `caja`: ADR-0026 §4 exige que un pago que no se pudo imputar
   # avise a una persona CON NOMBRE, porque es dinero cobrado sin registrar. Su aplicacion NO

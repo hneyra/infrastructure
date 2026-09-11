@@ -102,7 +102,7 @@ const DECLARADOS: ReadonlyMap<string, string> = new Map([
   // `if ! kubectl get pods … | grep -q .`: `grep -q .` casa con la PRIMERA linea, asi que es el
   // que mas probabilidad tiene de todos; diria que no hay pods pendientes habiendolos.
   [
-    "infra/vps/reservar-recursos-del-nodo.sh:220",
+    "infra/vps/reservar-recursos-del-nodo.sh:227",
     "cuenta pods pendientes: puede decir que no hay habiendolos",
   ],
 ]);
