@@ -1069,6 +1069,19 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
               },
             },
           },
+          // La clave INICIAL del `administrador` DEL REALM (#77). Va siempre, y el guion decide
+          // si la usa: solo la aplica a los usuarios que acaba de crear Y cuando no hay relay
+          // —o sea cuando el enlace por correo, que es el camino normal, no puede entregarse—.
+          // Sin esto `prod` levantaba con un realm en el que nadie podia entrar.
+          {
+            name: "KC_CLAVE_INICIAL",
+            valueFrom: {
+              secretKeyRef: {
+                name: secreto.identidad,
+                key: CLAVES.administradorDelRealm,
+              },
+            },
+          },
           { name: "KC_CLIENTES", value: documentos.clientesComprobados.join(" ") },
           // El realm del ciudadano y su cliente, para la segunda pasada.
           { name: "KC_REALM_CIUDADANO", value: realmDelCiudadano(realm) },

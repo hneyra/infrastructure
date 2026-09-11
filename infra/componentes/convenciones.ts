@@ -149,6 +149,19 @@ export const CLAVES = {
   aplicacion: "clave-app",
   /** Clave del administrador de arranque de Keycloak. */
   administradorDeIdentidad: "clave-administrador",
+  /**
+   * Clave INICIAL del usuario `administrador` DEL REALM —el funcionario, no el bootstrap admin
+   * de Keycloak de arriba—, y existe por #77.
+   *
+   * Sin ella, en un ambiente SIN relay SMTP el realm nace con su administrador sin clave y sin
+   * enlace: `reconciliar-identidades.sh` lo crea con `UPDATE_PASSWORD` pendiente y el correo es
+   * lo unico que la entrega. `prod` no declara relay a proposito (ADR-0012 opcion B, D-05 sin
+   * decidir), asi que levantaba con un realm en el que **nadie podia entrar**.
+   *
+   * Se entrega TEMPORAL: el operador la lee del `Secret` una vez, entra, y Keycloak le obliga a
+   * cambiarla, asi que la clave generada no sobrevive al primer acceso.
+   */
+  administradorDelRealm: "clave-del-administrador",
   /** Clave del rol de Keycloak en PostgreSQL. */
   baseDeIdentidad: "clave-base",
   /** Clave de `kamayuk_respaldo`. */

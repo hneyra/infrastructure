@@ -29,6 +29,12 @@
 #   4. Solo a los usuarios RECIEN creados: les envia el correo de Keycloak con el
 #      enlace de un solo uso para fijar la clave (`execute-actions-email` con
 #      UPDATE_PASSWORD). No se genera ninguna clave en ningun sitio.
+#
+#      EXCEPCION, y es #77: si NO hay relay (`SIN_CORREO=1`) y se le pasa
+#      `KC_CLAVE_INICIAL`, le fija esa clave TEMPORAL en vez de dejarlo sin nada. El
+#      `Secret` la genera `bootstrap-secretos.sh` como las otras once, asi que sigue siendo
+#      cierto que este guion no INVENTA ninguna clave: la recibe. Es lo que hace que un
+#      ambiente sin correo —`prod`— no nazca con su administrador inalcanzable.
 #   5. Comprobacion final: cada usuario declarado existe, esta `enabled`, tiene el
 #      atributo con el valor del archivo y esta en su grupo. Si no -> exit 1, y el
 #      despliegue queda rojo. Es lo que convierte este Job en una verificacion.
@@ -78,7 +84,10 @@
 #   KAMAYUK_KEYCLOAK_SERVICIO    (compose) servicio del compose; por omision `identidad`
 #   KC_SMTP_USUARIO/KC_SMTP_CLAVE  si el relay pide auth: se ponen en el realm con
 #                             `kcadm`, nunca quedan en el `realm.json` versionado
-#   SIN_CORREO=1              omite el envio del enlace (usuario sin clave; solo local)
+#   SIN_CORREO=1              omite el envio del enlace. Sin `KC_CLAVE_INICIAL` el usuario
+#                             queda sin clave; con ella, la recibe TEMPORAL (#77)
+#   KC_CLAVE_INICIAL          clave inicial cuando no hay relay (#77). La pone el `Job` del
+#                             realm desde `clave-del-administrador`
 set -euo pipefail
 
 AQUI="$(cd "$(dirname "$0")" && pwd)"
@@ -736,7 +745,42 @@ done < "$TSV"
 for par in $NUEVOS; do
     cuenta="${par%%:*}"; uid="${par#*:}"
     if [ "${SIN_CORREO:-0}" = 1 ]; then
-        echo "SIN_CORREO=1: «$cuenta» queda SIN clave y SIN enlace. Fijarla a mano (ver README)."
+        # SIN relay, que es el caso de `prod` a proposito (ADR-0012 opcion B, D-05 sin decidir).
+        # Hasta #77 esto dejaba al usuario SIN clave y SIN enlace: el realm nacia con su
+        # administrador inalcanzable, y el remedio era acordarse de fijarla a mano.
+        #
+        # Con `KC_CLAVE_INICIAL` puesta se le fija ESA, y **TEMPORAL** a proposito: el operador
+        # la lee del `Secret` una vez, entra, y Keycloak le obliga a cambiarla, asi que el valor
+        # generado no sobrevive al primer acceso.
+        #
+        # ⚠ Y que sea TEMPORAL y no permanente es una diferencia MEDIDA, no de gusto. Medido
+        # contra la plataforma de compose el 2026-09-11, con `kamayuk-verificacion` —el unico
+        # cliente del realm con `directAccessGrantsEnabled`— y la MISMA clave en los dos casos:
+        #
+        #   permanente  -> token de 2 185 caracteres
+        #   temporal    -> {"error":"invalid_grant",
+        #                   "error_description":"Account is not fully set up"}
+        #
+        # Ese mensaje se lee como un problema de la cuenta y lo que dice es «Keycloak exige
+        # cambiarla al entrar». En el CLUSTER no molesta a nadie: nada pide
+        # un token como el administrador (`verificar-el-ambiente.sh` no lo hace, y las cuentas de
+        # servicio usan `client_credentials`). En COMPOSE si molesta, y por eso alli la clave la
+        # sigue fijando `crear-usuario.sh` PERMANENTE — es lo que el e2e necesita, y es la
+        # cicatriz de `identidad`#14.
+        if [ -n "${KC_CLAVE_INICIAL:-}" ]; then
+            if kc set-password -r "$REALM" --username "$cuenta" \
+                    --new-password "$KC_CLAVE_INICIAL" --temporary >/dev/null 2>&1; then
+                echo "«$cuenta» recibio su clave inicial (temporal: Keycloak le obligara a cambiarla)."
+            else
+                echo "FALLO: no se pudo fijar la clave inicial de «$cuenta»." >&2
+                echo "Sin relay y sin clave, ese usuario no puede entrar y el realm nace" >&2
+                echo "inalcanzable. Comprueba que el Secret lleva «clave-del-administrador»." >&2
+                exit 1
+            fi
+            continue
+        fi
+        echo "SIN_CORREO=1 y sin KC_CLAVE_INICIAL: «$cuenta» queda SIN clave y SIN enlace."
+        echo "  Fijarla a mano: kcadm set-password -r $REALM --username $cuenta --new-password <clave> --temporary"
         continue
     fi
     if kc update "users/$uid/execute-actions-email" -r "$REALM" \
