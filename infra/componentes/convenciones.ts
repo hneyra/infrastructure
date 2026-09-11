@@ -311,6 +311,53 @@ const RECURSOS = {
     requests: { cpu: "10m", memory: "32Mi" },
     limits: { cpu: "200m", memory: "128Mi" },
   },
+  /**
+   * El `Job` que reconcilia los dos realms: corto, pero arranca una JVM en CADA llamada.
+   *
+   * ## Por que no puede usar `auxiliar`, medido en `stg`
+   *
+   * `auxiliar` esta descrito para «los contenedores de espera y los guiones de `psql`», y ese
+   * `limits` de **200m** es un quinto de nucleo. El guion del realm no es eso: invoca
+   * `kcadm.sh` **42 veces escritas** —11 en `reconciliar-realm.sh` y 31 en
+   * `reconciliar-identidades.sh`, mas las de sus bucles— y `kcadm.sh` arranca una JVM entera
+   * cada vez.
+   *
+   * Medido el 2026-09-11 leyendo las marcas de tiempo del pod en `stg`, con `auxiliar` puesto:
+   *
+   * ```
+   * 09:00:16  Datos: /realm/identidades.tsv
+   * 09:02:20  Created new group                 <- 124 s
+   * 09:02:58  Grupo creado                      <-  38 s
+   * 09:05:27  Created new user                  <- 149 s
+   * 09:06:05  Usuario creado                    <-  38 s
+   * 09:07:16  Enlace enviado                    <-  71 s
+   * ```
+   *
+   * **De 38 a 150 segundos por llamada.** La misma llamada, en el anfitrion y sin techo, mide
+   * **2,1 s** —medido al reescribir `restaurar-ambitos-de-fabrica.sh`, que paso de 12 m 31 s a
+   * 7,3 s por este mismo motivo—. O sea que el techo multiplica por veinte o setenta.
+   *
+   * ## Lo que eso costaba, y no se parecia a su causa
+   *
+   * El `Job` tarda **decenas de minutos** y el tope de `aplicar-stg` es de **15**, asi que
+   * `pulumi up` —que espera a que el `Job` termine— **no podia alcanzarlo nunca**: se cerraba
+   * como *cancelled*, tres veces seguidas el 2026-09-11, cada vez dejando un estado a medias
+   * distinto. Ninguno de esos rojos mencionaba la CPU.
+   *
+   * ## Y por que subir el `limits` es GRATIS
+   *
+   * `capacidad.ts` cuenta **`requests`** y no `limits` (lineas 151-164), asi que el `request`
+   * se queda en 10m y el presupuesto del planificador no cambia. Es el mismo razonamiento que
+   * el perfil `arranque` ya lleva escrito: «un `request` bajo solo significa poca garantia
+   * previa», y el nodo de `stg` esta al **31 %** de CPU reservada.
+   *
+   * La memoria sube con la CPU por lo mismo: una JVM en 128Mi arranca, pero con el recolector
+   * peleando por cada objeto.
+   */
+  reconciliacionDeIdentidades: {
+    requests: { cpu: "10m", memory: "32Mi" },
+    limits: { cpu: "2", memory: "512Mi" },
+  },
   /** `postgres-exporter`, `node-exporter`: solo leen y traducen, casi no piden nada. */
   exportador: {
     requests: { cpu: "10m", memory: "32Mi" },

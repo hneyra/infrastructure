@@ -130,4 +130,4 @@ describe("#708 — el API que no contesta se distingue de un despliegue que fall
       "muere despues, que es lo que demuestra que la guarda dejo pasar",
     ).toContain("el kubectl de mentira no sabe");
   });
-}, 30_000);
+});
