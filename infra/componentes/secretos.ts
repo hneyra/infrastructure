@@ -255,6 +255,19 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       periodicidad: "anual",
     },
     {
+      rol: "administrador-del-realm",
+      namespace: enLaPlataforma,
+      secreto: nombres.identidad,
+      clave: CLAVES.administradorDelRealm,
+      consumidor: "El Job que reconcilia el realm, para fijar la clave INICIAL del administrador",
+      // Tampoco es una clave de PostgreSQL, y tampoco la rota `rotar-clave.sh`: es de un
+      // usuario de Keycloak. Y a diferencia del bootstrap admin de arriba, esta **caduca por
+      // construccion**: se entrega TEMPORAL, asi que Keycloak obliga a cambiarla en el primer
+      // acceso y el valor del `Secret` deja de servir. Rotarla solo hace falta si el
+      // administrador nunca llego a entrar y hay que volver a entregarsela.
+      periodicidad: "tras-incidente",
+    },
+    {
       rol: "keycloak-base",
       namespace: enLaPlataforma,
       secreto: nombres.identidad,
