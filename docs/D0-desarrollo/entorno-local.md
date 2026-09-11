@@ -59,23 +59,66 @@ los cinco. Añadirlos exige extraer el `buildSrc` del monolito, que no está hec
 
 ## 4. La plataforma local
 
-Es lo que todo el mundo levanta, siempre: PostgreSQL con **las cuatro bases**, Keycloak con **sus
+Es lo que todo el mundo levanta, siempre: PostgreSQL con **las cinco bases**, Keycloak con **sus
 dos realms**, el buzón de correo y Traefik con el enrutado por prefijo. Nada de esto es de ningún
 sistema.
 
 ```bash
-cp despliegue/.env.ejemplo despliegue/.env
+# Todo: el .env si falta, la plataforma, el sistema que se le pida y sus identidades
+cd despliegue && ./levantar-todo.sh identidad
 
-# Una clave DISTINTA por marcador. Con `sed` y `$(openssl …)` saldrían todas iguales:
-# la sustitución de comandos se evalúa una sola vez, antes que el sed.
+# O sólo la plataforma
+./levantar-todo.sh
+```
+
+**El `.env` ya no se copia a mano**: `levantar-todo.sh` lo genera de `.env.ejemplo` con una clave
+distinta por marcador si no existe, y lo deja en modo 600. La receta con `sed` que recomendaba la
+cabecera de `.env.ejemplo` **no funcionaba** —medido: seis marcadores, **una sola clave**, porque
+`$(openssl …)` lo expande la shell una vez antes de que `sed` corra, y su propio comentario decía
+«una por línea, no todas iguales»—. Y `CAMBIAR_.*` alcanzaba además su propia línea de comentario.
+
+A mano, si hace falta, es esto —lo que el guión hace por dentro, **anclado a las líneas de
+asignación** para no tocar los comentarios:
+
+```bash
+cp despliegue/.env.ejemplo despliegue/.env
 python3 - <<'PY'
 import re, secrets, pathlib
 env = pathlib.Path('despliegue/.env')
-env.write_text(re.sub(r'CAMBIAR_\S+', lambda _: secrets.token_hex(24), env.read_text()))
+env.write_text(re.sub(r'(?m)^([A-Z_]+)=CAMBIAR_\w+$',
+                      lambda m: f"{m.group(1)}={secrets.token_hex(24)}", env.read_text()))
 PY
 
 docker compose -f despliegue/plataforma.compose.yaml up -d --wait
 ```
+
+**Y un sistema contra ella necesita `--env-file`**, que no estaba escrito en ningún sitio (#74): los
+cinco composes interpolan variables del `.env` de la plataforma, ninguno declara `env_file:` y
+ninguno tiene `.env` propio. Sin él, el `up` muere en el primer `${...:?}`.
+
+```bash
+docker compose -f ../identidad/despliegue/compose.yaml \
+  --env-file despliegue/.env up --build --wait
+```
+
+### Y para que un token SIRVA hacen falta cuatro pasos más
+
+Los hace [`despliegue/identidad/preparar-identidades.sh`](../../despliegue/identidad/preparar-identidades.sh),
+que `levantar-todo.sh` encadena **después** de levantar el sistema —su último paso necesita el `id`
+que la secuencia le dio a la municipalidad, y esa fila la escribe la implantación—. Es idempotente,
+imprime al terminar las credenciales que el arnés de `identidad` necesita, y **tres de sus cuatro
+pasos son rodeos de defectos abiertos**
+([#72](https://github.com/hneyra/infrastructure/issues/72),
+[#73](https://github.com/hneyra/infrastructure/issues/73),
+[#74](https://github.com/hneyra/infrastructure/issues/74)), cada uno etiquetado con su número dentro
+del guión para que se caiga a trozos el día que se cierren. El detalle está en
+[`despliegue/README.md`](../../despliegue/README.md).
+
+Lo mismo corre en CI —la plataforma, `identidad` y las 55 preguntas de su e2e— en cada PR que toque
+la plataforma y una vez al día:
+[`arranque-en-limpio.yml`](../../.github/workflows/arranque-en-limpio.yml). Es el flujo que habría
+cazado #71, #72 y #73 el primer día; hasta ahora **ninguno de los seis repositorios levantaba la
+plataforma en CI** — medido: cero `docker compose up`.
 
 `.env` se lee de `despliegue/`, que es el directorio del archivo de compose, no del que ejecuta.
 
@@ -96,10 +139,14 @@ Los comandos usan el puerto por omisión; si lo moviste (§5), añade `-p $KAMAY
 ```bash
 export PGPASSWORD=$(grep '^KAMAYUK_CLAVE_SUPERUSUARIO=' despliegue/.env | cut -d= -f2)
 
-# Las cuatro bases
+# Las cinco bases
 psql -h 127.0.0.1 -U postgres -d postgres -tAc \
   "select datname from pg_database where datistemplate = false order by 1"
-#   caja · catastro · normativa · postgres · rentas
+#   caja · catastro · identidad · normativa · postgres · rentas
+#
+# Eran cuatro hasta ADR-0039 y esta linea decia cuatro: `identidad` es la quinta, y una
+# comprobacion que no la espera pasa en verde con la base del dueno de la autorizacion
+# ausente — que es justo el estado en el que nadie puede entrar a ningun sistema.
 
 # Los cuatro roles, y NINGUNO superusuario ni con BYPASSRLS
 psql -h 127.0.0.1 -U postgres -d postgres -tAc \

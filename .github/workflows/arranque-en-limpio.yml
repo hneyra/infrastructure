@@ -1,0 +1,216 @@
+# La plataforma y `identidad` se levantan DESDE CERO, y se les hacen 55 preguntas.
+#
+# ── PARA QUE EXISTE ESTE FLUJO ──────────────────────────────────────────────────
+#
+# Ninguno de los seis repositorios levantaba la plataforma en CI. Medido: cero
+# `docker compose up` en los flujos de los seis. Y eso tuvo un precio exacto — tres
+# defectos que rompen el arranque en limpio y que no vio nadie hasta que alguien lo
+# hizo a mano, meses despues de introducirlos:
+#
+#   #71  `clientScopes[0].description` tenia 390 caracteres contra un `varchar(255)`:
+#        **Keycloak no arrancaba**. Estaba en `main`.
+#   #72  un `clientScopes` no vacio en el realm versionado **borra los trece ambitos de
+#        fabrica**: sin `profile` no hay `preferred_username`, y TODO funcionario recibe
+#        403 con un token perfectamente valido.
+#   #73  el claim `municipalidad_id` se escribe con **tres valores distintos** —el ubigeo,
+#        el `municipalidadId` del archivo y el id que asigna la secuencia— y nada los
+#        reconcilia: 403 «la cuenta no esta dada de alta en este sistema» **con la fila
+#        delante**.
+#
+# Los tres son invisibles para una prueba de unidad y para `yarn verificar`: el compose
+# analiza, los tipos cuadran, el descriptor se compone. Se ven al LEVANTARLO.
+#
+# Este flujo es el que los habria cazado el primer dia, y por eso **bloquea**. Con filtro
+# `paths`, para no frenar los PR que no tocan la plataforma.
+#
+# ── POR QUE VIVE EN `infrastructure` Y NO EN `identidad` ────────────────────────
+#
+# Porque aqui viven la plataforma, el realm versionado y los cuatro guiones que preparan
+# las identidades. Un defecto del realm tiene que salir rojo **donde se causa**, no donde
+# se sufre: #71 y #72 son de este repositorio y el sintoma aparecia en `identidad`.
+#
+# ── POR QUE EL UBIGEO ES 200105 Y NO EL 200101 DE `.env.ejemplo` ────────────────
+#
+# Porque con 200101 el rodeo de #73 **no se ejerce**: `municipalidades/200101.json` declara
+# `municipalidadId: 1`, y 1 es justo lo que la secuencia asigna en una base recien creada,
+# asi que los dos valores coinciden por casualidad y alinearlos no cambia nada.
+# `200105.json` declara **9**. Con ese, el archivo dice 9, el guion de servicios escribe
+# 200105, la base asigna 1, y solo el ultimo lo entiende el RLS — o sea que el paso que
+# los alinea esta de verdad bajo prueba. Una verificacion que pasa porque dos numeros
+# coinciden no verifica nada.
+#
+# ── ESTE FLUJO EJERCE LOS HERMANOS EN SU RAMA POR OMISION, Y ESO SE NOTA ───────
+#
+# `clonar-los-hermanos` trae los cinco sistemas de `main`, no de la rama del PR — y no puede
+# ser de otra forma: este repositorio no sabe en que rama de `identidad` esta trabajando
+# nadie. Asi que un cambio que este flujo necesite de un hermano **hay que mezclarlo alli
+# primero**, y hasta entonces este flujo sale rojo por construccion.
+#
+# Medido en su primera corrida (34573340241): los cinco pasos del arranque pasaron —el `.env`
+# generado, la plataforma sana, la municipalidad fijada, `identidad` construido y las
+# identidades preparadas— y el sexto murio con «el realm «kamayuk» no contesta en
+# http://localhost:8181» y codigo 2. El 8181 es el puerto de UNA maquina de desarrollo, que es
+# justo el defecto que `identidad`#14 arregla: ese PR hace que `ejercer.sh` derive el puerto
+# del `.env`, y sin mezclarlo el flujo ejerce el `ejercer.sh` de `identidad@main`, que lo trae
+# escrito. Es la misma forma que `ContratosDeLosConsumidoresTest`: un rojo que **nombra su
+# remedio y vive en otro repositorio**.
+#
+# ── QUE NO HACE ────────────────────────────────────────────────────────────────
+#
+# No levanta los cuatro consumidores ni mide la ventana de la copia local (etapa 5 de
+# ADR-0039), y no toca el cluster: aqui todo es compose. Y no necesita ningun secreto
+# nuevo: las claves son de un entorno efimero y se generan en la corrida. Lo unico que usa
+# es `GH_CLONE_KEY`, que ya existe en los seis.
+
+name: Arranque en limpio
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      # Todo lo que se levanta o se ejecuta aqui.
+      - "despliegue/**"
+      # El componente del cluster que declara el MISMO realm y los MISMOS guiones. Si el
+      # compose y el cluster dejan de decir lo mismo, esto es lo unico que lo nota.
+      - "infra/componentes/Identidad.ts"
+      - "infra/componentes/identidad/**"
+      - ".github/workflows/arranque-en-limpio.yml"
+  # Una vez al dia: los tres defectos que motivan este flujo no los introdujo un PR que
+  # tocara la plataforma —#71 llego con un texto en el realm, #73 con un atributo— y una
+  # imagen nueva de Keycloak o de PostGIS puede romper el arranque sin que nadie empuje
+  # nada. A las 06:40 UTC, que es antes de la jornada aqui.
+  schedule:
+    - cron: "40 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: arranque-en-limpio-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  levantar:
+    name: La plataforma e `identidad` arrancan de cero, y el e2e pasa sin un paso manual
+    runs-on: ubuntu-latest
+    # El arranque en frio medido en una maquina local: la plataforma ~40 s, la imagen de
+    # `identidad` ~3 min de compilacion Gradle, las identidades ~1 min, el e2e 6 s. En un
+    # runner sin cache de Gradle la compilacion es lo que manda.
+    timeout-minutes: 30
+
+    steps:
+      # `path: infrastructure` y no la raiz, porque todo este proyecto supone que los seis
+      # clones son HERMANOS y `actions/checkout` se niega a escribir fuera del espacio de
+      # trabajo: lo que se mueve es el anfitrion, y el espacio pasa a hacer de padre (C-9a).
+      - uses: actions/checkout@v4
+        with:
+          path: infrastructure
+
+      # Los cinco sistemas al lado. Este flujo solo construye `identidad`, y aun asi los
+      # trae todos con la accion comun en vez de un `checkout` suelto: un checkout que se
+      # saliera del patron es el sitio por donde vuelve el defecto que C-20 cerro.
+      - uses: ./infrastructure/.github/actions/clonar-los-hermanos
+        with:
+          token: ${{ secrets.GH_CLONE_KEY || github.token }}
+
+      # 1 · El `.env` lo genera el MISMO guion que usa quien desarrolla, y la plataforma
+      #     tambien. Sin sistemas todavia: lo que se ejercita aqui es el generador de
+      #     claves —una distinta por marcador— y que la plataforma llega a sana.
+      - name: La plataforma, y el .env generado por el guion
+        working-directory: infrastructure/despliegue
+        run: ./levantar-todo.sh
+
+      # 2 · La municipalidad, fijada al ubigeo que hace que el rodeo de #73 se ejerza
+      #     (ver la cabecera). Se toca el `.env` YA GENERADO y no `.env.ejemplo`, para que
+      #     el ejemplo siga siendo el que D0 documenta.
+      - name: Fijar la municipalidad de la corrida (200105, la que NO coincide)
+        working-directory: infrastructure/despliegue
+        run: |
+          set -euo pipefail
+          sed -i \
+            -e 's/^KAMAYUK_UBIGEO=.*/KAMAYUK_UBIGEO=200105/' \
+            -e 's/^KAMAYUK_MUNICIPALIDAD=.*/KAMAYUK_MUNICIPALIDAD="Municipalidad Distrital de Catacaos"/' \
+            -e 's/^KAMAYUK_TIPO_DE_MUNICIPALIDAD=.*/KAMAYUK_TIPO_DE_MUNICIPALIDAD=DISTRITAL/' \
+            -e 's/^KAMAYUK_ADMINISTRADOR=.*/KAMAYUK_ADMINISTRADOR=administrador/' \
+            -e 's/^KAMAYUK_NOMBRE_DEL_ADMINISTRADOR=.*/KAMAYUK_NOMBRE_DEL_ADMINISTRADOR="Administrador de verificacion"/' \
+            .env
+          # Se lee aqui, donde se escribe: un `.env` que bash no puede leer se manifiesta
+          # tres pasos mas adelante como un `127` sin contexto, con los demas saltados.
+          set -a; . ./.env; set +a
+          test "$KAMAYUK_UBIGEO" = 200105
+          test -n "$KAMAYUK_MUNICIPALIDAD"
+          declarado=$(python3 -c "import json;print(json.load(open('identidad/municipalidades/200105.json'))['municipalidadId'])")
+          echo "El archivo declara municipalidadId=$declarado; la secuencia asignara 1."
+          test "$declarado" != "1"   # si un dia coinciden, este flujo deja de probar #73
+
+      # La clave del administrador la fija la corrida y no el guion, porque el paso
+      # siguiente la necesita como variable: `preparar-identidades.sh` la IMPRIME para una
+      # persona, y la honra si viene dada.
+      - name: Una clave efimera para el administrador
+        run: echo "CLAVE_DEL_ADMINISTRADOR=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+
+      # 3 · `identidad` contra la plataforma, y las identidades. Este es el paso que
+      #     sustituye las 78 lineas de pasos manuales del README del e2e.
+      - name: "`identidad` de cero, y las identidades preparadas"
+        working-directory: infrastructure/despliegue
+        run: ./levantar-todo.sh identidad
+
+      # 4 · Las 55 preguntas. Los puertos NO se le pasan: los deriva del mismo `.env`,
+      #     que es lo que impide que este flujo y una maquina de desarrollo difieran (#74).
+      - name: Ejercer la API de punta a punta
+        working-directory: identidad/despliegue/pruebas-e2e
+        run: |
+          set -euo pipefail
+          CLAVE_DE_SERVICIO_RENTAS=$(cat ../../../infrastructure/despliegue/.claves-de-servicio/rentas-200105)
+          export CLAVE_DE_SERVICIO_RENTAS
+          ./ejercer.sh
+
+      # `failure() || cancelled()` y no solo `failure()`: un `timeout-minutes` agotado
+      # cierra el trabajo como **cancelado**, y es justo la corrida cuyos registros hacen
+      # falta —la que se quedo esperando a un servicio que no llego a sano—.
+      - name: Que quedo a medias
+        if: failure() || cancelled()
+        working-directory: infrastructure/despliegue
+        run: |
+          echo "::group::Estado de la plataforma"
+          docker compose -f plataforma.compose.yaml --env-file .env ps -a || true
+          echo "::endgroup::"
+          echo "::group::Estado de identidad"
+          docker compose -f ../../identidad/despliegue/compose.yaml --env-file .env ps -a || true
+          echo "::endgroup::"
+          # `--tail 40` y no doscientas: con siete servicios, doscientas lineas cada uno son
+          # mil cuatrocientas y el fallo queda enterrado.
+          echo "::group::Registros de la plataforma"
+          docker compose -f plataforma.compose.yaml --env-file .env logs --no-color --tail 40 || true
+          echo "::endgroup::"
+          echo "::group::Registros de identidad"
+          docker compose -f ../../identidad/despliegue/compose.yaml --env-file .env logs --no-color --tail 40 || true
+          echo "::endgroup::"
+          echo "::group::El realm, tal como quedo"
+          # Lo que los tres defectos rompen se ve aqui: los ambitos del realm (#72), y el
+          # atributo de la cuenta (#73).
+          set -a; . ./.env; set +a
+          KC="http://localhost:${KAMAYUK_PUERTO_IDENTIDAD:-8180}"
+          T=$(curl -sS -X POST "$KC/realms/master/protocol/openid-connect/token" \
+                -d client_id=admin-cli -d grant_type=password \
+                --data-urlencode "username=${KAMAYUK_KEYCLOAK_ADMIN:-admin}" \
+                --data-urlencode "password=$KAMAYUK_CLAVE_KEYCLOAK" \
+              | python3 -c 'import json,sys;print(json.load(sys.stdin).get("access_token",""))') || true
+          if [ -n "${T:-}" ]; then
+            curl -sS -H "Authorization: Bearer $T" "$KC/admin/realms/kamayuk/client-scopes" \
+              | python3 -c 'import json,sys;d=json.load(sys.stdin);print(len(d),"ambitos:",sorted(a["name"] for a in d))' || true
+            curl -sS -H "Authorization: Bearer $T" "$KC/admin/realms/kamayuk/users?username=administrador" \
+              | python3 -c 'import json,sys;d=json.load(sys.stdin);print("atributos del administrador:",d[0].get("attributes") if d else "NO EXISTE")' || true
+          else
+            echo "Keycloak no dio token de administracion: mirar sus registros de arriba."
+          fi
+          echo "::endgroup::"
+
+      - name: Bajarlo todo
+        if: always()
+        working-directory: infrastructure/despliegue
+        run: |
+          docker compose -f ../../identidad/despliegue/compose.yaml --env-file .env down --volumes || true
+          docker compose -f plataforma.compose.yaml --env-file .env down --volumes || true

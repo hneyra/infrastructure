@@ -1,19 +1,51 @@
 # Despliegue: la plataforma, y lo que cada sistema levanta contra ella
 
-Desde ADR-0031 §4 hay **dos composes**, y la diferencia no es de tamaño:
+Desde ADR-0031 §4 aquí queda **un** compose, y cada sistema trae el suyo:
 
 | Archivo | Qué levanta | Quién lo usa |
 |---|---|---|
 | [`plataforma.compose.yaml`](plataforma.compose.yaml) | PostgreSQL con **las cinco bases** —una por sistema; `identidad` es la quinta desde [ADR-0039](../docs/30-arquitectura/adr/ADR-0039-la-identidad-es-un-sistema.md)—, Keycloak con **sus dos realms**, el buzón de correo y Traefik con el enrutado por prefijo | **Todo el mundo, siempre.** Es el suelo |
-| [`compose.yaml`](compose.yaml) | Lo anterior más la migración, la implantación, la aplicación y la interfaz | **El perfil `todo`**: pruebas de integración y CI |
+| [`levantar-todo.sh`](levantar-todo.sh) | La plataforma, el sistema que se le pida —de su clon hermano— y las identidades del realm, **en ese orden** | Quien desarrolla, y el flujo `arranque-en-limpio` |
+
+**Esta tabla listaba un `compose.yaml` que ya no existe.** Se retiró en `E` con las tres pruebas que
+lo comparaban con el de la plataforma: era el compose del monolito y construía `backend/Dockerfile`
+y `../frontend`, y **ninguno de los dos existía en este repositorio desde el corte** — o sea que
+no se podía construir desde aquí desde el primer día. Lo dice
+`infra/verificaciones/plataforma-compose.test.ts`, y este README seguía mandando a un archivo
+ausente: el síntoma era un `no such file or directory` sobre lo primero que alguien teclea.
 
 ```bash
-# La plataforma. Es lo que se levanta una vez y se deja.
-docker compose -f despliegue/plataforma.compose.yaml up -d
+# Todo, desde cero y en un comando: el .env si falta, la plataforma, el sistema y sus identidades
+cd despliegue && ./levantar-todo.sh identidad
 
-# El perfil `todo`, para integración y para CI. NO se retira: es el de siempre.
-cd despliegue && docker compose up --build --wait aplicacion interfaz correo
+# O sólo la plataforma. Es lo que se levanta una vez y se deja
+docker compose -f despliegue/plataforma.compose.yaml up -d --wait
 ```
+
+**El `.env` no se copia a mano.** `levantar-todo.sh` lo genera de `.env.ejemplo` con una clave
+**distinta** por rol si no existe. La receta con `sed` que la cabecera de `.env.ejemplo`
+recomendaba **no funcionaba** —medido: seis marcadores, **una sola clave**, porque `$(…)` lo expande
+la shell una vez antes de que `sed` corra—, y seis roles con la misma contraseña son un solo secreto
+disfrazado de seis.
+
+## Preparar las identidades
+
+Para que un token *sirva* hacen falta cuatro pasos más, y **tres son rodeos de defectos abiertos**
+([#72](https://github.com/hneyra/infrastructure/issues/72),
+[#73](https://github.com/hneyra/infrastructure/issues/73),
+[#74](https://github.com/hneyra/infrastructure/issues/74)). Los hace
+[`identidad/preparar-identidades.sh`](identidad/preparar-identidades.sh), que `levantar-todo.sh`
+encadena y que **imprime al terminar** las credenciales que el arnés de `identidad` necesita:
+
+```bash
+cd despliegue && ./identidad/preparar-identidades.sh
+```
+
+Es idempotente, y **va después de levantar el sistema**: su paso 4 necesita el `id` que la secuencia
+le dio a la municipalidad, y esa fila la escribe la implantación. Cada rodeo lleva su número de
+issue dentro del guión, para que se caiga a trozos el día que se cierren. El detalle de los cuatro
+pasos, con su síntoma, está en
+[`identidad/despliegue/pruebas-e2e/README.md`](https://github.com/hneyra/identidad/blob/main/despliegue/pruebas-e2e/README.md).
 
 **Por qué partirlo.** Levantar los cinco backends —y, cuando existan, sus frontends—
 junto con Keycloak y PostgreSQL en un portátil es pesado, y la respuesta correcta no es un compose más grande. El desarrollador de

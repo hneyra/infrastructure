@@ -14,6 +14,13 @@ node_modules
 # diff, y la encontro C-18 al escribir los cuatro compose de los sistemas.
 .env
 
+# Las claves de los clientes confidenciales que `despliegue/identidad/preparar-identidades.sh`
+# genera para una instalacion LOCAL, un archivo por clave. En el cluster esto es un `Secret`
+# (`<amb>-servicios-de-identidad`); aqui no hay quien lo monte, asi que el guion las escribe al
+# disco en modo 700 — y un directorio de claves que se puede anadir a un commit es un directorio
+# de claves que un dia esta en el historico.
+despliegue/.claves-de-servicio/
+
 # El estado y los secretos de Pulumi nunca se versionan (ADR-0011 §3, INF-06).
 .pulumi/
 *.local.*
