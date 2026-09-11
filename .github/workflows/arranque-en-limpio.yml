@@ -39,6 +39,22 @@
 # los alinea esta de verdad bajo prueba. Una verificacion que pasa porque dos numeros
 # coinciden no verifica nada.
 #
+# ── ESTE FLUJO EJERCE LOS HERMANOS EN SU RAMA POR OMISION, Y ESO SE NOTA ───────
+#
+# `clonar-los-hermanos` trae los cinco sistemas de `main`, no de la rama del PR — y no puede
+# ser de otra forma: este repositorio no sabe en que rama de `identidad` esta trabajando
+# nadie. Asi que un cambio que este flujo necesite de un hermano **hay que mezclarlo alli
+# primero**, y hasta entonces este flujo sale rojo por construccion.
+#
+# Medido en su primera corrida (34573340241): los cinco pasos del arranque pasaron —el `.env`
+# generado, la plataforma sana, la municipalidad fijada, `identidad` construido y las
+# identidades preparadas— y el sexto murio con «el realm «kamayuk» no contesta en
+# http://localhost:8181» y codigo 2. El 8181 es el puerto de UNA maquina de desarrollo, que es
+# justo el defecto que `identidad`#14 arregla: ese PR hace que `ejercer.sh` derive el puerto
+# del `.env`, y sin mezclarlo el flujo ejerce el `ejercer.sh` de `identidad@main`, que lo trae
+# escrito. Es la misma forma que `ContratosDeLosConsumidoresTest`: un rojo que **nombra su
+# remedio y vive en otro repositorio**.
+#
 # ── QUE NO HACE ────────────────────────────────────────────────────────────────
 #
 # No levanta los cuatro consumidores ni mide la ventana de la copia local (etapa 5 de

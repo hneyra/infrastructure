@@ -49,7 +49,14 @@ set -uo pipefail
 
 AQUI=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 DESPLIEGUE=$(dirname "$AQUI")
-BASE_DEL_SISTEMA="${BASE_DEL_SISTEMA:-identidad}"
+# La base se DERIVA del directorio en que vive este guion —`despliegue/identidad/`— y no se
+# escribe como literal. Lo exige `bases-de-los-guiones.test.ts` (#16), y su motivo es el que
+# costo dos de las cuatro corridas de `E`: una omision fijada a una base que NO es el padron
+# se la come el censo en verde —«postgres» existe— y quien llama sin decir la suya acaba
+# LEYENDO LO QUE ACABA DE ESCRIBIR en otra base, con un «relation … does not exist» que manda
+# a mirar el esquema y no la conexion. Una omision que se resuelve a una VARIABLE no es una
+# eleccion escrita, y es la forma que esa guarda permite.
+BASE_DEL_SISTEMA="${BASE_DEL_SISTEMA:-$(basename "$AQUI")}"
 
 paso() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 ok()   { printf '  \033[32m·\033[0m %s\n' "$*"; }
