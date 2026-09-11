@@ -53,22 +53,75 @@ describe("#63 · los ambitos del realm llegan tambien cuando el realm ya existe"
   });
 
   /**
-   * Y sigue estando DENTRO de `realm.json`, que es como llega cuando el realm se crea.
+   * ## Lo que esta prueba afirmaba, por que era razonable, y por que era el defecto
    *
-   * Los dos caminos hacen falta: el `create` importa los ambitos del archivo, y el `update` no.
-   * Quitarlos de ahi arreglaria el ambiente que existe y romperia el que nazca manana.
+   * Hasta #72 afirmaba lo contrario de lo que afirma ahora: que `realm.json` **conservara** sus
+   * ambitos, «que es el camino del `create`», con este motivo escrito al lado:
+   *
+   * > «Los dos caminos hacen falta: el `create` importa los ambitos del archivo, y el `update`
+   * > no. Quitarlos de ahi arreglaria el ambiente que existe y romperia el que nazca manana.»
+   *
+   * La primera frase es cierta. **La segunda es falsa, y su precio se midio en `stg` el
+   * 2026-09-11**: declarar `clientScopes` en el documento que `--import-realm` consume
+   * **SUSTITUYE** el juego de fabrica de Keycloak en vez de anadirse a el. Contando los
+   * `client_scope` de cada realm en la propia base de Keycloak:
+   *
+   * ```
+   * kamayuk            ->  2 ambitos     <- el UNICO que los declaraba
+   * kamayuk-ciudadano  -> 13
+   * master             -> 13
+   * sgtm               -> 13
+   * sgtm-ciudadano     -> 13
+   * ```
+   *
+   * Sin `profile` no hay `preferred_username` y sin `basic` no hay `sub`. Medido sobre el token
+   * de verdad de `kamayuk-rentas-servicio-200105`, pedido desde dentro del clúster:
+   * `preferred_username: None`, `scope: kamayuk-servicio`. O sea que el ambiente que «nacia
+   * manana» nacia roto para TODO funcionario y para las cuatro cuentas de servicio.
+   *
+   * ## Y por que quitarlos NO rompe el realm que nazca
+   *
+   * Porque el bucle que aplica los documentos sueltos **no depende de que el realm se acabe de
+   * crear**: vive DESPUES del `fi` de crear/actualizar, asi que corre en los dos caminos. Eso
+   * es lo que esta prueba afirma ahora, y lo lee del guion en vez de suponerlo — que es
+   * justamente lo que la version anterior no hacia.
    */
-  it("el `realm.json` conserva sus ambitos, que es el camino del `create`", () => {
+  it("el bucle que aplica los ambitos sueltos es INCONDICIONAL, no solo del `update`", () => {
+    // Por el mismo accesor que el resto del archivo, y no con un `readFileSync` propio: dos
+    // formas de leer el mismo guion son dos que se pueden separar.
+    const lineas = reconciliarRealmSh().split("\n");
+    const crea = lineas.findIndex((l) => /create realms -f/.test(l));
+    const cierra = lineas.findIndex((l, i) => i > crea && /^fi$/.test(l));
+    const bucle = lineas.findIndex((l) => /^for ARCHIVO_AMBITO in /.test(l));
+
+    expect(crea, "el guion ya no hace `create realms -f`: ¿cambio de forma?").toBeGreaterThan(-1);
+    expect(cierra, "no se encuentra el `fi` que cierra crear/actualizar").toBeGreaterThan(crea);
+    expect(
+      bucle,
+      "el guion ya no recorre los documentos de ambito con un glob: si tampoco estan dentro " +
+        "del realm importado, `kamayuk-servicio` no llega a ningun sitio",
+    ).toBeGreaterThan(-1);
+    expect(
+      bucle,
+      "el bucle de los ambitos quedo DENTRO del `if` de crear/actualizar. Fuera de uno de los " +
+        "dos caminos, el ambito no llega: y como desde #72 ya no viaja dentro del realm " +
+        "importado —eso borraba los trece de fabrica—, los documentos sueltos son el UNICO " +
+        "camino que queda",
+    ).toBeGreaterThan(cierra);
+  });
+
+  it("y el documento del realm NO los lleva, que es el arreglo de #72", () => {
     const documentos = documentosDelRealm({
       domain: "d.example",
       realm: "kamayuk",
       clienteDeVerificacion: true,
     });
-    const realm = JSON.parse(documentos.realm) as { clientScopes?: { name: string }[] };
     expect(
-      (realm.clientScopes ?? []).map((a) => a.name),
-      "`realm.json` se quedo sin sus ambitos: un realm NUEVO naceria sin ellos",
-    ).toEqual(documentos.ambitos.map((a) => a.nombre));
+      Object.keys(JSON.parse(documentos.realm) as Record<string, unknown>),
+      "el documento que `--import-realm` consume volvio a declarar `clientScopes`, y eso " +
+        "sustituye los trece ambitos de fabrica de Keycloak: el realm se queda con dos y todo " +
+        "token sale sin `preferred_username` (#72)",
+    ).not.toContain("clientScopes");
   });
 
   it.each(ENVIRONMENTS)("«%s»: cada ambito viaja ademas como documento suelto", (ambiente) => {

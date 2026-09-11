@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { documentosDelRealm } from "../componentes/Identidad";
 import { realmCiudadanoJson, realmDeFuncionariosJson } from "../componentes/fuentes";
+import { invariantesDe } from "./stacks";
 
 /**
  * `#71` — Keycloak no arrancaba porque una cadena del realm versionado no cabia en su columna.
@@ -77,5 +79,88 @@ describe("#71 · lo que el realm versionado escribe cabe en las columnas de Keyc
         "fallar el `--import-realm` y **el contenedor no arranca** —«Value too long for column»—, " +
         "asi que la plataforma no sirve ni un token y el sintoma no se parece a la causa (#71)",
     ).toEqual([]);
+  });
+});
+
+/**
+ * #72 — el documento que `--import-realm` consume NO declara `clientScopes`.
+ *
+ * ## El defecto, medido en `stg` el 2026-09-11
+ *
+ * Declararlos dentro del realm importado **sustituye** el juego de fabrica de Keycloak en vez
+ * de anadirse a el. Contando los `client_scope` de cada realm en la propia base de Keycloak:
+ *
+ * ```
+ * kamayuk            ->  2 ambitos     <- el UNICO que los declaraba
+ * kamayuk-ciudadano  -> 13
+ * master             -> 13
+ * sgtm               -> 13
+ * sgtm-ciudadano     -> 13
+ * ```
+ *
+ * Un contraste controlado dentro del mismo Keycloak: cuatro realms que no los declaran tienen
+ * los trece; el unico que los declaraba tenia dos —`kamayuk-servicio` y `offline_access`—.
+ *
+ * ## Lo que costaba, medido sobre un token de verdad
+ *
+ * Pedido el token de `kamayuk-rentas-servicio-200105` desde dentro del clúster, con la clave
+ * de su `Secret`: `preferred_username: None` y `scope: kamayuk-servicio`, sin `profile`, sin
+ * `email` y sin `basic`. Sin `preferred_username` el guardia no tiene con que buscar la
+ * cuenta, asi que los cuatro consumidores del buzon reciben **403 con un token perfectamente
+ * valido** — y el sintoma («la cuenta no esta dada de alta») manda a mirar el alta, que es lo
+ * unico que esta bien.
+ *
+ * ## Las dos mitades, y las dos hacen falta
+ *
+ * La primera es que el documento importado no los lleve. La segunda es que los ambitos sigan
+ * llegando: se emiten **sueltos** y `reconciliar-realm.sh` los aplica con un glob, en un bucle
+ * que vive DESPUES del `fi` de crear/actualizar y por tanto es **incondicional**. Sin la
+ * segunda, quitar la clave dejaria el realm sin `kamayuk-servicio` y los clientes de servicio
+ * sin el mapeador de `municipalidad_id` — o sea un token valido y sin el claim, que es el
+ * estado del que #21 sale.
+ */
+describe("#72 — el realm importado no declara `clientScopes`, y los ambitos llegan sueltos", () => {
+  const AMBIENTES = ["stg", "prod"] as const;
+
+  it.each(AMBIENTES)("en «%s», el documento del realm NO lleva `clientScopes`", (ambiente) => {
+    const inv = invariantesDe(ambiente);
+    for (const [cual, docs] of [
+      ["funcionarios", documentosDelRealm({ domain: "e.pe", realm: inv.identity.realm, clienteDeVerificacion: true })],
+      ["ciudadano", documentosDelRealm({ domain: "e.pe", realm: `${inv.identity.realm}-ciudadano`, clienteDeVerificacion: true, fuente: realmCiudadanoJson() })],
+    ] as const) {
+      const realm = JSON.parse(docs.realm) as Record<string, unknown>;
+      expect(
+        Object.keys(realm),
+        `el realm de ${cual} de «${ambiente}» declara «clientScopes» en el documento que ` +
+          "`--import-realm` consume, y eso SUSTITUYE los trece ambitos de fabrica de Keycloak " +
+          "en vez de anadirse a ellos. Medido: el realm se queda con dos, sin `profile` —o sea " +
+          "sin `preferred_username`— y sin `basic` —sin `sub`—, asi que todo funcionario y las " +
+          "cuatro cuentas de servicio reciben 403 con un token valido (#72)",
+      ).not.toContain("clientScopes");
+    }
+  });
+
+  it("y los ambitos siguen llegando: se emiten sueltos, con su mapeador", () => {
+    // La otra mitad. Sin esto, quitar la clave dejaria el realm sin `kamayuk-servicio` y los
+    // clientes de servicio con un token valido y SIN `municipalidad_id` — el estado del que
+    // #21 sale, y que su propia guarda caza mucho despues y en otro sitio.
+    const docs = documentosDelRealm({
+      domain: "e.pe",
+      realm: "kamayuk",
+      clienteDeVerificacion: true,
+    });
+    expect(
+      docs.ambitos.map((a) => a.nombre),
+      "el realm de funcionarios no emite ningun ambito suelto: si tampoco esta en el documento " +
+        "importado, `kamayuk-servicio` no llega a ningun sitio",
+    ).toContain("kamayuk-servicio");
+
+    const servicio = docs.ambitos.find((a) => a.nombre === "kamayuk-servicio");
+    expect(
+      servicio?.mapeadores.map((m) => m.nombre),
+      "el ambito `kamayuk-servicio` se emite sin su mapeador: un cliente creado asi obtiene un " +
+        "token valido y SIN `municipalidad_id`, y el sistema llamado lo rechaza con un 403 que " +
+        "no dice esto (#21)",
+    ).not.toEqual([]);
   });
 });
