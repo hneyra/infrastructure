@@ -205,7 +205,9 @@ restaurar() { # restaurar <realm>
     presentes=$(nombresDe "$(api GET "/realms/$realm/client-scopes")")
     for nombre in "${deFabrica[@]}"; do
         [ -n "$nombre" ] || continue
-        printf '%s\n' "$presentes" | grep -qxF "$nombre" && continue
+        # Sin tuberia (#91) (ver `reconciliar-identidades.sh`): un SIGPIPE aqui haria intentar
+        # crear un ambito que YA esta, y eso sale por otro lado —409— acusando a otra cosa.
+        [[ $'\n'"$presentes"$'\n' == *$'\n'"$nombre"$'\n'* ]] && continue
         api POST "/realms/$realm/client-scopes" "$(printf '%s' "$DE_FABRICA" | python3 -c "
 import json, sys
 for a in json.load(sys.stdin):

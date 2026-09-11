@@ -182,14 +182,26 @@ export interface DocumentosDelRealm {
   /** Los `clientId` que el Job comprueba al terminar. */
   clientesComprobados: string[];
   /**
-   * Los ambitos que el realm declara, **cada uno en su propio documento**.
+   * Los ambitos que el realm declara, **cada uno en su propio documento y SOLO ahi**.
    *
-   * Estan ademas dentro de `realm`, y eso no sobra: ahi es como llegan cuando el realm se
-   * CREA. Lo que no hacen es llegar cuando ya existe — medido en `stg` el 2026-09-10, con
-   * el ambito `kamayuk-servicio` que #21 anadio al archivo versionado: el `Job` hizo
-   * `kcadm update realms/kamayuk` y despues `reconciliar-identidades.sh servicios` murio con
-   * «el realm «kamayuk» no tiene el ambito «kamayuk-servicio»». `update realms` no importa los
-   * `clientScopes`; solo el `create` lo hace.
+   * `update realms` no importa los `clientScopes`; solo el `create` lo hace — medido en `stg`
+   * el 2026-09-10, con el ambito `kamayuk-servicio` que #21 anadio al archivo versionado: el
+   * `Job` hizo `kcadm update realms/kamayuk` y despues `reconciliar-identidades.sh servicios`
+   * murio con «el realm «kamayuk» no tiene el ambito «kamayuk-servicio»». De ahi que se emitan
+   * sueltos, y que el guion los aplique con un glob.
+   *
+   * **Hasta #72 estaban ADEMAS dentro de `realm`, y este docblock decia que «eso no sobra:
+   * ahi es como llegan cuando el realm se CREA». Era cierto y era el defecto.** Declararlos
+   * en el documento que `--import-realm` consume **sustituye** el juego de fabrica de Keycloak
+   * en vez de anadirse a el: medido, el realm se quedaba con **dos** ambitos donde los otros
+   * cuatro del mismo Keycloak tenian **trece**. Sin `profile` no hay `preferred_username` y
+   * sin `basic` no hay `sub`, asi que TODO funcionario y las cuatro cuentas de servicio
+   * recibian 403 con un token perfectamente valido.
+   *
+   * Y no se pierde nada quitandolos de ahi, que es lo que hubo que comprobar: el bucle que
+   * aplica estos documentos vive **DESPUES del `fi`** de crear/actualizar
+   * (`reconciliar-realm.sh:165` contra su `fi` de la 110), asi que es **incondicional** y crea
+   * el ambito que falte tanto en un realm nuevo como en uno que ya existia.
    *
    * Van sueltos para que el guion pueda crear el que falte **sin analizar JSON**: la imagen
    * de Keycloak no trae `jq` ni `python`, que es lo mismo que obliga a derivar aqui los TSV
@@ -251,12 +263,41 @@ export function documentosDelRealm(args: {
   // El `smtpServer` del archivo versionado apunta al buzon `correo` del compose y NUNCA
   // llega asi al clúster: o lo decide el stack (ADR-0012), o el ambiente no tiene relay
   // y el realm va sin `smtpServer` —el Job pasa `SIN_CORREO=1` (Opción B)—.
-  const { clients = [], components = {}, ...ajustes } = versionado;
+  // `clientScopes` SALE de lo que se importa, y es el arreglo de #72.
+  //
+  // Declararlos dentro del documento que `--import-realm` consume **sustituye** el juego de
+  // fabrica de Keycloak en vez de anadirse a el. Medido en `stg` el 2026-09-11, contando los
+  // `client_scope` de cada realm en la propia base de Keycloak:
+  //
+  //   kamayuk            ->  2 ambitos     <- el UNICO que los declaraba
+  //   kamayuk-ciudadano  -> 13
+  //   master             -> 13
+  //   sgtm               -> 13
+  //   sgtm-ciudadano     -> 13
+  //
+  // Cuatro realms que no los declaran tienen los trece; el unico que los declaraba tenia dos
+  // —`kamayuk-servicio` y `offline_access`—. Y el archivo del ciudadano no declara la clave
+  // VACIA: no la declara.
+  //
+  // Lo que eso costaba: sin `profile` no hay `preferred_username` y sin `basic` no hay `sub`,
+  // que son los dos claims con los que el guardia identifica la cuenta. Medido sobre el token
+  // de verdad de `kamayuk-rentas-servicio-200105`, pedido desde dentro del clúster:
+  // `preferred_username: None` y `scope: kamayuk-servicio` —sin `profile`, sin `email`, sin
+  // `basic`—, asi que los cuatro consumidores reciben 403 con un token perfectamente valido.
+  //
+  // **Y sacarlos de aqui no pierde nada, que es lo que hubo que comprobar antes de tocarlo.**
+  // El docblock de `DocumentosDelRealm` decia que estar dentro «no sobra: ahi es como llegan
+  // cuando el realm se CREA», y eso era cierto y ya no importa: el bucle que aplica los
+  // documentos sueltos de `reconciliar-realm.sh` esta **DESPUES del `fi`** de crear/actualizar
+  // (`reconciliar-realm.sh:165` contra su `fi` de la 110), o sea que es INCONDICIONAL y crea
+  // el ambito que falte en los dos caminos. La copia de dentro era redundante, y era la que
+  // borraba los trece.
+  const { clients = [], components = {}, clientScopes = [], ...ajustes } = versionado;
   delete ajustes.smtpServer;
 
-  // Los ambitos se conservan DENTRO de `ajustes` —de ahi salen al crear el realm— y ademas
-  // se emiten sueltos, porque `kcadm update realms` no los mira (ver `DocumentosDelRealm`).
-  const ambitos: AmbitoDerivado[] = (versionado.clientScopes ?? []).map((a) => ({
+  // Se emiten SUELTOS, y solo sueltos: `kcadm update realms` no mira los `clientScopes` y el
+  // `create` los mira de mas (ver arriba).
+  const ambitos: AmbitoDerivado[] = clientScopes.map((a) => ({
     nombre: a.name,
     representacion: JSON.stringify(a, null, 2),
     mapeadores: (a.protocolMappers ?? []).map((m) => ({
@@ -497,7 +538,7 @@ export interface DocumentosDeIdentidades {
   /**
    * Las cuentas de SERVICIO, una por linea (#21):
    *
-   *   SERVICIO  <sistema>  <llamaA>  <ubigeo>
+   *   SERVICIO  <sistema>  <llamaA>  <ubigeo>  <municipalidadId>
    *
    * Se deriva AQUI por lo mismo que los otros dos: **la imagen de Keycloak no trae python ni
    * jq**, y el `Job` corre en modo «directo» dentro de ella. Un modo que leyera los `*.json`
@@ -615,7 +656,28 @@ export function documentosDeIdentidades(args: {
             );
           }
         }
-        return ["SERVICIO", sv.sistema, sv.llamaA, args.ubigeo].join("\t");
+        // El quinto campo es el `municipalidadId` DECLARADO, y es la otra mitad de la salida 1
+        // de #73. Hasta aqui el guion escribia el UBIGEO en el atributo de la cuenta de
+        // servicio —`attributes.municipalidad_id=$ubigeo`—, que es el tercero de los tres
+        // valores que nada reconciliaba. Medido en `stg` el 2026-09-11: el token de
+        // `kamayuk-rentas-servicio-200105` traia `municipalidad_id: 200105` y las fichas de
+        // `usuario` estaban en el inquilino 1, asi que el RLS las escondia y los cuatro
+        // consumidores del buzon recibian 403 «la cuenta no esta dada de alta» CON LA FILA
+        // DELANTE.
+        //
+        // Se valida aqui y no en el guion: la imagen de Keycloak no trae con que analizar JSON,
+        // que es lo mismo que obliga a derivar estos TSV fuera (#21).
+        if (!Number.isInteger(m.municipalidadId) || m.municipalidadId <= 0) {
+          throw new Error(
+            `${args.ubigeo}.json: «municipalidadId» tiene que ser un entero positivo y es ` +
+              `«${String(m.municipalidadId)}». De ahi sale el claim \`municipalidad_id\` de la ` +
+              "cuenta de servicio, y con un valor que la base no tenga el RLS esconde las filas " +
+              "de esta municipalidad (infrastructure#73).",
+          );
+        }
+        return ["SERVICIO", sv.sistema, sv.llamaA, args.ubigeo, String(m.municipalidadId)].join(
+          "\t",
+        );
       })
       .map((linea) => `${linea}\n`)
       .join(""),
