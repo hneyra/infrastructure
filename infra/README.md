@@ -376,12 +376,26 @@ secretos de GitHub, e inyectados en caliente por CI (y a mano, localmente, antes
 `preview`/`up` propio; ver el comentario de cabecera de `Pulumi.stg.yaml`/
 `Pulumi.prod.yaml`).
 
-**Los dominios y los destinos de los stacks versionados ya son los reales**
-—`vmd206041.contaboserver.net` en `prod` (era `vmd120205` hasta el 2026-09-11, un 4 CPU /
-8 GB donde el stack dejó de caber al entrar el quinto sistema), el nodo de
-`cloud.elastika.pe` en `stg`, y
+**El destino del respaldo y el dominio de `prod` ya son los reales** —
+`vmd206041.contaboserver.net` en `prod` (era `vmd120205` hasta el 2026-09-11, un 4 CPU / 8 GB
+donde el stack dejó de caber al entrar el quinto sistema), y
 `https://s3.us-east-1.amazonaws.com` como destino del respaldo (AWS S3, decidido
 2026-08-24; [`INF-01` §7](../docs/80-infraestructura/arquitectura-de-infraestructura.md)).
+
+**El de `stg` NO, y conviene no leerlo como si lo fuera.** `Pulumi.stg.yaml` declara
+`sv-RFoVCw2ifaqy3G9NZ1eT.cloud.elastika.pe`, y ese nombre resuelve a **161.132.54.161**, que
+**no es el VPS de `stg`**: el VPS es `vmd194233.contaboserver.net` (109.199.125.121). Medido el
+2026-09-11. Así que el `Host()` de los seis `IngressRoute` de `stg` —y su emisor OIDC— nombran
+una máquina que no es la suya.
+
+Cambiarlo al nombre del VPS **no basta para que sirva**: en `vmd194233` el puerto 80 no es de
+Traefik (redirige a `:8443`, que está cerrado), así que el desafío HTTP-01 de ACME no se puede
+contestar, y su Traefik lleva el `TRAEFIK DEFAULT CERT` desde que arrancó. Lo que hay que
+decidir es si `stg` tiene que ser alcanzable por un nombre público: si sí, hay que liberarle el
+80; si no, lo honesto es decir en el stack que su dominio es nominal. `prod` sí tiene la forma
+correcta —en `vmd206041` el 80 y el 443 son los dos de Traefik—, y por eso allí ACME puede
+funcionar.
+
 Lo único que sigue siendo de ejemplo es `acmeEmail` (`operaciones@example.pe`), que se
 reemplaza cuando haya buzón de operaciones; las invariantes valen igual.
 
