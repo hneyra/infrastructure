@@ -129,10 +129,14 @@ export const DUENO_DE_LA_AUTORIZACION = "identidad";
  * repositorios—, asi que la decision no es de este archivo.
  */
 export const MARGEN_CORTO_PENDIENTE: Record<string, string> = {
-  rentas: "hneyra/infrastructure#65",
-  catastro: "hneyra/infrastructure#65",
-  normativa: "hneyra/infrastructure#65",
-  caja: "hneyra/infrastructure#65",
+  // VACIA desde el 2026-09-11, y eso es el cierre de #65: los cuatro satelites subieron su
+  // `backoffLimit` de implantacion de 3 a 6 —`rentas@…:873`, `catastro@…:477`,
+  // `normativa@…:427`, `caja@…:813`—, o sea de 70 s a 630 s contra el minimo de 600 s.
+  //
+  // NO se borra la constante: es la que sostiene las dos direcciones de la prueba. Vacia sigue
+  // diciendo algo —«ninguna implantacion tiene margen corto sin declarar»— y el dia que nazca
+  // un sexto sistema con `backoffLimit: 3` la direccion `sinDeclarar` se pone roja sola, que es
+  // justo para lo que existe.
 };
 
 /** Lo que se considera margen suficiente, y por que. */
