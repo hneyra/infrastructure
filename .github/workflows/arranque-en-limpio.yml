@@ -31,13 +31,16 @@
 #
 # ── POR QUE EL UBIGEO ES 200105 Y NO EL 200101 DE `.env.ejemplo` ────────────────
 #
-# Porque con 200101 el rodeo de #73 **no se ejerce**: `municipalidades/200101.json` declara
-# `municipalidadId: 1`, y 1 es justo lo que la secuencia asigna en una base recien creada,
-# asi que los dos valores coinciden por casualidad y alinearlos no cambia nada.
-# `200105.json` declara **9**. Con ese, el archivo dice 9, el guion de servicios escribe
-# 200105, la base asigna 1, y solo el ultimo lo entiende el RLS — o sea que el paso que
-# los alinea esta de verdad bajo prueba. Una verificacion que pasa porque dos numeros
-# coinciden no verifica nada.
+# **Porque es el que `stg` y `prod` declaran**, asi que este flujo ejerce el mismo par
+# (ubigeo, municipalidadId) que los dos ambientes de verdad. Con otro, lo que se comprueba
+# aqui no dice nada de lo que se despliega alli.
+#
+# El motivo ANTERIOR era otro y conviene decir que caduco: hasta que #73 se cerro por su
+# salida 1, `200105.json` declaraba `municipalidadId: 9` contra el `1` que la secuencia
+# asignaba, y este flujo elegia ese ubigeo **precisamente** porque los dos numeros no
+# coincidian —era la unica forma de ejercer el rodeo—, con un `test "$declarado" != "1"`
+# que se ponia rojo el dia que coincidieran. Coincidieron: son las dos declaraciones del
+# mismo numero, y ahora las ata `el-id-de-la-municipalidad.test.ts`.
 #
 # ── ESTE FLUJO EJERCE LOS HERMANOS EN SU RAMA POR OMISION, Y ESO SE NOTA ───────
 #
@@ -125,7 +128,7 @@ jobs:
       # 2 · La municipalidad, fijada al ubigeo que hace que el rodeo de #73 se ejerza
       #     (ver la cabecera). Se toca el `.env` YA GENERADO y no `.env.ejemplo`, para que
       #     el ejemplo siga siendo el que D0 documenta.
-      - name: Fijar la municipalidad de la corrida (200105, la que NO coincide)
+      - name: Fijar la municipalidad de la corrida (200105, la que stg y prod declaran)
         working-directory: infrastructure/despliegue
         run: |
           set -euo pipefail
@@ -142,8 +145,8 @@ jobs:
           test "$KAMAYUK_UBIGEO" = 200105
           test -n "$KAMAYUK_MUNICIPALIDAD"
           declarado=$(python3 -c "import json;print(json.load(open('identidad/municipalidades/200105.json'))['municipalidadId'])")
-          echo "El archivo declara municipalidadId=$declarado; la secuencia asignara 1."
-          test "$declarado" != "1"   # si un dia coinciden, este flujo deja de probar #73
+          echo "El archivo declara municipalidadId=$declarado, y la implantacion lo escribira."
+          echo "MUNICIPALIDAD_ID_DECLARADO=$declarado" >> "$GITHUB_ENV"
 
       # La clave del administrador la fija la corrida y no el guion, porque el paso
       # siguiente la necesita como variable: `preparar-identidades.sh` la IMPRIME para una
@@ -156,6 +159,35 @@ jobs:
       - name: "`identidad` de cero, y las identidades preparadas"
         working-directory: infrastructure/despliegue
         run: ./levantar-todo.sh identidad
+
+      # 3b · Y el id que la base acabo teniendo es el DECLARADO, no el de la secuencia.
+      #
+      #      Es lo que sustituye al `test "$declarado" != "1"` de mas arriba, que existia para
+      #      ejercer el rodeo de #73. Cerrado por su salida 1, la afirmacion se invierte: el
+      #      numero del archivo versionado tiene que ser el que la fila lleva, porque de el sale
+      #      el claim `municipalidad_id` de cada token y con los dos en desacuerdo el RLS no
+      #      delata nada — filtra por el inquilino que el token dice, devuelve cero filas, y el
+      #      403 manda a mirar el alta: lo unico que esta bien.
+      #
+      #      Se pregunta a la BASE y no al manifiesto: comparar lo declarado con lo que el
+      #      propio despliegue genero de esa declaracion es una tautologia, y es justamente el
+      #      hueco por el que las dos declaraciones vivieron meses sin coincidir.
+      - name: El `municipalidad.id` de la base es el declarado, no el de la secuencia
+        working-directory: infrastructure/despliegue
+        run: |
+          set -euo pipefail
+          enLaBase=$(docker compose -f plataforma.compose.yaml --env-file .env exec -T base \
+            psql -U postgres -d identidad -tAc \
+            "SELECT id FROM municipalidad WHERE ubigeo = '200105'" | tr -d '[:space:]')
+          echo "Declarado: $MUNICIPALIDAD_ID_DECLARADO   en la base: $enLaBase"
+          if [ "$enLaBase" != "$MUNICIPALIDAD_ID_DECLARADO" ]; then
+            echo "::error::la fila de municipalidad lleva el id $enLaBase y el archivo versionado"
+            echo "::error::declara $MUNICIPALIDAD_ID_DECLARADO. De ese numero sale el claim"
+            echo "::error::«municipalidad_id» de cada token, asi que con los dos en desacuerdo el"
+            echo "::error::guardia no ve ninguna fila y contesta 403 «la cuenta no esta dada de"
+            echo "::error::alta» CON LA FILA DELANTE (infrastructure#73)."
+            exit 1
+          fi
 
       # 4 · Las 55 preguntas. Los puertos NO se le pasan: los deriva del mismo `.env`,
       #     que es lo que impide que este flujo y una maquina de desarrollo difieran (#74).

@@ -81,6 +81,10 @@ fi
 export COMPOSE_FILE="plataforma.compose.yaml"
 plataforma() { (cd "$AQUI" && docker compose --env-file "$ENV" "$@"); }
 
+# El `.env` se lee ya aqui —y no solo al final— porque el bucle de sistemas necesita
+# `KAMAYUK_UBIGEO` para derivar el id declarado de su archivo versionado.
+set -a; . "$ENV"; set +a
+
 # ── 1 · la plataforma ─────────────────────────────────────────────────────────
 titulo "1 · la plataforma (motor, Keycloak, ingreso y correo)"
 plataforma up -d --wait || muere \
@@ -97,6 +101,27 @@ for sistema in "${SISTEMAS[@]}"; do
     [ -f "$compose" ] || muere \
 "no esta «$compose». Los sistemas se levantan de sus clones hermanos; clona el que falte:
       cd $HERMANOS && git clone https://github.com/hneyra/$sistema"
+    # El `municipalidad.id` DECLARADO se DERIVA del archivo versionado, que es su unica
+    # fuente (#73, salida 1). Pasarlo por el `.env` seria una tercera declaracion del mismo
+    # numero, y el defecto que #73 cerro fue exactamente eso: dos declaraciones que nadie
+    # comparaba, alimentando caminos distintos. La guarda
+    # `infra/verificaciones/el-id-de-la-municipalidad.test.ts` ata el archivo al stack; esta
+    # linea ata el archivo a lo que la implantacion local escribe.
+    declarada="$AQUI/identidad/municipalidades/${KAMAYUK_UBIGEO}.json"
+    if [ -f "$declarada" ]; then
+        KAMAYUK_MUNICIPALIDAD_ID=$(python3 -c "
+import json, sys
+d = json.load(open('$declarada'))
+m = d.get('municipalidadId')
+if not isinstance(m, int) or isinstance(m, bool) or m <= 0:
+    sys.exit('«municipalidadId» de $declarada no es un entero positivo: %r' % (m,))
+print(m)") || muere "el id de la municipalidad" \
+"«$declarada» no declara un «municipalidadId» utilizable. De ese numero sale el claim
+  «municipalidad_id» de cada token, y es el inquilino del que cuelga el RLS de nueve tablas."
+        export KAMAYUK_MUNICIPALIDAD_ID
+        ok "municipalidad_id declarado: $KAMAYUK_MUNICIPALIDAD_ID (de ${KAMAYUK_UBIGEO}.json)"
+    fi
+
     # `--env-file` con el `.env` de la PLATAFORMA, y es lo que #74 dice que no esta escrito
     # en ningun sitio: las claves que el sistema necesita —`kamayuk_owner`, `kamayuk_app`— son
     # del motor de la plataforma, asi que su fuente es este archivo y no uno propio. Sin el,
