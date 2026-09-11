@@ -377,7 +377,9 @@ secretos de GitHub, e inyectados en caliente por CI (y a mano, localmente, antes
 `Pulumi.prod.yaml`).
 
 **Los dominios y los destinos de los stacks versionados ya son los reales**
-—`vmd120205.contaboserver.net` en `prod`, el nodo de `cloud.elastika.pe` en `stg`, y
+—`vmd206041.contaboserver.net` en `prod` (era `vmd120205` hasta el 2026-09-11, un 4 CPU /
+8 GB donde el stack dejó de caber al entrar el quinto sistema), el nodo de
+`cloud.elastika.pe` en `stg`, y
 `https://s3.us-east-1.amazonaws.com` como destino del respaldo (AWS S3, decidido
 2026-08-24; [`INF-01` §7](../docs/80-infraestructura/arquitectura-de-infraestructura.md)).
 Lo único que sigue siendo de ejemplo es `acmeEmail` (`operaciones@example.pe`), que se

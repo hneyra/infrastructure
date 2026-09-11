@@ -77,8 +77,15 @@ CONFIG="${KAMAYUK_CONFIG_K3S:-/etc/rancher/k3s/config.yaml}"
 #     Bajarla a 1 Gi no habria devuelto memoria: habria dejado de contar la que ya
 #     estaba en uso, que es como se llega a que el nodo empiece a desalojar pods sanos.
 #
-# El resultado sobre `vmd120205` son 3 CPU y ~6 GB asignables, y ese es el presupuesto
-# con que `Pulumi.prod.yaml` dimensiona el stack.
+# El resultado sobre `vmd120205` —el nodo de `prod` hasta el 2026-09-11— eran 3 CPU y ~6 GB
+# asignables. Sobre `vmd206041`, el 8 CPU / 16 GB que lo sustituye, esta misma reserva deja
+# ~7 CPU y ~14 GB, y **eso hay que MEDIRLO y escribirlo en `Pulumi.prod.yaml`, no deducirlo
+# de aqui**: el paso «Lo declarado cabe en el nodo real» de `aplicar-prod` rechaza toda
+# declaracion mayor que lo que el nodo reparte de verdad.
+#
+# Y queda una decision abierta para el nodo nuevo: 1 CPU + 2 Gi era media maquina sobre 4
+# CPU / 8 GB y es proporcionalmente poco sobre 8 / 16. Subirla obliga a tocar
+# `reserva-del-nodo.test.ts` en el mismo commit, que es justo lo que se quiere.
 #
 # `verificaciones/reserva-del-nodo.test.ts` exige que las dos partidas sumen el total.
 CPU_TOTAL=1
