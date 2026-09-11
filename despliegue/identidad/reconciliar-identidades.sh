@@ -204,7 +204,7 @@ else
     trap '[ "$LIMPIAR_TSV" = 1 ] && rm -f "$TSV"' EXIT
     if [ "$CUAL" = servicios ]; then
         # Una linea por cuenta de servicio declarada:
-        #   SERVICIO  <sistema>  <llamaA>  <ubigeo>
+        #   SERVICIO  <sistema>  <llamaA>  <ubigeo>  <municipalidadId>
         python3 - "$FUENTE_DIR" "${UBIGEO:-}" >"$TSV" <<'PYSERV'
 import glob, json, os, sys
 
@@ -222,7 +222,15 @@ for ruta in archivos:
         for campo in ("sistema", "llamaA"):
             if not s.get(campo):
                 sys.exit(f"{ruta}: una entrada de `servicios` sin «{campo}»")
-        print("\t".join(("SERVICIO", s["sistema"], s["llamaA"], ubigeo)))
+        mid = datos.get("municipalidadId")
+        if not isinstance(mid, int) or isinstance(mid, bool) or mid <= 0:
+            sys.exit(
+                f"{ruta}: «municipalidadId» tiene que ser un entero positivo y es «{mid}». "
+                "De ahi sale el claim `municipalidad_id` de la cuenta de servicio, y con un "
+                "valor que la base no tenga el RLS esconde las filas de esta municipalidad: "
+                "403 «la cuenta no esta dada de alta» con la fila delante (#73)."
+            )
+        print("\t".join(("SERVICIO", s["sistema"], s["llamaA"], ubigeo, str(mid))))
 PYSERV
     elif [ "$CUAL" = ciudadanos ]; then
         python3 - "$FUENTE_DIR" "${UBIGEO:-}" >"$TSV" <<'PY'
@@ -457,7 +465,7 @@ if [ "$CUAL" = servicios ]; then
     fi
 
     DECLARADOS=0
-    while IFS="$(printf '\t')" read -r clase sistema llamaA ubigeo; do
+    while IFS="$(printf '\t')" read -r clase sistema llamaA ubigeo municipalidadId; do
         [ "$clase" = SERVICIO ] || continue
         DECLARADOS=$((DECLARADOS + 1))
         cliente="kamayuk-${sistema}-servicio-${ubigeo}"
@@ -487,7 +495,20 @@ if [ "$CUAL" = servicios ]; then
         # Y el atributo de la CUENTA de servicio, que es de donde el mapeador lo toma.
         cuenta=$(kc get "clients/$id/service-account-user" -r "$REALM" --fields id --format csv --noquotes 2>/dev/null | head -1)
         [ -n "$cuenta" ] || { echo "FALLO: «$cliente» no tiene cuenta de servicio." >&2; exit 1; }
-        kc update "users/$cuenta" -r "$REALM" -s "attributes.municipalidad_id=$ubigeo" >/dev/null
+        # EL ID DECLARADO, no el ubigeo, y es la salida 1 de #73. Hasta aqui esto escribia
+        # `$ubigeo`, que es el tercero de los tres valores con que se escribia el claim y el
+        # unico que el RLS NO entiende. Medido en `stg` el 2026-09-11: token con
+        # `municipalidad_id: 200105`, las fichas de `usuario` en el inquilino 1, y los cuatro
+        # consumidores del buzon con 403 «la cuenta no esta dada de alta» CON LA FILA DELANTE.
+        [ -n "$municipalidadId" ] || {
+            echo "FALLO: la fila SERVICIO de «$cliente» no trae municipalidadId." >&2
+            echo "El TSV lo derivan «Identidad.ts» (cluster) y el python de este guion" >&2
+            echo "(compose), del «municipalidadId» del archivo versionado. Sin el, el claim" >&2
+            echo "saldria con el ubigeo y el RLS esconderia las filas de esta municipalidad." >&2
+            exit 1
+        }
+        kc update "users/$cuenta" -r "$REALM" \
+            -s "attributes.municipalidad_id=$municipalidadId" >/dev/null
 
         # Y la CLAVE, que es lo que hace que el cliente sirva para algo (#21 AC-2).
         archivo="$CLAVES_DE_SERVICIO/${sistema}-${ubigeo}"
@@ -512,7 +533,7 @@ if [ "$CUAL" = servicios ]; then
 
     # --- La comprobacion: crear no es haber creado -------------------------------
     FALTAN=0
-    while IFS="$(printf '\t')" read -r clase sistema llamaA ubigeo; do
+    while IFS="$(printf '\t')" read -r clase sistema llamaA ubigeo municipalidadId; do
         [ "$clase" = SERVICIO ] || continue
         cliente="kamayuk-${sistema}-servicio-${ubigeo}"
         id=$(kc get clients -r "$REALM" -q "clientId=$cliente" --fields id --format csv --noquotes 2>/dev/null | head -1)
@@ -522,8 +543,8 @@ if [ "$CUAL" = servicios ]; then
             continue
         fi
         cuenta=$(kc get "clients/$id/service-account-user" -r "$REALM" --fields id --format csv --noquotes 2>/dev/null | head -1)
-        if ! kc get "users/$cuenta" -r "$REALM" 2>/dev/null | tr -d ' \n' | grep -q "\"municipalidad_id\":\[\"$ubigeo\"\]"; then
-            echo "FALTA  $cliente: su cuenta no lleva municipalidad_id=$ubigeo" >&2
+        if ! kc get "users/$cuenta" -r "$REALM" 2>/dev/null | tr -d ' \n' | grep -q "\"municipalidad_id\":\[\"$municipalidadId\"\]"; then
+            echo "FALTA  $cliente: su cuenta no lleva municipalidad_id=$municipalidadId" >&2
             FALTAN=$((FALTAN + 1))
         fi
         # Y que la clave que quedo puesta sea la del `Secret`, que es distinto de haberla
