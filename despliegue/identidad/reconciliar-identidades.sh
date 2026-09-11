@@ -132,6 +132,24 @@ kc() {
     fi
 }
 
+# LA PRIMERA LINEA DE LO QUE CONTESTE `kc`, SIN TUBERIA (#91). El motivo ya estaba escrito en
+# `crear-usuario.sh:64` cuando este guion volvio a hacerlo mal cinco veces:
+#
+#     «`| head -1` cerraria la tuberia antes de que kcadm termine de escribir, y con
+#      `pipefail` ese SIGPIPE mata el guion entero por un motivo que no tiene nada que ver
+#      con Keycloak. Se lee todo y se recorta despues.»
+#
+# Medido contra esta plataforma: `docker compose exec -T … | grep -q <coincidencia temprana>`
+# sale **255 habiendo encontrado la coincidencia**. En un `$(…)` con `set -e` eso no da un
+# mensaje falso: **aborta el guion**. Aqui se recorta con expansion de parametros, que no
+# abre ningun proceso al que se pueda quedar sin lector.
+kcPrimeraLinea() {
+    local salida
+    salida=$(kc "$@" 2>/dev/null) || salida=""
+    salida=${salida%%$'\n'*}
+    printf '%s' "${salida//$'\r'/}"
+}
+
 # --- Sesion de administracion ----------------------------------------------------
 if [ "$MODO" = directo ]; then
     : "${KC_SERVIDOR:?falta KC_SERVIDOR}"
@@ -415,8 +433,21 @@ if [ "$CUAL" = servicios ]; then
     # realm «kamayuk» no tiene el ambito «kamayuk-servicio»» y el volcado de diagnostico, dos
     # segundos despues, listo los **catorce** ambitos con `kamayuk-servicio` dentro. La frase era
     # falsa y nadie podia saberlo, porque lo que `kcadm` dijo se habia tirado.
+    #
+    # Y SIN TUBERIA, que es la causa MEDIDA de aquel mensaje falso y no una precaucion (#91).
+    # La forma anterior era `kc get client-scopes … | grep -q kamayuk-servicio` bajo
+    # `set -o pipefail`. `kc` es `docker compose exec -T`, y `grep -q` cierra la tuberia en
+    # cuanto encuentra: `kamayuk-servicio` es el **quinto de catorce** por orden alfabetico,
+    # asi que quien escribe los otros nueve se queda sin lector. Medido contra esta misma
+    # plataforma: `docker compose exec -T … | grep -q <coincidencia temprana>` sale **255
+    # habiendo ENCONTRADO la coincidencia**, `pipefail` lo propaga, y el `if !` imprime que
+    # falta el ambito que acaba de encontrar. Con catorce ambitos el resultado depende de en
+    # cuantos trozos llegue la salida: en `main` salia verde y en la rama rojo con la misma
+    # linea byte a byte, que es lo que delato que el defecto no estaba en ningun diff.
+    #
+    # `[[ ]]` no abre ningun proceso, asi que no hay a quien matar.
     AMBITOS=$(kc get client-scopes -r "$REALM" --fields name 2>&1)
-    if ! printf '%s' "$AMBITOS" | grep -q "kamayuk-servicio"; then
+    if [[ "$AMBITOS" != *kamayuk-servicio* ]]; then
         echo "FALLO: no se encontro el ambito «kamayuk-servicio» en el realm «$REALM»." >&2
         echo "Lo que contesto kcadm, ENTERO —y si no son ambitos, el defecto es ese y no el" >&2
         echo "realm—:" >&2
@@ -468,7 +499,9 @@ if [ "$CUAL" = servicios ]; then
     # El sintoma llega despues y en otro sitio: el sistema llamado responde 403 «el token no
     # trae municipalidad», que no se parece a «al ambito le falta un mapeador».
     MAPEADORES=$(kc get "client-scopes/$AMBITO/protocol-mappers/models" -r "$REALM" 2>&1)
-    if ! printf '%s' "$MAPEADORES" | tr -d ' \n' | grep -q '"claim.name":"municipalidad_id"'; then
+    # Sin tuberia, por lo mismo que el ambito de arriba. `${x//[[:space:]]/}` hace lo que
+    # hacia `tr -d ' \n'` sin abrir un proceso que pueda quedarse sin lector.
+    if [[ "${MAPEADORES//[[:space:]]/}" != *'"claim.name":"municipalidad_id"'* ]]; then
         echo "── lo que contesto kcadm al pedir los mapeadores del ambito ──" >&2
         printf '%s\n' "$MAPEADORES" | sed 's/^/    /' >&2
         echo "FALLO: el ambito «kamayuk-servicio» existe pero NO lleva un mapeador que emita" >&2
@@ -483,7 +516,7 @@ if [ "$CUAL" = servicios ]; then
         DECLARADOS=$((DECLARADOS + 1))
         cliente="kamayuk-${sistema}-servicio-${ubigeo}"
 
-        id=$(kc get clients -r "$REALM" -q "clientId=$cliente" --fields id --format csv --noquotes 2>/dev/null | head -1)
+        id=$(kcPrimeraLinea get clients -r "$REALM" -q "clientId=$cliente" --fields id --format csv --noquotes)
         if [ -z "$id" ]; then
             kc create clients -r "$REALM" \
                 -s "clientId=$cliente" \
@@ -494,7 +527,7 @@ if [ "$CUAL" = servicios ]; then
                 -s "directAccessGrantsEnabled=false" \
                 -s "description=Cuenta de servicio de $sistema para llamar a $llamaA en $ubigeo" \
                 >/dev/null
-            id=$(kc get clients -r "$REALM" -q "clientId=$cliente" --fields id --format csv --noquotes 2>/dev/null | head -1)
+            id=$(kcPrimeraLinea get clients -r "$REALM" -q "clientId=$cliente" --fields id --format csv --noquotes)
             [ -n "$id" ] || { echo "FALLO: no se pudo crear «$cliente»." >&2; exit 1; }
             echo "  + $cliente"
         else
@@ -506,7 +539,7 @@ if [ "$CUAL" = servicios ]; then
         kc update "clients/$id/default-client-scopes/$AMBITO" -r "$REALM" >/dev/null 2>&1 || true
 
         # Y el atributo de la CUENTA de servicio, que es de donde el mapeador lo toma.
-        cuenta=$(kc get "clients/$id/service-account-user" -r "$REALM" --fields id --format csv --noquotes 2>/dev/null | head -1)
+        cuenta=$(kcPrimeraLinea get "clients/$id/service-account-user" -r "$REALM" --fields id --format csv --noquotes)
         [ -n "$cuenta" ] || { echo "FALLO: «$cliente» no tiene cuenta de servicio." >&2; exit 1; }
         # EL ID DECLARADO, no el ubigeo, y es la salida 1 de #73. Hasta aqui esto escribia
         # `$ubigeo`, que es el tercero de los tres valores con que se escribia el claim y el
@@ -549,14 +582,18 @@ if [ "$CUAL" = servicios ]; then
     while IFS="$(printf '\t')" read -r clase sistema llamaA ubigeo municipalidadId; do
         [ "$clase" = SERVICIO ] || continue
         cliente="kamayuk-${sistema}-servicio-${ubigeo}"
-        id=$(kc get clients -r "$REALM" -q "clientId=$cliente" --fields id --format csv --noquotes 2>/dev/null | head -1)
+        id=$(kcPrimeraLinea get clients -r "$REALM" -q "clientId=$cliente" --fields id --format csv --noquotes)
         if [ -z "$id" ]; then
             echo "FALTA  $cliente" >&2
             FALTAN=$((FALTAN + 1))
             continue
         fi
-        cuenta=$(kc get "clients/$id/service-account-user" -r "$REALM" --fields id --format csv --noquotes 2>/dev/null | head -1)
-        if ! kc get "users/$cuenta" -r "$REALM" 2>/dev/null | tr -d ' \n' | grep -q "\"municipalidad_id\":\[\"$municipalidadId\"\]"; then
+        cuenta=$(kcPrimeraLinea get "clients/$id/service-account-user" -r "$REALM" --fields id --format csv --noquotes)
+        # Esta era la ultima de la misma forma, y la mas enganosa de las tres: un SIGPIPE
+        # aqui cuenta un cliente como FALTA teniendo su atributo puesto, o sea acusa al
+        # despliegue de no haber escrito lo que escribio. Se captura y se compara sin tuberia.
+        ficha=$(kc get "users/$cuenta" -r "$REALM" 2>&1) || ficha=""
+        if [[ "${ficha//[[:space:]]/}" != *"\"municipalidad_id\":[\"$municipalidadId\"]"* ]]; then
             echo "FALTA  $cliente: su cuenta no lleva municipalidad_id=$municipalidadId" >&2
             FALTAN=$((FALTAN + 1))
         fi

@@ -136,7 +136,12 @@ done
 # ── 3 · las identidades ───────────────────────────────────────────────────────
 # Solo si se levanto `identidad`: sin su base implantada no hay `municipalidad` de donde leer
 # el id, y el guion lo dice pero no hace falta llegar a que lo diga.
-if printf '%s\n' "${SISTEMAS[@]}" | grep -qx identidad; then
+# Sin tuberia (#91): un SIGPIPE en el `printf` dejaria este `if` en falso y el paso 3 se saltaria
+# EN SILENCIO, que es peor que fallar. Es la misma trampa que costo el mensaje falso de
+# `reconciliar-identidades.sh`, y aqui no hay ni que medirla para evitarla.
+LEVANTAMOS_IDENTIDAD=0
+for _s in "${SISTEMAS[@]}"; do [ "$_s" = identidad ] && LEVANTAMOS_IDENTIDAD=1; done
+if [ "$LEVANTAMOS_IDENTIDAD" = 1 ]; then
     titulo "3 · las identidades del realm"
     "$AQUI/identidad/preparar-identidades.sh" || muere \
 "«preparar-identidades.sh» fallo. Su salida dice en cual de sus cuatro pasos, y cada paso

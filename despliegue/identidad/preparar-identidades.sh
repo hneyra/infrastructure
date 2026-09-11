@@ -133,7 +133,11 @@ en_la_base() { docker compose exec -T base psql -U postgres -d "$BASE_DEL_SISTEM
 printf '\033[1mPreparando las identidades del realm «%s» para el ubigeo %s\033[0m\n' \
     "$KC_REALM" "$KAMAYUK_UBIGEO"
 
-docker compose ps --services --filter status=running 2>/dev/null | grep -qx base \
+# Sin tuberia (#91): `docker compose ps | grep -qx base` bajo `pipefail` puede salir 255 con la
+# coincidencia ENCONTRADA —`grep -q` cierra la salida y el `compose` se queda sin lector—, y
+# entonces este guion muere diciendo que la plataforma no esta en marcha mientras esta arriba.
+EN_MARCHA=$(docker compose ps --services --filter status=running 2>/dev/null || true)
+[[ $'\n'"$EN_MARCHA"$'\n' == *$'\n'base$'\n'* ]] \
     || muere "la plataforma" \
 "El servicio «base» no esta en marcha. Levanta la plataforma primero:
   docker compose -f $DESPLIEGUE/plataforma.compose.yaml --env-file $DESPLIEGUE/.env up -d --wait"
