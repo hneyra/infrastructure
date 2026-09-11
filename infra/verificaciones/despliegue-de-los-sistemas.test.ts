@@ -631,15 +631,29 @@ describe("C-14 · lo que los cinco sistemas anaden al nodo", () => {
    * permanente cabe, se leeria como «ya se puede desplegar», que es falso: un pod `Pending`
    * por el pico deja el `pulumi up` colgado exactamente igual (issue #252).
    *
-   * El dia que el pico quepa, esta prueba se pone roja y lo que hay que hacer no es actualizar
-   * el numero: es retirar la brecha, que `capacidad.test.ts` exige que siga sin caber.
+   * **Y ese dia llego: el 2026-09-11.** Esta prueba se puso roja, y lo que se hizo fue lo que
+   * su propia frase mandaba —retirar la brecha, no actualizar el numero—, porque `prod` se
+   * mudo a `vmd206041`: 6 CPU / 12 242 280 Ki de capacidad, y **5 CPU / 10 145 128 Ki
+   * asignables** tras aplicar la reserva. Medido por el tunel y contrastado con
+   * `comprobar-lo-asignable.sh` contra el nodo real.
+   *
+   * Asi que la prueba **da la vuelta a su afirmacion**: el pico ya cabe, y lo que se fija ahora
+   * es que siga cabiendo. Se afirman las dos cosas —permanente y pico— por el mismo motivo que
+   * antes: si solo se afirmara que el pico cabe, un empeoramiento del regimen permanente no
+   * se veria en ninguna parte.
+   *
+   * Y se añade la MEMORIA, que antes no se miraba y es el eje que aprieta: el margen son 307Mi
+   * sobre 9 747Mi disponibles, el 3%. La CPU sobra —2 440m— y la memoria no, asi que afirmar
+   * solo la CPU dejaria sin vigilancia justo el numero que puede volver a romper el despliegue.
    */
-  it("en prod ya cabe lo permanente, y sigue sin caber el pico del arranque", () => {
+  it("en prod cabe el pico del arranque, y por memoria con 307Mi", () => {
     const demanda = demandaDelStack(manifiestosDelAmbiente(invariantesDe("prod")));
     const nodo = invariantesDe("prod").node;
     // 200m/160Mi de los pods de serie de k3s, como descuenta `auditarCapacidad`.
-    const cpuDisponible = 2000 - 200;
-    expect(nodo.allocatableCpu).toBe("2");
+    const cpuDisponible = 5000 - 200;
+    const memoriaDisponible = Math.round(10145128 / 1024) - 160;
+    expect(nodo.allocatableCpu).toBe("5");
+    expect(nodo.allocatableMemory).toBe("10145128Ki");
 
     expect(
       demanda.permanente.cpuEnMili,
@@ -648,9 +662,20 @@ describe("C-14 · lo que los cinco sistemas anaden al nodo", () => {
     ).toBeLessThanOrEqual(cpuDisponible);
     expect(
       demanda.picoDeArranque.cpuEnMili,
-      "el pico del arranque de `prod` ya cabe por CPU. Si eso es cierto, lo que hay que " +
-        "revisar es la brecha declarada (#1), no este numero.",
-    ).toBeGreaterThan(cpuDisponible);
+      "el pico del arranque de `prod` dejo de caber por CPU. Con `vmd206041` cabia con 2 440m " +
+        "de margen, asi que esto NO es un numero que subir: es que la demanda crecio, o que " +
+        "alguien declaro un nodo mas pequeño del que hay.",
+    ).toBeLessThanOrEqual(cpuDisponible);
+
+    // La memoria es la que aprieta, y por eso se afirma AQUI y no solo en `capacidad.test.ts`:
+    // el margen son 307Mi de 9 747Mi, o sea el 3%. Un sistema nuevo, una replica mas o un
+    // `requests` que suba 512Mi lo consume entero.
+    expect(
+      demanda.picoDeArranque.memoriaEnMi,
+      "el pico del arranque de `prod` dejo de caber por MEMORIA, que es el eje justo: el " +
+        "margen medido el 2026-09-11 eran 307Mi. No se arregla subiendo esta cifra — se decide " +
+        "si el nodo crece (INF-01 §2, D-25) o si baja la demanda con volumetria detras (C-19).",
+    ).toBeLessThanOrEqual(memoriaDisponible);
   });
 });
 

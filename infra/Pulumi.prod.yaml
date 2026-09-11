@@ -24,70 +24,59 @@
 config:
   # Lo ASIGNABLE del nodo, medido — no su capacidad (`capacidad.ts`).
   #
-  # ⚠ ESTAS DOS CIFRAS SON DEL NODO ANTERIOR (`vmd120205`) Y ESTÁN PENDIENTES DE REMEDIR.
-  # `kamayuk:domain` ya apunta a `vmd206041`, un 8 CPU / 16 GB, y estas dos líneas todavía
-  # describen el 4 CPU / 8 GB que se deja. **Se quedan así a propósito hasta medir el nodo
-  # nuevo**, y no es descuido: declarar por DEBAJO de lo real está admitido y solo aprieta la
-  # comprobación, mientras que declarar de MÁS es lo único que `comprobar-lo-asignable.sh`
-  # rechaza — y ese paso corre en `aplicar-prod` SIN la condición de la brecha, así que
-  # adelantarse al nodo no despliega nada: solo cambia el paso en el que falla. Ya pasó una
-  # vez, y está contado tres párrafos más abajo.
+  # MEDIDO SOBRE `vmd206041` EL 2026-09-11, por el tunel SSH y DESPUES de aplicar la reserva:
   #
-  # El orden es: aprovisionar → `cortafuegos.sh` → `reservar-recursos-del-nodo.sh` → medir →
-  # escribir aquí lo medido → retirar la brecha si `yarn capacidad` dice que cabe.
+  #   CAPACIDAD   cpu=6  mem=12242280Ki
+  #   ASIGNABLE   cpu=5  mem=10145128Ki
   #
-  # Lo que sigue es el registro de lo medido sobre el nodo ANTERIOR, que no se reescribe: es
-  # la medición que se hizo, y es lo que explica por qué la brecha existe.
+  # La diferencia es exactamente 1 CPU y 2 097 152 Ki = 2 Gi, que es lo que
+  # `reservar-recursos-del-nodo.sh` reparte entre sus dos partidas —500m + 1Gi en
+  # `system-reserved`, otro tanto en `kube-reserved`, y kubelet las SUMA—. Comprobado en el
+  # `configz` del kubelet, no deducido de la resta.
   #
-  # La memoria es la medida sobre `vmd120205` el 2026-08-23 (INF-10 §4): «memoria
-  # 8 126 500 Ki → asignable 6 029 348 Ki». Son los ~6 GB que este nodo reparte, y no
-  # cambian: la reserva de memoria del issue #157 —2 Gi— modela lo que el sistema
-  # operativo, containerd y el API server usan de verdad, así que sigue en pie.
+  # ⚠ El nodo es un 6 CPU / ~11,7 GB, NO el 8 CPU / 16 GB que `INF-01` §2 dimensiona: es del
+  # mismo tamano que `stg`. Y con eso el stack CABE — pico 2360m / 9440Mi contra 4800m / 9747Mi
+  # disponibles (lo asignable menos los 200m/160Mi de los pods de serie de k3s), o sea 2440m y
+  # 307Mi de margen. Ese margen de memoria es fino en PETICIONES y no en uso: la volumetria de
+  # `stg` del 2026-09-11 mide ~132m / ~2,4 Gi de consumo real contra 1540m / 5536Mi pedidos.
   #
-  # La CPU es **2, lo que el nodo dice hoy**, y esto ya se equivocó una vez en la
-  # dirección contraria: el 2026-08-26 se declaró "3" —lo que el nodo dará una vez
-  # aplicada la reserva corregida del issue #252— y `aplicar-prod` se detuvo en el paso
-  # «Lo declarado cabe en el nodo real», que existe justo para eso. Adelantarse al nodo
-  # no despliega nada; solo cambia el paso en el que falla.
+  # La reserva se corrio el 2026-09-11 con el nodo vacio y antes del primer `pulumi up`, que es
+  # su ventana barata: lo asignable bajo, la capacidad no, y ningun pod se cayo. Queda anotado
+  # AQUI porque el runbook al que el guion remite —`docs/80-infraestructura/mantenimiento-del-
+  # nodo.md`— NO EXISTE en este repositorio.
   #
-  # Que siga en "2" es correcto **también después** de corregir la reserva. Declarar por
-  # DEBAJO de lo real está admitido y solo aprieta la comprobación (`comprobar-lo-
-  # asignable.sh`: solo se rechaza declarar de MÁS). Así que esta línea no hay que
-  # tocarla el día de la ventana de mantenimiento; subirla a "3" es opcional, y lo que
-  # gana es margen, no la posibilidad de desplegar.
+  # Y hay que decir lo que cuesta: la reserva de MEMORIA son 2 Gi, el doble del «~1 GB» que
+  # `INF-01` §2 dimensiona. No es un despiste —el propio guion lo mide: «solo el API server
+  # ronda el medio giga, y el sistema operativo con containerd completan el resto»— pero es la
+  # mitad del margen que se va, y es de donde sale que queden 307Mi en vez de 2 355Mi.
   #
-  # Para que quepa en 2 se bajó el `request` de CPU de los dos Jobs de arranque
-  # (`RECURSOS.arranque`, 250m → 100m): eran los 500m del pico que sobraban. Lo
-  # permanente (1 540m) siempre cupo; el pico ahora son 1 760m contra 1 800m.
+  # ── EL NODO ANTERIOR, que NO se reescribe porque es la medicion que se hizo ──
   #
-  # La reserva estaba mal en `vmd120205` —reservaba 2 de sus 4 núcleos por la duplicación de
-  # #252, y `reservar-recursos-del-nodo.sh` ya escribe el reparto corregido (500m + 500m)—.
-  # En `vmd206041` el asunto es otro: **la reserva no está aplicada todavía**, así que hay que
-  # correr ese guion en el nodo nuevo antes de medir. Es su propia ventana de mantenimiento
-  # —reinicia k3s—, pero en un nodo vacío y antes del primer `pulumi up` no cuesta nada.
-  # INF-10 §4 tiene el procedimiento, y el guion pide teclear «entiendo» a propósito.
+  # `vmd120205` era un 4 CPU / 8 GB, y la reserva del issue #157 se le aplico el 2026-08-23
+  # DUPLICADA —1 CPU y 1 Gi en CADA partida, o sea 2 CPU y 2 Gi—, dejandolo en 2 CPU y
+  # 6 029 348 Ki asignables (INF-10 §4). Desde ese dia `prod` no podia ubicar su propio stack, y
+  # eso es lo que la brecha de #1 declaraba.
   #
-  # Volver a medirlo después de tocar el nodo o la reserva:
+  # Y ya se equivoco una vez en la direccion contraria: el 2026-08-26 se declaro "3" —lo que el
+  # nodo daria una vez corregida la reserva— y `aplicar-prod` se detuvo en «Lo declarado cabe en
+  # el nodo real», que existe justo para eso. Declarar por DEBAJO de lo real esta admitido y solo
+  # aprieta la comprobacion; declarar de MAS es lo unico que se rechaza. Adelantarse al nodo no
+  # despliega nada: solo cambia el paso en el que falla.
+  #
+  # Volver a medirlo despues de tocar el nodo o la reserva:
   #   kubectl get node -o jsonpath='{.items[0].status.allocatable.cpu}{"/"}{.items[0].status.allocatable.memory}'
-  kamayuk:nodeAllocatableCpu: "2"
-  kamayuk:nodeAllocatableMemory: 6029348Ki
+  kamayuk:nodeAllocatableCpu: "5"
+  kamayuk:nodeAllocatableMemory: 10145128Ki
   #
-  # BRECHA DECLARADA (issue #1, C-16). Este nodo NO da para el monolito y los cuatro
-  # sistemas juntos. Medido con `yarn capacidad --ambiente prod`, que desde C-16 suma los
-  # CINCO espacios de nombres y no solo la plataforma:
+  # LA BRECHA DE #1 SE RETIRO el 2026-09-11, y el orden es lo que la hizo retirable: primero se
+  # aplico la reserva, luego se midio, luego se escribio lo medido, y solo entonces salio esta
+  # linea. Lo que habia aqui era:
   #
-  # pico del arranque 2710m / 10208Mi contra 1800m / 5728Mi disponibles:
-  #   NO CABE por CPU, faltan 910m (0,91 CPU); y por memoria, faltan 4480Mi (4,37 Gi).
+  #   kamayuk:nodeCapacityGapIssue: "1"
   #
-  # No se «arregla» bajando peticiones hasta que cuadre: eso seria inventar una holgura que no
-  # existe. Lo que hay que decidir es si el monolito y los cuatro conviven en el mismo nodo, y
-  # eso es ADR-0029 y D-22. Mientras tanto la marca solo hace que `index.ts` AVISE en vez de
-  # lanzar —lanzar ahi rompe `pulumi preview`, que corre en cada PR—; el bloqueo duro sigue en
-  # el paso «El stack cabe en su nodo» de `aplicar-prod`, que corre `yarn capacidad --estricto`
-  # antes de invocar a Pulumi y se pone rojo con las cifras. Y no se puede quedar puesta de mas:
-  # `capacidad.test.ts` exige que la brecha SIGA AHI, asi que el dia que el nodo crezca la
-  # prueba se pone roja y obliga a retirarla.
-  kamayuk:nodeCapacityGapIssue: "1"
+  # No se retira «porque ya deberia caber»: se retira porque `yarn capacidad --ambiente prod`
+  # dice `cabe` con las dos cifras de arriba. Y no habia que acordarse — `capacidad.test.ts`
+  # exige que quien declara la brecha SIGA sin caber, asi que se pone roja sola en cuanto quepa.
   #
   # Cuanto pide este ambiente sobre su nodo (C-19). `dimensionado` es la tabla de INF-01 §2,
   # que es la que este archivo ha usado siempre: esta linea NO cambia una sola peticion de
