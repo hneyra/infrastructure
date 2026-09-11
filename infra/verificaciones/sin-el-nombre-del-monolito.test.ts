@@ -222,6 +222,17 @@ describe("el nombre del monolito no vuelve al codigo de los seis", () => {
     );
   });
 
+  // ## Por que este `it` lleva su tope escrito, y los otros dos no
+  //
+  // Recorre los SEIS arboles y lee cada archivo de codigo de produccion: es una prueba de
+  // entrada/salida, no de logica, y lo que tarda depende de la maquina y de lo que este haciendo
+  // a la vez. Medido en esta: **2,0 s** con la maquina ociosa, y por encima de los 5 s por
+  // omision de vitest con la plataforma local levantada encima —tres corridas de `yarn
+  // verificar` con Docker en marcha la dejaron en rojo por tiempo agotado, no por su asercion—.
+  //
+  // Un tope que se cruza por carga no descubre nada: produce un rojo que dice «Test timed out»
+  // sobre la linea del `it`, que es indistinguible de un defecto real y manda a leer una
+  // asercion que nunca llego a evaluarse. Con 30 s, si esto sale rojo es porque encontro algo.
   it("toda excepcion declarada nombra algo que existe", () => {
     // La direccion de #27: una excepcion que no exime a nadie hace decir de mas a la guarda, y
     // el dia que aparezca algo con ese nombre pasara sin que nadie lo haya decidido.
@@ -251,5 +262,5 @@ describe("el nombre del monolito no vuelve al codigo de los seis", () => {
         "nombre que alguien tendra que volver a cambiar. Las excepciones declaradas son: " +
         EXCEPCIONES.map((e) => `${e.patron} (${e.motivo})`).join("; "),
     ).toEqual([]);
-  });
+  }, 30_000);
 });
