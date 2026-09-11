@@ -146,7 +146,7 @@ config:
   # porque `publicar-imagenes.yml` solo publica al integrar. **Lo que esta linea NO demuestra
   # es que las dos imagenes esten en el registro**: eso lo pregunta `yarn imagenes --ambiente
   # <amb>`, que necesita red y credencial y sin ella sale con codigo 3 — nunca en verde.
-  kamayuk:versionDeIdentidad: a0866be2295467bf392e747eae3678967ad5d0f9
+  kamayuk:versionDeIdentidad: 226ec6ffdc62961c1d40dcd9a8ed475e8d49ff5d
   # La municipalidad de ensayo. El ubigeo es el de Catacaos, igual que en prod (D-01,
   # 2026-08-24), porque stg restaura los respaldos de prod anonimizados (INF-03 §2 y
   # §3): con otro ubigeo, lo restaurado no cuadraría con lo implantado.
