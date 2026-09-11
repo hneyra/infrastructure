@@ -42,6 +42,18 @@
 # que se ponia rojo el dia que coincidieran. Coincidieron: son las dos declaraciones del
 # mismo numero, y ahora las ata `el-id-de-la-municipalidad.test.ts`.
 #
+# Y HAY QUE DECIR QUE CUESTA, porque este mismo encabezado avisa de ello dos parrafos antes:
+# con el archivo declarando **1** y la secuencia dando **1** en una base nueva, la asercion
+# de mas abajo —comparar la fila de `municipalidad` con el archivo— **pasaria igual si la
+# implantacion ignorara el id declarado y dejara que lo asignara la secuencia**. O sea que
+# aqui ya no se mide el MECANISMO, se mide la CONSISTENCIA: sirve para cazar un desacuerdo
+# —alguien devuelve el archivo a 9, o la base viene de antes con otro id— y no para cazar
+# que se dejo de escribir. Lo que si lo caza es `RegistroDeMunicipalidadesJdbcTest` de
+# `identidad`, y por eso usa **42**: un valor que la secuencia no habria dado nunca.
+# «Una verificacion que pasa porque dos numeros coinciden no verifica nada» sigue siendo
+# cierto; lo que cambia es que el numero que distingue ya no cabe aqui, porque la salida 1
+# eligio —deliberadamente— el valor que la base ya tenia.
+#
 # ── ESTE FLUJO EJERCE LOS HERMANOS EN SU RAMA POR OMISION, Y ESO SE NOTA ───────
 #
 # `clonar-los-hermanos` trae los cinco sistemas de `main`, no de la rama del PR — y no puede
