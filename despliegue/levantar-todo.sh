@@ -144,8 +144,9 @@ for _s in "${SISTEMAS[@]}"; do [ "$_s" = identidad ] && LEVANTAMOS_IDENTIDAD=1; 
 if [ "$LEVANTAMOS_IDENTIDAD" = 1 ]; then
     titulo "3 · las identidades del realm"
     "$AQUI/identidad/preparar-identidades.sh" || muere \
-"«preparar-identidades.sh» fallo. Su salida dice en cual de sus cuatro pasos, y cada paso
-  nombra el defecto abierto que rodea (#72, #73, #74)."
+"«preparar-identidades.sh» fallo. Su salida dice en cual de sus TRES pasos, y los dos que
+  son rodeos nombran el defecto abierto que rodean (#72 y #74). Eran cuatro hasta que #73 se
+  cerro y su paso se retiro."
 else
     titulo "3 · las identidades del realm — OMITIDO, y se dice"
     printf '  «identidad» no esta entre los sistemas pedidos, asi que la tabla «municipalidad»\n'
