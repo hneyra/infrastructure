@@ -47,6 +47,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { PERFILES_DE_RECURSOS } from "../config";
+import { recursosDe } from "../componentes/convenciones";
 import { raizDelRepositorio } from "../componentes/fuentes";
 
 /**
@@ -197,5 +199,81 @@ describe("los guiones que corren dentro de la imagen de Keycloak usan solo lo qu
       "el `Job` del realm ejecuta un guion que esta guarda no revisa, asi que ese puede usar " +
         "`awk` o `python3` sin que nadie lo note. Anadelo a DENTRO_DE_LA_IMAGEN",
     ).toEqual([]);
+  });
+});
+
+/**
+ * Y lo otro que ese contenedor necesita de su entorno: **CPU para arrancar una JVM**.
+ *
+ * `kcadm.sh` arranca una JVM entera en cada invocacion, y el guion hace **42 escritas** mas las
+ * de sus bucles. Con el perfil `auxiliar` puesto —`limits: cpu 200m`, un quinto de nucleo—,
+ * medido el 2026-09-11 en las marcas de tiempo del pod de `stg`:
+ *
+ * ```
+ * 09:02:20  Created new group   <- 124 s
+ * 09:02:58  Grupo creado        <-  38 s
+ * 09:05:27  Created new user    <- 149 s
+ * ```
+ *
+ * **De 38 a 150 segundos por llamada**, contra **2,1 s** sin techo en el anfitrion. El `Job`
+ * tardaba decenas de minutos y el tope de `aplicar-stg` son 15, asi que `pulumi up` —que espera
+ * a que el `Job` termine— **no podia alcanzarlo nunca**: se cerro como *cancelled* tres veces
+ * seguidas, cada vez dejando un estado a medias distinto, y ninguno de esos rojos mencionaba la
+ * CPU.
+ *
+ * Se vigila el **limite** y no el `request` a proposito: `capacidad.ts` cuenta `requests`, asi
+ * que el presupuesto del planificador no entra aqui. Lo que se afirma es que este contenedor
+ * pueda RAFAGUEAR, que es lo unico que un trabajo corto dominado por arranques de JVM necesita.
+ */
+describe("y el contenedor que ejecuta esos guiones puede arrancar una JVM", () => {
+  /** Un nucleo entero. Por debajo, una JVM por llamada vuelve el `Job` mas lento que el tope. */
+  const MINIMO_EN_MILI = 1000;
+
+  const enMili = (cpu: string) =>
+    cpu.endsWith("m") ? Number(cpu.slice(0, -1)) : Number(cpu) * 1000;
+
+  // TODOS los perfiles, y DERIVADOS de `PERFILES_DE_RECURSOS` en vez de escritos: `minimo`
+  // pisa algunas entradas, y comprobar solo uno dejaria al otro con el techo que causo esto.
+  // Escribir la lista aqui haria que un perfil nuevo naciera sin vigilar, que es el modo de
+  // fallo mudo de siempre. `RECURSOS` no se exporta a proposito (C-19: «la tabla base no se
+  // exporta, y eso es la guarda»), asi que se pregunta por `recursosDe`.
+  const PERFILES = PERFILES_DE_RECURSOS;
+
+  it.each(PERFILES)("en el perfil «%s», su limite de CPU deja arrancar una JVM", (cual) => {
+    const perfil = recursosDe(cual).reconciliacionDeIdentidades;
+    expect(
+      enMili(perfil.limits.cpu),
+      `el contenedor que corre \`kcadm\` tiene un limite de ${perfil.limits.cpu}. Con 200m ` +
+        "cada llamada tardaba de 38 a 150 s —medido en `stg`— contra 2,1 s sin techo, y el " +
+        "`Job` pasaba de los 15 min de tope de `aplicar-stg`: `pulumi up` no podia esperarlo " +
+        "nunca y se cerraba como «cancelled», sin mencionar la CPU en ningun sitio",
+    ).toBeGreaterThanOrEqual(MINIMO_EN_MILI);
+  });
+
+  it("y NO usa el perfil `auxiliar`, que es para esperas y guiones de `psql`", () => {
+    // El defecto era exactamente este: reusar el perfil de los contenedores minusculos para
+    // uno que arranca decenas de JVM. Comparar los dos perfiles lo deja dicho por
+    // construccion, en vez de depender de que el numero de arriba no se toque.
+    for (const cual of PERFILES) {
+      const tabla = recursosDe(cual);
+      expect(
+        enMili(tabla.reconciliacionDeIdentidades.limits.cpu),
+        `en el perfil «${cual}», la reconciliacion volvio al techo de \`auxiliar\``,
+      ).toBeGreaterThan(enMili(tabla.auxiliar.limits.cpu));
+    }
+  });
+
+  it("y el `Job` del realm lo lleva puesto de verdad, no solo declarado", () => {
+    // Un perfil generoso que nadie aplica no sirve de nada, y es el modo de fallo que la
+    // primera version de esta guarda no veia: afirmaba el perfil y no el contenedor.
+    const componente = readFileSync(
+      join(raizDelRepositorio(), "infra/componentes/Identidad.ts"),
+      "utf8",
+    );
+    expect(
+      /resources: recursos\.reconciliacionDeIdentidades/.test(componente),
+      "`Identidad.ts` no usa `recursos.reconciliacionDeIdentidades` en ningun sitio: el perfil " +
+        "esta declarado y el `Job` del realm sigue con el que tenia",
+    ).toBe(true);
   });
 });

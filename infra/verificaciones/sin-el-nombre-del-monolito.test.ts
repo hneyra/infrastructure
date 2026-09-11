@@ -191,23 +191,11 @@ function todosLosArboles(): { repositorio: string; raiz: string; rutas: readonly
 }
 
 /**
- * ## Por que este bloque lleva su tope escrito, y por que va en el `describe`
- *
- * Todas sus pruebas recorren los SEIS arboles y leen cada archivo de codigo de produccion: son
- * de entrada/salida, no de logica, y lo que tardan depende de la maquina y de lo que este
- * haciendo a la vez. Medido en esta: **2,0 s** con la maquina ociosa, y por encima de los 5 s
- * por omision de vitest con la plataforma local levantada encima — tres corridas de `yarn
- * verificar` con Docker en marcha las dejaron en rojo por tiempo agotado, no por su asercion.
- *
- * Un tope que se cruza por carga no descubre nada: produce un rojo que dice «Test timed out»
- * sobre la linea del `it`, indistinguible de un defecto real, y manda a leer una asercion que
- * nunca llego a evaluarse. Con 30 s, si esto sale rojo es porque encontro algo.
- *
- * **Y va en el `describe` y no en un `it`, porque el primer intento lo puso en uno y no era el
- * que se caia**: el tope aterrizo en el `it.each` de al lado —que tambien recorre los seis
- * arboles— y la prueba que agotaba el tiempo seguia con los 5 s por omision. El sintoma era
- * exactamente el mismo rojo, con el `}, 30_000)` escrito catorce lineas mas abajo y pareciendo
- * puesto. En el `describe` cubre a las cuatro, que es lo que hacia falta.
+ * Estas pruebas son de ENTRADA/SALIDA: recorren los seis arboles leyendo cada archivo de codigo
+ * de produccion, y tardan **~2,1 s** con la maquina ociosa. El tope por prueba **no** es el de
+ * vitest por omision: lo sube `vitest.config.ts`, y alli esta escrito por que —estas cruzaban
+ * los 5 s por omision con algo pesado al lado y salian rojas por tiempo agotado, no por su
+ * asercion—.
  */
 describe("el nombre del monolito no vuelve al codigo de los seis", () => {
   it("EL CENTINELA: se leen archivos de los seis arboles", () => {
@@ -271,4 +259,4 @@ describe("el nombre del monolito no vuelve al codigo de los seis", () => {
         EXCEPCIONES.map((e) => `${e.patron} (${e.motivo})`).join("; "),
     ).toEqual([]);
   });
-}, 30_000);
+});

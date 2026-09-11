@@ -1037,7 +1037,11 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
             : []),
         ],
         securityContext: seguridadSinRoot(),
-        resources: recursos.auxiliar,
+        // NO `auxiliar`, y el motivo esta medido en el perfil: este contenedor arranca una JVM
+        // por cada una de las 42 llamadas a `kcadm`, y con el techo de 200m cada una tardaba
+        // de 38 a 150 s —contra 2,1 s sin techo—. El `Job` pasaba de los 15 min de tope de
+        // `aplicar-stg`, asi que `pulumi up` no podia esperarlo nunca.
+        resources: recursos.reconciliacionDeIdentidades,
         volumeMounts: [
           { name: "realm", mountPath: "/realm", readOnly: true },
           // Las claves de los clientes confidenciales de servicio (#21 AC-2). Montadas y no
