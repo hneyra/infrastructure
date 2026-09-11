@@ -197,7 +197,16 @@ config:
   # porque `publicar-imagenes.yml` solo publica al integrar. **Lo que esta linea NO demuestra
   # es que las dos imagenes esten en el registro**: eso lo pregunta `yarn imagenes --ambiente
   # <amb>`, que necesita red y credencial y sin ella sale con codigo 3 — nunca en verde.
-  kamayuk:versionDeIdentidad: a0866be2295467bf392e747eae3678967ad5d0f9
+  # **Clavado en la MISMA revision que `stg`** (#96), y no en `main`, a proposito: `prod` no
+  # estrena una version que `stg` no haya corrido. `226ec6ff` es la ultima que `stg` valido.
+  #
+  # Estuvo en `a0866be` —la etapa 3 de ADR-0039— desde el 2026-08-23, y el 2026-09-11 eso
+  # detuvo el estreno del nodo nuevo: los tres `Job` de implantacion de los satelites
+  # murieron con «`identidad` contesto 403 al leer el buzon». En la etapa 3 el grupo
+  # «Consumidores del buzon» nace SIN MIEMBROS, y los cuatro satelites estan clavados en la
+  # etapa 4, o sea CON su consumidor: los consumidores existian y las cuentas que los
+  # autorizan no. Lo vigila `la-version-clavada-afilia-a-los-consumidores.test.ts`.
+  kamayuk:versionDeIdentidad: 226ec6ffdc62961c1d40dcd9a8ed475e8d49ff5d
   # La versión con la que Pulumi CREA los despliegues. El campo `image` de los tres
   # `Deployment` queda ignorado después (ADR-0011 §5), así que subir esta línea **no**
   # reemplaza la imagen de un `Deployment` que ya corre: eso lo hace el flujo de
