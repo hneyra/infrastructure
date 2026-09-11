@@ -128,6 +128,14 @@ on:
   # protegido, y `aplicar-stg` sigue exigiendo las cuatro credenciales. Lo que cambia es
   # quién puede pedir la corrida, no qué comprueba antes de aplicar.
   workflow_dispatch:
+    inputs:
+      soltar_recursos_inalcanzables:
+        description: >-
+          PELIGRO. Suelta del estado de Pulumi los recursos que su proveedor no puede leer.
+          Solo para una MUDANZA DE NODO, y solo en la corrida que la hace.
+        type: boolean
+        default: false
+        required: false
 
 permissions:
   contents: read
@@ -1565,6 +1573,38 @@ jobs:
           work-dir: infrastructure/infra
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          # SOLO cuando alguien lo pide a mano, y por eso no es una linea fija.
+          #
+          # ── EL DEFECTO QUE ESTO DESATASCA, MEDIDO EL 2026-09-11 ──
+          #
+          # `prod` cambio de nodo (#92, #1) y su primer `pulumi up` murio con **74 recursos
+          # errados** en el refresco, todos llamados `sgtm-prod-*`:
+          #
+          #     kubernetes:helm.cattle.io/v1:HelmChartConfig sgtm-prod-sistema:kube-system/traefik
+          #     error: failed to read resource state due to unreachable cluster
+          #
+          # No era la red ni el kubeconfig: en la misma corrida
+          # `comprobar-lo-asignable.sh` habia leido el nodo NUEVO (5 CPU / 10145128Ki) y
+          # `capacidad --estricto` habia dicho `cabe`. Lo que pasa es que el estado de `prod`
+          # esta congelado en la forma PRE-RENOMBRADO —no aplica nada desde el 2026-08-23, o
+          # sea desde antes de que `sgtm` saliera del codigo—, y su proveedor
+          # `sgtm-prod-kubernetes` lleva dentro el kubeconfig del nodo VIEJO. Con `refresh`,
+          # Pulumi intenta leer 36 objetos contra un cluster al que ya no apunta.
+          #
+          # ── LO QUE CUESTA, Y POR QUE NO ES UNA LINEA FIJA ──
+          #
+          # ⚠ Esta variable NO «limpia recursos de un cluster que ya no existe»: suelta del
+          # estado recursos que el proveedor no pudo LEER. El nodo viejo sigue en pie —medido:
+          # `vmd120205` seguia sirviendo en su 80 y 443—, asi que esos 36 objetos quedan
+          # HUERFANOS, vivos y sin nadie que los gestione, hasta que alguien apague la maquina.
+          #
+          # Y fija seria peor: cualquier fallo transitorio del tunel borraria estado EN
+          # SILENCIO. Por eso cuelga de una entrada de `workflow_dispatch` que hay que marcar a
+          # mano, y por eso `nada-suelta-el-estado-en-silencio.test.ts` se pone rojo si alguien
+          # la desengancha.
+          PULUMI_K8S_DELETE_UNREACHABLE: >-
+            ${{ (github.event_name == 'workflow_dispatch'
+                 && inputs.soltar_recursos_inalcanzables) && 'true' || '' }}
 
       # El ambiente que acaba de aplicarse, comprobado CONTRA SI MISMO (#434).
       #
