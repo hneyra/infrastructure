@@ -538,7 +538,7 @@ export interface DocumentosDeIdentidades {
   /**
    * Las cuentas de SERVICIO, una por linea (#21):
    *
-   *   SERVICIO  <sistema>  <llamaA>  <ubigeo>
+   *   SERVICIO  <sistema>  <llamaA>  <ubigeo>  <municipalidadId>
    *
    * Se deriva AQUI por lo mismo que los otros dos: **la imagen de Keycloak no trae python ni
    * jq**, y el `Job` corre en modo «directo» dentro de ella. Un modo que leyera los `*.json`
@@ -656,7 +656,28 @@ export function documentosDeIdentidades(args: {
             );
           }
         }
-        return ["SERVICIO", sv.sistema, sv.llamaA, args.ubigeo].join("\t");
+        // El quinto campo es el `municipalidadId` DECLARADO, y es la otra mitad de la salida 1
+        // de #73. Hasta aqui el guion escribia el UBIGEO en el atributo de la cuenta de
+        // servicio —`attributes.municipalidad_id=$ubigeo`—, que es el tercero de los tres
+        // valores que nada reconciliaba. Medido en `stg` el 2026-09-11: el token de
+        // `kamayuk-rentas-servicio-200105` traia `municipalidad_id: 200105` y las fichas de
+        // `usuario` estaban en el inquilino 1, asi que el RLS las escondia y los cuatro
+        // consumidores del buzon recibian 403 «la cuenta no esta dada de alta» CON LA FILA
+        // DELANTE.
+        //
+        // Se valida aqui y no en el guion: la imagen de Keycloak no trae con que analizar JSON,
+        // que es lo mismo que obliga a derivar estos TSV fuera (#21).
+        if (!Number.isInteger(m.municipalidadId) || m.municipalidadId <= 0) {
+          throw new Error(
+            `${args.ubigeo}.json: «municipalidadId» tiene que ser un entero positivo y es ` +
+              `«${String(m.municipalidadId)}». De ahi sale el claim \`municipalidad_id\` de la ` +
+              "cuenta de servicio, y con un valor que la base no tenga el RLS esconde las filas " +
+              "de esta municipalidad (infrastructure#73).",
+          );
+        }
+        return ["SERVICIO", sv.sistema, sv.llamaA, args.ubigeo, String(m.municipalidadId)].join(
+          "\t",
+        );
       })
       .map((linea) => `${linea}\n`)
       .join(""),

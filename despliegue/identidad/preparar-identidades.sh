@@ -15,7 +15,7 @@
 # lo que `levantar-todo.sh` encadena. Corrido antes, el paso 2 falla diciendo exactamente eso
 # en vez de dejar un realm a medias.
 #
-# ── TRES DE LOS CUATRO PASOS SON RODEOS DE DEFECTOS ABIERTOS ──────────────────
+# ── DOS DE LOS TRES PASOS SON RODEOS DE DEFECTOS ABIERTOS ─────────────────────
 #
 # Y van etiquetados con su issue, para que este guion se caiga a trozos el dia que se cierren:
 #
@@ -25,10 +25,16 @@
 #                         funcionario recibe 403 con un token perfectamente valido.
 #   paso 3  parte de #74  `CLAVES_DE_SERVICIO` no tiene ninguna fuente en compose: en el
 #                         cluster es un `Secret` montado, y aqui no hay quien lo escriba.
-#   paso 4  rodeo de #73  el claim `municipalidad_id` se escribe con TRES valores distintos
-#                         segun quien lo escriba —el ubigeo (200105), el `municipalidadId`
-#                         del JSON (9) y el id de la secuencia (1)— y nada los reconcilia.
-#                         Solo el ultimo lo entiende el RLS de la base.
+#
+# ── Y ESTE GUION YA SE CAYO A TROZOS UNA VEZ, que es la prueba de que la etiqueta sirve ──
+#
+# Tenia un CUARTO paso, «alinear `municipalidad_id` con el id de la base», etiquetado «rodeo de
+# #73»: el claim se escribia con TRES valores distintos segun quien lo escribiera —el ubigeo, el
+# `municipalidadId` del archivo versionado y el id que la secuencia asignaba— y solo el ultimo lo
+# entendia el RLS. Ese paso **se retiro al cerrar #73 por su salida 1**: la implantacion escribe
+# ahora el id DECLARADO y el guion de servicios escribe el mismo, asi que alinearlos a mano es un
+# no-op. Lo que queda de aquel rodeo es esta nota — y la guarda
+# `el-id-de-la-municipalidad.test.ts`, que impide que las dos declaraciones vuelvan a separarse.
 #
 # Y `COMPOSE_FILE` lo pone este guion, que es el resto de #74: sus tres hermanos hacen
 # `docker compose` sin `-f` y el compose de la plataforma no se llama con un nombre por
@@ -127,7 +133,11 @@ en_la_base() { docker compose exec -T base psql -U postgres -d "$BASE_DEL_SISTEM
 printf '\033[1mPreparando las identidades del realm «%s» para el ubigeo %s\033[0m\n' \
     "$KC_REALM" "$KAMAYUK_UBIGEO"
 
-docker compose ps --services --filter status=running 2>/dev/null | grep -qx base \
+# Sin tuberia (#91): `docker compose ps | grep -qx base` bajo `pipefail` puede salir 255 con la
+# coincidencia ENCONTRADA —`grep -q` cierra la salida y el `compose` se queda sin lector—, y
+# entonces este guion muere diciendo que la plataforma no esta en marcha mientras esta arriba.
+EN_MARCHA=$(docker compose ps --services --filter status=running 2>/dev/null || true)
+[[ $'\n'"$EN_MARCHA"$'\n' == *$'\n'base$'\n'* ]] \
     || muere "la plataforma" \
 "El servicio «base» no esta en marcha. Levanta la plataforma primero:
   docker compose -f $DESPLIEGUE/plataforma.compose.yaml --env-file $DESPLIEGUE/.env up -d --wait"
@@ -148,24 +158,28 @@ kc config credentials --server http://localhost:8080 --realm master \
 ok "sesion de administracion abierta"
 
 # ── PASO 1 · los ambitos de fabrica (rodeo de #72) ────────────────────────────
-paso "1/4 · los trece ambitos que el import del realm borro (rodeo de #72)"
-ejecutar "1/4 · los ambitos de fabrica" \
+paso "1/3 · los trece ambitos que el import del realm borro (rodeo de #72)"
+ejecutar "1/3 · los ambitos de fabrica" \
 "Sin este paso TODO funcionario recibe 403 con un token valido: sin el ambito «profile» el
   token no lleva «preferred_username», que es con lo que el guardia busca su ficha." \
   -- "$AQUI/restaurar-ambitos-de-fabrica.sh"
 ok "los trece ambitos, y asignados a los clientes que ya existian"
 
 # ── PASO 2 · el administrador, con una clave que sirva ────────────────────────
-paso "2/4 · «$KAMAYUK_ADMINISTRADOR» con una clave permanente"
+paso "2/3 · «$KAMAYUK_ADMINISTRADOR» con una clave permanente"
 # Se genera si no viene dada, y se imprime al final: sin ella el arnes no puede pedir token.
 CLAVE_DEL_ADMINISTRADOR="${CLAVE_DEL_ADMINISTRADOR:-$(openssl rand -hex 16)}"
 
-# El id de la municipalidad, leido de la BASE y no del JSON. Es la mitad buena de #73: el
-# `municipalidadId` del archivo dice 9, el ubigeo dice 200105, y el RLS solo entiende el que
-# la secuencia asigno.
+# El id de la municipalidad, leido de la BASE.
+#
+# Desde que #73 se cerro por su salida 1, la base tiene el id DECLARADO —la implantacion lo
+# escribe— asi que esto y el archivo versionado dicen lo mismo por construccion, y la guarda
+# `el-id-de-la-municipalidad.test.ts` impide que se separen. Se sigue leyendo de la base y no
+# del archivo por una razon que no es el valor: es lo que comprueba que la fila EXISTE, o sea
+# el orden —esto va despues de levantar el sistema— y el mensaje de abajo lo dice.
 ID_EN_LA_BASE=$(en_la_base \
     "SELECT id FROM municipalidad WHERE ubigeo = '$KAMAYUK_UBIGEO'" 2>/dev/null | tr -d '[:space:]')
-[ -n "$ID_EN_LA_BASE" ] || muere "2/4 · el administrador" \
+[ -n "$ID_EN_LA_BASE" ] || muere "2/3 · el administrador" \
 "La base «$BASE_DEL_SISTEMA» no tiene ninguna municipalidad con ubigeo «$KAMAYUK_UBIGEO».
   Esa fila la escribe la IMPLANTACION del sistema, asi que esto va DESPUES de levantarlo:
       docker compose -f ../../$BASE_DEL_SISTEMA/despliegue/compose.yaml \\
@@ -173,13 +187,15 @@ ID_EN_LA_BASE=$(en_la_base \
   Y si el sistema esta arriba, mira su Job de implantacion: una municipalidad sin implantar
   no tiene ni una cuenta, asi que no hay nadie a quien darle clave."
 
-# SIN `--reset` a proposito, y el tercer argumento es el id de la base: asi la cuenta nace
-# ya alineada y el paso 4 solo tiene que arreglar lo que escribe el guion de servicios.
-ejecutar "2/4 · el administrador" \
+# SIN `--reset` a proposito —con `--reset` la clave es temporal y el `grant_type=password` no
+# sirve— y el tercer argumento es el id de la base, con lo que la cuenta nace ya alineada. Hasta
+# que #73 se cerro hacia falta un cuarto paso que realineara esto y las cuatro cuentas de
+# servicio; ya no.
+ejecutar "2/3 · el administrador" \
 "Sin una clave permanente el «grant_type=password» no sirve, y el sintoma es «Invalid user
   credentials», que se lee como una clave mal escrita." \
   -- "$AQUI/crear-usuario.sh" "$KAMAYUK_ADMINISTRADOR" "$CLAVE_DEL_ADMINISTRADOR" "$ID_EN_LA_BASE"
-ok "clave permanente fijada, y municipalidad_id=$ID_EN_LA_BASE (el de la base)"
+ok "clave permanente fijada, y municipalidad_id=$ID_EN_LA_BASE (declarado, y el de la base)"
 
 # ── PASO 3 · los clientes de servicio (parte de #74) ──────────────────────────
 # Los sistemas se DERIVAN del mismo archivo del que los deriva `reconciliar-identidades.sh`.
@@ -191,8 +207,8 @@ import json
 d = json.load(open('$MUNICIPALIDAD_JSON'))
 for s in sorted({x['sistema'] for x in d.get('servicios', [])}):
     print(s)")
-paso "3/4 · los ${#SISTEMAS_DE_SERVICIO[@]} clientes de servicio que $KAMAYUK_UBIGEO declara"
-[ "${#SISTEMAS_DE_SERVICIO[@]}" -gt 0 ] || muere "3/4 · los clientes de servicio" \
+paso "3/3 · los ${#SISTEMAS_DE_SERVICIO[@]} clientes de servicio que $KAMAYUK_UBIGEO declara"
+[ "${#SISTEMAS_DE_SERVICIO[@]}" -gt 0 ] || muere "3/3 · los clientes de servicio" \
 "«$MUNICIPALIDAD_JSON» no declara ninguna cuenta de servicio en su bloque «servicios».
   Cero declaradas no es «todo bien»: es que no hay nada que comprobar."
 
@@ -204,58 +220,14 @@ for sistema in "${SISTEMAS_DE_SERVICIO[@]}"; do
     archivo="$CLAVES_DE_SERVICIO/${sistema}-${KAMAYUK_UBIGEO}"
     if [ -s "$archivo" ]; then ok "clave de «$sistema»: ya estaba, no se toca"; continue; fi
     openssl rand -hex 24 > "$archivo" && chmod 600 "$archivo" \
-        || muere "3/4 · los clientes de servicio" "No se pudo escribir «$archivo»."
+        || muere "3/3 · los clientes de servicio" "No se pudo escribir «$archivo»."
     ok "clave de «$sistema»: generada"
 done
-ejecutar "3/4 · los clientes de servicio" \
+ejecutar "3/3 · los clientes de servicio" \
 "Si arriba dice «el realm no tiene el ambito kamayuk-servicio», lo que falta es la ESTRUCTURA
   del realm y no un cliente: el import no se aplico." \
   -- "$AQUI/reconciliar-identidades.sh" servicios
 ok "los ${#SISTEMAS_DE_SERVICIO[@]} clientes confidenciales, con su clave puesta y comprobada"
-
-# ── PASO 4 · el inquilino (rodeo de #73) ──────────────────────────────────────
-paso "4/4 · alinear «municipalidad_id» con el id de la base (rodeo de #73)"
-# `reconciliar-identidades.sh servicios` fija el atributo al UBIGEO —su linea
-# `attributes.municipalidad_id=$ubigeo`—, y el RLS de la base solo entiende el id de la
-# secuencia. Sin este paso el sintoma es 403 «La cuenta … no esta dada de alta en este
-# sistema» CON LA FILA DELANTE en la tabla `usuario`, que manda a mirar el alta: lo unico
-# que esta bien.
-alinear() { # alinear <uid> <a quien>
-    kc update "users/$1" -r "$KC_REALM" -s "attributes.municipalidad_id=$ID_EN_LA_BASE" \
-            >/dev/null 2>&1 \
-        || muere "4/4 · el inquilino" "No se pudo fijar «municipalidad_id» de «$2»."
-}
-
-# El administrador ya salio alineado del paso 2; se vuelve a poner porque una corrida
-# posterior de `reconciliar-identidades.sh` (funcionarios) lo devolveria al 9 del JSON.
-UID_ADMIN=$(kc get users -r "$KC_REALM" -q "username=$KAMAYUK_ADMINISTRADOR" --fields id 2>/dev/null \
-    | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["id"] if d else "")' 2>/dev/null)
-[ -n "$UID_ADMIN" ] || muere "4/4 · el inquilino" \
-"«$KAMAYUK_ADMINISTRADOR» no existe en el realm «$KC_REALM», asi que el paso 2 no hizo lo suyo."
-alinear "$UID_ADMIN" "$KAMAYUK_ADMINISTRADOR"
-ok "$KAMAYUK_ADMINISTRADOR -> municipalidad_id=$ID_EN_LA_BASE"
-
-# Las cuentas de servicio NO salen de `get users`: Keycloak las esconde del listado y hay que
-# llegar a ellas por su cliente. Se leen a un ARRAY y no con `while read`, porque `kc` es
-# `docker compose exec -T` y eso CONSUME stdin: dentro de un `while read` se traga el resto
-# de la lista y el bucle muere en la primera vuelta SIN ERROR.
-declare -a CUENTAS=()
-mapfile -t CUENTAS < <(kc get clients -r "$KC_REALM" --fields id,clientId 2>/dev/null | python3 -c '
-import json, sys
-for c in json.load(sys.stdin):
-    if c["clientId"].startswith("kamayuk-") and "-servicio-" in c["clientId"]:
-        print(c["id"], c["clientId"])' 2>/dev/null)
-[ "${#CUENTAS[@]}" -eq "${#SISTEMAS_DE_SERVICIO[@]}" ] || muere "4/4 · el inquilino" \
-"Se esperaban ${#SISTEMAS_DE_SERVICIO[@]} clientes de servicio en el realm y hay ${#CUENTAS[@]}:
-  el paso 3 no dejo lo que dice haber dejado."
-for fila in "${CUENTAS[@]}"; do
-    cid=${fila%% *}; cliente=${fila#* }
-    cuenta=$(kc get "clients/$cid/service-account-user" -r "$KC_REALM" 2>/dev/null \
-        | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
-    [ -n "$cuenta" ] || muere "4/4 · el inquilino" "«$cliente» no tiene cuenta de servicio."
-    alinear "$cuenta" "$cliente"
-    ok "$cliente -> municipalidad_id=$ID_EN_LA_BASE"
-done
 
 # ── Lo que el arnes necesita, para que encadenarlos no exija leer nada ────────
 printf '\n\033[1mListo. Lo que «identidad/despliegue/pruebas-e2e/ejercer.sh» necesita:\033[0m\n'
