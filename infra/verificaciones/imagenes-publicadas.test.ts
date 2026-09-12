@@ -343,9 +343,14 @@ describe("quien puede traerse una imagen privada", () => {
    * cambia de forma—, «ninguna se queda sin credencial» seguiria pasando en verde y nadie lo
    * diria. Es C-15/C-16, y por eso la cifra se cuenta antes.
    *
-   * VEINTITRES: siete `Deployment`, diez `Job` y seis `CronJob`, y las **veintitres** viven
+   * VEINTICINCO: **nueve** `Deployment`, diez `Job` y seis `CronJob`, y las **veinticinco** viven
    * fuera del espacio de nombres de la plataforma —donde desde `E` no queda ninguna imagen del
    * producto—. Las tres que suma `identidad` (ADR-0039) son su `Deployment` web y sus dos `Job`.
+   *
+   * **Eran VEINTITRES hasta que `normativa` y `catastro` estrenaron su interfaz** (`normativa`#41,
+   * `catastro`#104): los dos `Deployment` que suman son los dos ultimos que faltaban, asi que
+   * desde hoy los CINCO sistemas despliegan su pantalla y `identidad` sigue sin ninguna —sirve el
+   * buzon y no tiene interfaz—. Los `Job` y los `CronJob` no se mueven.
    *
    * **Eran DIECINUEVE hasta la etapa 4** (`identidad`#4): los cuatro que suma son los cuatro
    * `CronJob/kamayuk-<sistema>-consumidor-de-identidad`, uno por satelite, cada uno con la MISMA
@@ -366,9 +371,9 @@ describe("quien puede traerse una imagen privada", () => {
    * Esta cifra se toca a mano y con su motivo, como manda su antecesora: cada carga nueva pasa
    * por aqui.
    */
-  it.each(ENVIRONMENTS)("las VEINTITRES cargas que traen una imagen del producto, en «%s»", (ambiente) => {
+  it.each(ENVIRONMENTS)("las VEINTICINCO cargas que traen una imagen del producto, en «%s»", (ambiente) => {
     const todas = cargasConImagenDelProducto(ambiente);
-    expect(todas).toHaveLength(23);
+    expect(todas).toHaveLength(25);
     expect([...new Set(todas.map((p) => p.espacio))].sort()).toEqual([
       `kamayuk-caja-${ambiente}`,
       `kamayuk-catastro-${ambiente}`,
@@ -460,16 +465,55 @@ describe("el guion del registro pregunta en vez de saberselo", () => {
  * MANIFIESTOS piden— y **no son la misma**: una imagen declarada que ningun `Deployment` use se
  * cae por el hueco entre las dos y no sale ni como desplegada ni como huerfana.
  *
- * Medido, retirando el `Deployment` de la interfaz de `caja` de su descriptor y dejando su
- * `imagenes` intacto: este censo sigue diciendo «solo `kamayuk-catastro-web`» sobre un ambiente
- * que ya no despliega la de `caja`; el censo del otro modulo la nombra. Se deja asi a proposito
- * —cada uno contesta una pregunta distinta y las dos hacen falta— y queda escrito para que el
- * dia que las dos discrepen se sepa cual es cual.
+ * Medido en su dia, retirando el `Deployment` de la interfaz de `caja` de su descriptor y dejando
+ * su `imagenes` intacto: este censo seguia diciendo «solo `kamayuk-catastro-web`» sobre un
+ * ambiente que ya no desplegaba la de `caja`; el censo del otro modulo la nombraba. Se deja asi a
+ * proposito —cada uno contesta una pregunta distinta y las dos hacen falta— y queda escrito para
+ * que el dia que las dos discrepen se sepa cual es cual. **Las dos estan hoy a cero**, y las dos
+ * lo afirman con su sujeto delante: llegaron ahi por caminos distintos y por eso ninguna se
+ * retira.
  */
 describe("lo que se publica y nadie despliega, contado", () => {
-  it("hoy es una, la interfaz que «catastro» esta estrenando", () => {
-    const huerfanas = publicadores()
-      .hallados.filter((p) => SISTEMAS.some((s) => s.descriptor.sistema === p.clon))
+  /**
+   * **Hoy no hay ninguna, y esta guarda se queda afirmando el conjunto vacio.**
+   *
+   * Durante meses el sujeto fue `kamayuk-catastro-web`: una imagen de interfaz que se construia
+   * en cada merge y que ningun descriptor declaraba. `catastro`#104 la cierra por los dos lados a
+   * la vez —la renombra a `kamayuk-catastro-interfaz` y la despliega—, y `normativa`#41 estrena
+   * la suya ya declarada, asi que la lista se vacia.
+   *
+   * **Y se decide dejarla, no retirarla.** Lo que esta comprobacion vigila no es «catastro»: es
+   * el hueco entre lo que un clon PUBLICA y lo que su descriptor DECLARA, y ese hueco se vuelve a
+   * abrir el dia que cualquiera de los cinco anada una entrada a su `publicar-imagenes.yml` sin
+   * tocar su descriptor — que es exactamente como nacio el anterior. Retirarla ahora seria quitar
+   * la comprobacion justo cuando deja de tener trabajo, y volver a descubrir el mismo hallazgo la
+   * proxima vez.
+   *
+   * Lo que si hace falta al pasar a cero es un **sujeto**, porque una lista vacia tiene ahora dos
+   * lecturas y hasta hoy solo tenia una: «no hay ninguna huerfana» y «no se leyo ningun
+   * publicador». Es C-15/C-16, y por eso se cuenta antes lo que se miro.
+   *
+   * El nombre de la imagen tampoco era un detalle y conviene no perderlo: `caja` llamaba
+   * «interfaz» a lo mismo que `catastro` llamaba «web», dos nombres para la misma cosa a los dos
+   * lados de la frontera. Quien los lee desde aqui —esta guarda, `procesos-de-un-sistema.ts`— no
+   * puede apoyarse en ninguno de los dos: por eso la pregunta es «¿corre el jar?» y no «¿se llama
+   * interfaz?». Desde `catastro`#104 los cinco la llaman «interfaz», y **la derivacion no cambia**
+   * a cuenta de eso: que hoy coincidan no es una regla que nadie haya escrito.
+   */
+  it("hoy no queda ninguna, y se dice sobre cuantas se miro", () => {
+    const delProducto = publicadores().hallados.filter((p) =>
+      SISTEMAS.some((s) => s.descriptor.sistema === p.clon),
+    );
+
+    // El sujeto: los cinco clones, con sus imagenes. Sin esto el `[]` de abajo pasaria igual de
+    // verde con `publicar-imagenes.yml` ilegible en los cinco.
+    expect(
+      delProducto.map((p) => p.clon).sort(),
+      "no se leyo el publicador de los cinco sistemas: esta guarda no estaria midiendo nada",
+    ).toEqual(["caja", "catastro", "identidad", "normativa", "rentas"]);
+    expect(delProducto.flatMap((p) => p.imagenes).length).toBe(14);
+
+    const huerfanas = delProducto
       .flatMap((p) => {
         const declaradas =
           SISTEMAS.find((s) => s.descriptor.sistema === p.clon)?.descriptor.imagenes ?? [];
@@ -477,10 +521,11 @@ describe("lo que se publica y nadie despliega, contado", () => {
         return p.imagenes.filter((i) => !pedidas.includes(i));
       })
       .sort();
-    // `kamayuk-catastro-web`, y el nombre no es un detalle: `caja` llama «interfaz» a lo mismo
-    // que `catastro` llama «web». Dos nombres para la misma cosa a los dos lados de la frontera,
-    // y quien los lee desde aqui —esta guarda, `procesos-de-un-sistema.ts`— no puede apoyarse en
-    // ninguno de los dos: por eso la pregunta es «¿corre el jar?» y no «¿se llama interfaz?».
-    expect([...new Set(huerfanas)]).toEqual(["kamayuk-catastro-web"]);
+
+    expect(
+      [...new Set(huerfanas)],
+      "una imagen que se publica en cada merge y que ningun descriptor declara envejece sin que " +
+        "nadie la vea: se cuenta aqui, con su nombre, y crecer esta lista obliga a decir por que",
+    ).toEqual([]);
   });
 });

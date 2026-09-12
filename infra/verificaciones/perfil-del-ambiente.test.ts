@@ -345,11 +345,33 @@ describe("C-19 · el perfil de recursos de un ambiente no alcanza al otro", () =
    * 2310m / 9184Mi—. **Ningun ambiente cambia de veredicto**: `prod` seguia sin caber y le
    * faltan ahora 560m y 3712Mi; `stg` seguia sin caber desde la etapa 1 —faltaban 416Mi— y le
    * faltan 1440Mi. No se declara brecha para `stg` desde aqui, por el mismo motivo de arriba.
+   *
+   * ## Y suben LAS DOS con las interfaces de `normativa` y de `catastro`
+   *
+   * Los dos ultimos sistemas sin pantalla desplegada estrenan la suya (`normativa`#41,
+   * `catastro`#104): un `Deployment` cada uno con los mismos `requests` que ya pedian los de
+   * `rentas` y `caja` —50m / 64Mi—. Un `Deployment` esta en pie siempre, asi que **cuenta en lo
+   * permanente y tambien en el pico**, que es lo que distingue esta subida de la anterior: los
+   * `CronJob` de la etapa 4 solo movieron el pico.
+   *
+   * | | permanente | pico |
+   * |---|---|---|
+   * | con los cuatro consumidores (etapa 4) | 1540m / 5536Mi | 2360m / 9440Mi |
+   * | y con las dos interfaces nuevas | **1640m / 5664Mi** | **2460m / 9568Mi** |
+   *
+   * O sea **+100m / +128Mi en las dos**, que es exactamente dos veces 50m/64Mi y sale de los dos
+   * descriptores, no de aqui. **Y ningun ambiente cambia de veredicto, medido contra el nodo que
+   * cada uno declara hoy**: `prod` reparte 5 CPU / 10 145 128 Ki asignables desde que se mudo a
+   * `vmd206041` el 2026-09-11 —o sea **9 907Mi**— y su pico pide 9 568Mi, asi que **sigue
+   * cabiendo** y le quedan 339Mi de margen; `stg` reparte 6 CPU / 12 247 552 Ki —**11 960Mi**— y
+   * su pico pide 8 576Mi. Las dos frases de arriba sobre «`prod` sigue sin caber» son de antes
+   * de esa mudanza y se conservan como historia: lo que vale hoy lo dice `capacidad.test.ts`,
+   * que lo DERIVA y no lo trae escrito.
    */
-  it("prod pide exactamente lo medido en `E`, mas el ingestor de #21, el quinto sistema y sus cuatro consumidores", () => {
+  it("prod pide exactamente lo medido en `E`, mas el ingestor de #21, el quinto sistema, sus cuatro consumidores y las dos interfaces nuevas", () => {
     const demanda = demandaDelStack(manifiestosDe("prod"));
-    expect(demanda.permanente).toEqual({ cpuEnMili: 1540, memoriaEnMi: 5536 });
-    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 2360, memoriaEnMi: 9440 });
+    expect(demanda.permanente).toEqual({ cpuEnMili: 1640, memoriaEnMi: 5664 });
+    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 2460, memoriaEnMi: 9568 });
   });
 
   /** Y `prod` declara el perfil dimensionado, que es la tabla base. */

@@ -1,8 +1,10 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { podsDe, contenedoresDe, type Contenedor, type Manifiesto } from "../componentes/tipos";
 import type { Environment } from "../config";
 import { manifiestosDelAmbiente } from "../herramientas/emitir-manifiestos";
-import { clonDe, REVISION_DE_REFERENCIA, SISTEMAS } from "./deriva-de-migraciones";
+import { clonDe, SISTEMAS } from "./deriva-de-migraciones";
 import { invariantesDe } from "./stacks";
 
 /**
@@ -127,9 +129,15 @@ export const IMAGEN_CON_USER_NUMERICO: Record<string, UserLeido> = {
   "ghcr.io/hneyra/kamayuk-caja-migrador": { uid: 10002, dockerfile: { clon: "caja", ruta: "backend/Dockerfile" } },
   "ghcr.io/hneyra/kamayuk-identidad": { uid: 10001, dockerfile: { clon: "identidad", ruta: "backend/Dockerfile" } },
   "ghcr.io/hneyra/kamayuk-identidad-migrador": { uid: 10002, dockerfile: { clon: "identidad", ruta: "backend/Dockerfile" } },
-  // Las dos interfaces: `USER 101`, el `nginx` de la imagen base, escrito por numero.
+  // Las CUATRO interfaces: `USER 101`, el `nginx` de la imagen base, escrito por numero.
+  // Eran dos hasta que `normativa`#41 y `catastro`#104 desplegaron la suya; la de `catastro`
+  // ademas paso de `USER nginx` a `USER 101` —que es lo que la sacaba de esta lista y la metia en
+  // `USER_POR_NOMBRE_PENDIENTE`— y se renombro de `kamayuk-catastro-web` a
+  // `kamayuk-catastro-interfaz`. Las cuatro cifras se releen del clon en cada corrida.
   "ghcr.io/hneyra/kamayuk-rentas-interfaz": { uid: 101, dockerfile: { clon: "rentas", ruta: "frontend/Dockerfile" } },
   "ghcr.io/hneyra/kamayuk-caja-interfaz": { uid: 101, dockerfile: { clon: "caja", ruta: "frontend/Dockerfile" } },
+  "ghcr.io/hneyra/kamayuk-catastro-interfaz": { uid: 101, dockerfile: { clon: "catastro", ruta: "frontend/Dockerfile" } },
+  "ghcr.io/hneyra/kamayuk-normativa-interfaz": { uid: 101, dockerfile: { clon: "normativa", ruta: "frontend/Dockerfile" } },
   // De terceros: su `Dockerfile` no esta en ningun clon, asi que la cifra va con su fuente.
   "quay.io/keycloak/keycloak": { uid: 1000, fuente: "`USER 1000` en quarkus/container/Dockerfile" },
   "grafana/grafana": { uid: 472, fuente: '`USER "$GF_UID"`, con `ARG GF_UID="472"`' },
@@ -154,28 +162,53 @@ export interface UserDelDockerfile {
 }
 
 /**
- * Todo `USER` declarado en los `Dockerfile` de los cinco clones, **en una revision**.
+ * Todo `USER` declarado en los `Dockerfile` de los cinco clones.
  *
- * De una revision de git y no del arbol de trabajo, que es la misma cautela que
- * `migracionesDe` escribio primero: en un puesto con cinco clones y varios carriles en vuelo,
- * el disco puede tener otra version, y una cifra plausible medida sobre otro arbol es peor que
- * ninguna. Por omision `origin/main`, que es lo que ese clon DECLARA hoy y lo que CI trae.
+ * ## Del ARBOL DE TRABAJO, y esto se midio antes de cambiarlo
+ *
+ * Esta funcion leia `origin/main` de cada clon, con la cautela que `migracionesDe` escribio
+ * primero: en un puesto con cinco clones y varios carriles en vuelo el disco puede tener otra
+ * version, y una cifra plausible medida sobre otro arbol es peor que ninguna.
+ *
+ * **Medido, esa cautela producia aqui exactamente el defecto que nombra**, y lo destapo el dia que
+ * `normativa` y `catastro` estrenaron su interfaz: los manifiestos contra los que se compara NO
+ * salen de `origin/main` — `descriptor/sistemas.ts` importa
+ * `../../../<sistema>/infrastructure/src/descriptor`, o sea el **arbol de trabajo** del clon, y
+ * `nginxDelClon` lee su `frontend/nginx.conf` del disco por la misma puerta. Asi que el ambiente
+ * desplegaba `ghcr.io/hneyra/kamayuk-catastro-interfaz` con `USER 101` mientras esta lectura
+ * contestaba `USER nginx`, que es lo que aquel `Dockerfile` decia en otra revision. Las dos cosas
+ * eran ciertas y hablaban de arboles distintos, y la unica forma de que esta guarda diga algo del
+ * contenedor que el ambiente compone es leer **el mismo arbol que lo compuso**.
+ *
+ * Lo que se pierde con el cambio es la proteccion contra un clon a medio rebasar; lo que se gana
+ * es que el `USER` leido sea el de la imagen que este repositorio pide. La segunda es la pregunta
+ * que esta guarda hace. Y en CI las dos coinciden: los cinco hermanos se clonan en su rama por
+ * omision, asi que arbol de trabajo y `origin/main` son lo mismo — con la ventaja de que leer del
+ * disco tampoco depende de que el checkout traiga historia (los trabajos que no son `verificar`
+ * van con `fetch-depth: 1`).
+ *
+ * @param revision si se pasa, se lee de esa revision de git en vez del disco. Se conserva para
+ *   poder contrastar contra `origin/main` —«lo que ese clon declara hoy», que es lo que
+ *   `REVISION_DE_REFERENCIA` nombra para las migraciones— sin que sea lo que la guarda usa.
  */
-export function usersDeLosClones(revision: string = REVISION_DE_REFERENCIA): UserDelDockerfile[] {
+export function usersDeLosClones(revision?: string): UserDelDockerfile[] {
   const encontrados: UserDelDockerfile[] = [];
   for (const sistema of SISTEMAS) {
     const raiz = clonDe(sistema);
     for (const ruta of ["backend/Dockerfile", "frontend/Dockerfile"]) {
       let contenido: string;
       try {
-        contenido = execFileSync("git", ["-C", raiz, "show", `${revision}:${ruta}`], {
-          encoding: "utf8",
-          stdio: ["ignore", "pipe", "ignore"],
-        });
+        contenido =
+          revision === undefined
+            ? readFileSync(join(raiz, ruta), "utf8")
+            : execFileSync("git", ["-C", raiz, "show", `${revision}:${ruta}`], {
+                encoding: "utf8",
+                stdio: ["ignore", "pipe", "ignore"],
+              });
       } catch {
-        // No todos tienen interfaz: `normativa` e `identidad` no tienen `frontend/`, y eso es una
-        // afirmacion suya y no un fallo. Lo que si seria un fallo es no encontrar NINGUNO, y eso
-        // lo caza el centinela de la prueba.
+        // No todos tienen interfaz: `identidad` no tiene `frontend/`, y eso es una afirmacion suya
+        // y no un fallo. Lo que si seria un fallo es no encontrar NINGUNO, y eso lo caza el
+        // centinela de la prueba.
         continue;
       }
       contenido.split("\n").forEach((l, i) => {
@@ -196,9 +229,17 @@ export function usersDeLosClones(revision: string = REVISION_DE_REFERENCIA): Use
  * direcciones, asi que una entrada que ya se arreglo sale roja igual que una que falta. Ninguna
  * de estas imagenes se despliega hoy; el dia que su descriptor la despliegue con `runAsNonRoot`,
  * el kubelet se negara a crear el contenedor exactamente como hizo con `espera-al-motor`.
+ *
+ * **Y hoy esta VACIA, que es a lo que una lista de trabajo pendiente aspira.** Tenia una entrada,
+ * `catastro frontend/Dockerfile nginx`, anotada con «su interfaz aun no se despliega
+ * (`infrastructure`#12)»; `catastro`#104 la despliega **y** cambia ese `USER nginx` por
+ * `USER 101`, o sea que cierra la entrada por el unico camino que no era «desplegarla y que el
+ * kubelet se niegue».
+ *
+ * **La lista se queda vacia en vez de retirarse, y la comprobacion no se queda sin sujeto**: lo
+ * que se recorre son los `Dockerfile` de los cinco clones —hoy catorce `USER`, los catorce
+ * numericos— y lo que se afirma es que ninguno usa un nombre. Eso tiene sujeto todos los dias; lo
+ * que esta vacio es la lista de excepciones, que es distinto. Su prueba lleva ademas el centinela
+ * que impide leerlo como «no se leyo ningun Dockerfile».
  */
-export const USER_POR_NOMBRE_PENDIENTE: Record<string, string> = {
-  // La interfaz de `catastro` todavia no la despliega su descriptor (`infrastructure`#12), asi
-  // que hoy no rompe nada. `rentas` y `caja` escriben `USER 101` en el mismo sitio.
-  "catastro frontend/Dockerfile nginx": "hneyra/catastro: su interfaz aun no se despliega (#12)",
-};
+export const USER_POR_NOMBRE_PENDIENTE: Record<string, string> = {};

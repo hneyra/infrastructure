@@ -197,8 +197,11 @@ config:
   # renombrado y `SgtmAplicacion` -> `KamayukAplicacion`. **Las 16 migraciones son las
   # mismas** que las de la version anterior, medido: el `Job` de migracion no aplica nada.
   kamayuk:versionDeRentas: 235590e243f8af8d19a402c6861e229a2c2cc28f
-  kamayuk:versionDeCatastro: ac1239a26fd538c852fdc0d204dafa3d8b69cda9
-  kamayuk:versionDeNormativa: e1cdad5a3e4fdfd508144a67eaa569aa9488b80f
+  # Sube con el estreno de su interfaz: el manifiesto pasa a pedir
+  # `kamayuk-<sistema>-interfaz:<sha>`, y con el `sha` anterior esa etiqueta **no existe** —medido,
+  # `yarn imagenes` contestaba `NO EXISTE`—. En `catastro` ademas la imagen se llamaba `-web`.
+  kamayuk:versionDeCatastro: c37eb5b6551bd3119df92e8b0350aae04a0e1433
+  kamayuk:versionDeNormativa: e9ed033017762560139e6c4b5465501f1c4636b4
   kamayuk:versionDeCaja: 0772e2515a68d4e659b129c057067eb88f254370
   # El quinto (ADR-0039). Es el `sha` de `main` de `hneyra/identidad` —su etapa 1 se integro
   # como `89eca30`—, medido con `git -C ../identidad rev-parse origin/main` y no tecleado:

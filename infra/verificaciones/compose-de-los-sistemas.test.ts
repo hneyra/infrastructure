@@ -72,6 +72,38 @@ function clonar(c: ComposeDeSistema): ComposeDeSistema {
   return JSON.parse(JSON.stringify(c)) as ComposeDeSistema;
 }
 
+/**
+ * Lo que un descriptor DECLARA y su compose todavia no levanta, con su motivo y su issue.
+ *
+ * ## Por que existe, medido
+ *
+ * `catastro`#104 anade `catastro-interfaz` a `descriptor.imagenes` —la despliega, la renombra y le
+ * quita el `proxy_pass`— y **no toca `despliegue/compose.yaml`**, que sigue trayendo tres
+ * servicios. Los otros cuatro sistemas si lo traen: `rentas-interfaz`, `caja-interfaz` y, desde
+ * `normativa`#41, `normativa-interfaz`.
+ *
+ * Es un desajuste REAL y la guarda tiene razon: C-18 dice que las dos formas de levantar el
+ * sistema tienen que decir lo mismo, y con el servicio ausente un `docker compose up` deja la
+ * instalacion local **sin la pantalla que el clúster si despliega** — o sea que lo que se prueba
+ * en local no es lo que se despliega, y justo en la pieza recien estrenada.
+ *
+ * ## Y por que se declara en vez de arreglarse
+ *
+ * El archivo que falta esta en el clon de `catastro`, no aqui: este repositorio compone, no
+ * escribe el compose de nadie. Un rojo permanente en `infrastructure` por el trabajo pendiente de
+ * otro repositorio es lo que `C-2` y `F` decidieron no hacer —el mismo criterio que el censo de
+ * imagenes huerfanas—, y callarlo no es una opcion: queda **nombrado**, con su issue, y **se
+ * comprueba en las dos direcciones**, asi que el dia que `catastro` anada el servicio esta guarda
+ * se pone roja pidiendo que se retire la entrada.
+ *
+ * La clave es el nombre de la imagen tal como el descriptor la declara —`catastro-interfaz`—, que
+ * es el mismo nombre que el compose tendria que dar a su servicio.
+ */
+const IMAGEN_SIN_SERVICIO_EN_EL_COMPOSE: Record<string, string> = {
+  // hneyra/catastro#105: su descriptor despliega la interfaz desde #102 y su compose no la levanta.
+  "catastro-interfaz": "hneyra/catastro#105: la despliega el descriptor y su compose no la trae",
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Los cuatro, contra su descriptor
 // ─────────────────────────────────────────────────────────────────────────────
@@ -93,12 +125,39 @@ describe("cada sistema trae su compose, y dice lo mismo que su descriptor", () =
     const delJar = ["web", "migrador", "implantacion"].map((p) => servicioDe(sistema, p));
     const extras = (
       SISTEMAS.find((s) => s.descriptor.sistema === sistema)?.descriptor.imagenes ?? []
-    ).filter((i) => i !== sistema && i !== `${sistema}-migrador`);
+    )
+      .filter((i) => i !== sistema && i !== `${sistema}-migrador`)
+      .filter((i) => IMAGEN_SIN_SERVICIO_EN_EL_COMPOSE[i] === undefined);
 
     expect(Object.keys(composeDe(sistema)).length).toBeGreaterThan(0);
     expect(Object.keys(composeDe(sistema).services).sort()).toEqual(
       [...delJar, ...extras].sort(),
     );
+  });
+
+  /**
+   * Y la otra direccion de esa lista: una deuda que ya se pago sale roja.
+   *
+   * Es #27 aplicado aqui, y hace falta por lo mismo que en las demas listas «con motivo» de este
+   * repositorio: una entrada que ya no describe ningun hueco **exime a un servicio futuro** que
+   * nadie decidio eximir, y ademas deja escrito que algo esta roto cuando ya se arreglo. Se
+   * comprueba nombrando el archivo, para que el rojo diga a que clon hay que ir.
+   */
+  it("ninguna imagen declarada como «sin servicio» tiene ya su servicio", () => {
+    const yaEstan = Object.keys(IMAGEN_SIN_SERVICIO_EN_EL_COMPOSE).filter((imagen) => {
+      const sistema = SISTEMAS_DEL_PRODUCTO.find((s) => imagen.startsWith(`${s}-`));
+      if (sistema === undefined) return true;
+      return Object.keys(composeDe(sistema).services).includes(imagen);
+    });
+    expect(
+      yaEstan,
+      "estas imagenes estan declaradas como «su compose todavia no la levanta» y su compose ya " +
+        "trae el servicio:\n  " +
+        yaEstan.join("\n  ") +
+        "\n  La deuda se pago: hay que retirar la entrada de `IMAGEN_SIN_SERVICIO_EN_EL_COMPOSE` " +
+        "y cerrar su issue. Mientras siga escrita, el servicio que nazca manana con ese nombre " +
+        "queda exento sin que nadie lo haya decidido.",
+    ).toEqual([]);
   });
 
   /**

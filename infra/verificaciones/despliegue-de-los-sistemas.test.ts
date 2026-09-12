@@ -592,7 +592,13 @@ describe("C-14 · el egreso declarado ES el que se aplica", () => {
  * | medido con #21 AC-4 | **1000m** / **4736Mi** | el `CronJob` del ingestor de `rentas` deja de nacer suspendido: **+50m / +256Mi** |
  * | medido con el quinto sistema (ADR-0039) | **1200m** / 5760Mi | `identidad` entra con su `Deployment` web y sus dos `Job`: **+200m / +1024Mi** |
  * | remedido con `identidad`#7 | 1200m / **5248Mi** | `identidad` pide la mitad de memoria —web 256Mi, cada `Job` 128Mi—: **-512Mi**, la CPU no se mueve |
- * | medido con la etapa 4 de ADR-0039 (identidad#4) | **1400m** / **0Mi** | los cuatro satelites estrenan su `CronJob` consumidor del buzon de `identidad`, 50m/256Mi cada uno: **+200m / +1024Mi**, contados uno a uno mientras aterrizaban (con tres dentro, 1350m) |
+ * | medido con la etapa 4 de ADR-0039 (identidad#4) | **1400m** / **6272Mi** | los cuatro satelites estrenan su `CronJob` consumidor del buzon de `identidad`, 50m/256Mi cada uno: **+200m / +1024Mi**, contados uno a uno mientras aterrizaban (con tres dentro, 1350m) |
+ * | medido con las interfaces de `normativa` y de `catastro` | **1500m** / **6400Mi** | los dos ultimos sistemas sin pantalla desplegada estrenan la suya: un `Deployment` cada uno, 50m/64Mi: **+100m / +128Mi** |
+ *
+ * La memoria de esa cuarta fila decia **`0Mi`**, y no era una medida: la cifra escrita en la
+ * constante era 6272Mi y 6272 = 5248 + 1024, o sea la fila anterior mas lo que la etapa 4 suma.
+ * Se corrige a lo que se midio entonces, porque una tabla de historia con un cero dentro no deja
+ * calcular ningun delta — que es para lo unico que sirve.
  *
  * O sea que **el techo de memoria llevaba desde C-14 dejando crecer 384Mi en silencio**, que es
  * justo lo que esta guarda existe para impedir. Se reescribe con la cifra medida y no con la
@@ -604,8 +610,16 @@ describe("C-14 · el egreso declarado ES el que se aplica", () => {
  * 100m/512Mi, migracion 50m/256Mi, implantacion 50m/256Mi— y las tres cifras salen del
  * descriptor de `identidad`, no de aqui. Lo que cuesta en el NODO —donde ademas esta la
  * plataforma— lo dice `yarn capacidad`, y esta la mide la fila del registro.
+ *
+ * **Y lo mismo vale para las dos interfaces nuevas** (`normativa`#41, `catastro`#104): lo que
+ * sube son los `requests` de dos `Deployment` que sus descriptores estrenan —50m/64Mi cada uno,
+ * los mismos que `rentas` y `caja` ya pedian por la suya—, asi que el techo se remide y no se
+ * negocia. Medido con los dos clones en su rama: `picoDeArranque` de los cinco sistemas
+ * **1500m / 6400Mi** en los dos ambientes, contra 1400m / 6272Mi antes. Un `Deployment` cuenta
+ * en el pico **y** en lo permanente, que es por lo que aqui suben las dos mitades a la vez y no
+ * solo el pico como pasaba con los `CronJob`.
  */
-const TECHO_DE_LOS_SISTEMAS = { cpuEnMili: 1400, memoriaEnMi: 6272 };
+const TECHO_DE_LOS_SISTEMAS = { cpuEnMili: 1500, memoriaEnMi: 6400 };
 
 describe("C-14 · lo que los cinco sistemas anaden al nodo", () => {
   it.each(ENVIRONMENTS)("en «%s» no crece en silencio", (ambiente) => {
