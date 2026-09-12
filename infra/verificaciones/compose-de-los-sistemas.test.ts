@@ -87,22 +87,27 @@ function clonar(c: ComposeDeSistema): ComposeDeSistema {
  * instalacion local **sin la pantalla que el clúster si despliega** — o sea que lo que se prueba
  * en local no es lo que se despliega, y justo en la pieza recien estrenada.
  *
- * ## Y por que se declara en vez de arreglarse
+ * ## Y por que se declaraba en vez de arreglarse
  *
- * El archivo que falta esta en el clon de `catastro`, no aqui: este repositorio compone, no
+ * El archivo que faltaba estaba en el clon de `catastro`, no aqui: este repositorio compone, no
  * escribe el compose de nadie. Un rojo permanente en `infrastructure` por el trabajo pendiente de
  * otro repositorio es lo que `C-2` y `F` decidieron no hacer —el mismo criterio que el censo de
- * imagenes huerfanas—, y callarlo no es una opcion: queda **nombrado**, con su issue, y **se
- * comprueba en las dos direcciones**, asi que el dia que `catastro` anada el servicio esta guarda
- * se pone roja pidiendo que se retire la entrada.
+ * imagenes huerfanas—, y callarlo no era una opcion: quedaba **nombrado**, con su issue, y **se
+ * comprueba en las dos direcciones**.
  *
- * La clave es el nombre de la imagen tal como el descriptor la declara —`catastro-interfaz`—, que
- * es el mismo nombre que el compose tendria que dar a su servicio.
+ * ## Y esta VACIA, que es como termina una deuda declarada
+ *
+ * `catastro`#105 anadio el servicio el 2026-09-12, y la comprobacion de las dos direcciones hizo
+ * exactamente lo que se escribio para que hiciera: se puso **roja pidiendo que se retirara la
+ * entrada**, en vez de dejarla envejecer eximiendo a algo que ya nadie necesita eximir. Es la
+ * direccion de #27.
+ *
+ * Se queda el mecanismo, no la entrada: el dia que otro descriptor declare una imagen cuyo
+ * compose no levanta, esto es donde tiene que venir a decirse. La clave es el nombre de la imagen
+ * tal como el descriptor la declara —`catastro-interfaz` era la suya—, que es el mismo nombre que
+ * el compose tiene que dar a su servicio.
  */
-const IMAGEN_SIN_SERVICIO_EN_EL_COMPOSE: Record<string, string> = {
-  // hneyra/catastro#105: su descriptor despliega la interfaz desde #102 y su compose no la levanta.
-  "catastro-interfaz": "hneyra/catastro#105: la despliega el descriptor y su compose no la trae",
-};
+const IMAGEN_SIN_SERVICIO_EN_EL_COMPOSE: Record<string, string> = {};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Los cuatro, contra su descriptor
