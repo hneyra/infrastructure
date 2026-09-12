@@ -72,14 +72,37 @@ la desengancha, si la entrada nace marcada, o si su descripción deja de avisar.
    nodo reparte detiene el despliegue en «Lo declarado cabe en el nodo real», y ese paso corre
    sin la condición de la brecha.
 3. Los cuatro secretos del *environment*, **y en los dos**: `prod` y `prod-preview`.
-4. **Lanzar `Infraestructura` a mano** (`workflow_dispatch`) con
+4. **Un contenedor de respaldo NUEVO, y declararlo antes del primer `up`.** Es el paso que a
+   este procedimiento le faltaba, y costó [#112](https://github.com/hneyra/infrastructure/issues/112):
+   **un catálogo de wal-g es de un CLÚSTER, no de un ambiente.** El clúster nuevo empieza a
+   archivar en cuanto el paso 5 lo levanta, y si el destino sigue siendo el catálogo del viejo
+   no da error — da silencio. Medido el 2026-09-12, una semana después de la mudanza de `prod`:
+   `backup-push` salía 0 sin dejar nada, la tabla `respaldo` decía `EXITOSO`, y los siete
+   respaldos que había eran del clúster anterior con su WAL **ya sobrescrito** por el nuevo.
+   No había con qué restaurar, en ninguno de los dos ambientes.
+   - Crear el contenedor en el proveedor —a mano: no hay recurso de Pulumi ni paso de CI que lo
+     haga— y comprobar que la credencial del respaldo **puede escribir en él**. Que pueda
+     listarlo no lo prueba: la política concede `ListBucket` en general.
+   - Poner su nombre en `kamayuk:backupBucket` de `Pulumi.<ambiente>.yaml`, y —si el ambiente es
+     `prod`— en `kamayuk:restoreSourceBucket` de `Pulumi.stg.yaml`, que una guarda ata.
+   - **El contenedor viejo no se toca.** Se queda donde está, con su clave de cifrado.
+5. **Lanzar `Infraestructura` a mano** (`workflow_dispatch`) con
    **`soltar_recursos_inalcanzables` marcado**. Es la corrida de la mudanza, y la única que debe
    llevarlo.
-5. Comprobar que la corrida siguiente, **sin** marcarlo, sale verde. Si no, el estado no quedó
+6. Comprobar que la corrida siguiente, **sin** marcarlo, sale verde. Si no, el estado no quedó
    limpio y hay que mirarlo antes de seguir — no volver a marcarlo por costumbre.
-6. Mover el DNS y esperar el certificado. ACME resuelve el desafío HTTP-01 por el 80, así que el
+7. **Lanzar el respaldo a mano, sin esperar al `CronJob`**, y leer su salida:
+   `kubectl -n kamayuk-<amb> create job --from=cronjob/kamayuk-<amb>-respaldo respaldo-mudanza`.
+   Hasta que ese respaldo base aterrice, el contenedor nuevo tiene WAL y **ningún punto de
+   restauración**: el ambiente pasa de «0 respaldos restaurables» a «0 respaldos restaurables»,
+   y eso no se arregla solo. Desde #112 el `Job` **falla** si el respaldo no llega al catálogo,
+   así que si sale en verde es que está.
+   - Y mirar `pg_stat_archiver` en cuanto el motor vuelva: si la credencial no alcanza el
+     contenedor nuevo, `archive_command` empieza a fallar, PostgreSQL **retiene el WAL en el
+     disco del nodo** y el primer síntoma es el disco llenándose, horas después.
+8. Mover el DNS y esperar el certificado. ACME resuelve el desafío HTTP-01 por el 80, así que el
    nombre tiene que apuntar al nodo nuevo antes.
-7. **Apagar el nodo viejo**, que es lo que convierte a los huérfanos en nada. Mientras siga
+9. **Apagar el nodo viejo**, que es lo que convierte a los huérfanos en nada. Mientras siga
    encendido hay dos clústeres sirviendo el mismo producto, y solo uno está gestionado.
 
 ## Lo que este documento no resuelve

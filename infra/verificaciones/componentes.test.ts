@@ -1880,9 +1880,32 @@ describe("#156 · observabilidad", () => {
       "CertificadoPorExpirar",
       "RespaldoQueNoCorrio",
       "JobDeMigracionFallido",
+      // #112: el aviso inmediato. `RespaldoQueNoCorrio` llega hasta 28 h tarde y solo
+      // dentro de su ventana de cinco minutos; desde #112 un respaldo que no aterriza
+      // deja un Job FALLIDO, que es algo que se puede mirar en el siguiente raspado.
+      "JobDeRespaldoFallido",
     ]) {
       expect(alertasYmlCargado).toContain(`alert: ${regla}`);
     }
+  });
+
+  it("#112 — la alerta del respaldo puede hablar del caso «nunca hubo un exito»", () => {
+    // kube-state-metrics solo publica `kube_cronjob_status_last_successful_time` cuando el
+    // CronJob TIENE un `lastSuccessfulTime`. Sin el `absent(...)`, `time() - max(serie
+    // ausente)` es un vector vacio y la regla no puede disparar — o sea que la unica alerta
+    // de respaldo era muda justo en el escenario de #112: un cluster recien levantado en el
+    // que no ha habido nunca un exito. Su propio comentario decia «o no hay ninguno», y eso
+    // era lo unico de la regla que no era cierto.
+    const configuracion = buscar(manifiestosDe(AMBIENTE), "ConfigMap", "observabilidad-prometheus") as {
+      data: Record<string, string>;
+    };
+    const reglas = configuracion.data["alertas.yml"] ?? "";
+    const respaldo = reglas.slice(reglas.indexOf("alert: RespaldoQueNoCorrio"));
+    expect(
+      respaldo.slice(0, respaldo.indexOf("- alert:", 1)),
+      "sin `absent(...)` esta regla no dispara cuando la serie no existe, que es exactamente " +
+        "el estado de un ambiente recien mudado de nodo",
+    ).toContain("absent(kube_cronjob_status_last_successful_time");
   });
 
   it("sin destino configurado, Alertmanager enruta a null-receiver; con destino, al webhook", () => {

@@ -52,9 +52,14 @@ pvc-e0576f8f…  128Mi  traefik (kube-system)                          → [vmd2
 
 Así que perder el nodo es perder el directorio de datos de PostgreSQL, el histórico de
 Prometheus y los tableros de Grafana. **Lo único que sobrevive está fuera**: el bucket
-`sgtm-prod-respaldos` —que **no se renombra**: es el nombre de una cosa que existe, y
-cambiarlo en el código sin cambiarlo en AWS manda los respaldos a un sitio que no existe—
-y lo que haya en Pulumi Cloud y en GitHub.
+`kamayuk-prod-backups` y lo que haya en Pulumi Cloud y en GitHub.
+
+> El nombre sigue sin poderse cambiar a la ligera —cambiarlo en el código sin cambiarlo en
+> AWS manda los respaldos a un sitio que no existe, y eso no da error hasta el día que hay que
+> restaurar—. Lo que sí cambió con [#112](https://github.com/hneyra/infrastructure/issues/112)
+> es **de quién es un bucket**: de un CLÚSTER, no de un ambiente. Por eso reconstruir el nodo
+> lleva su contenedor nuevo (paso 4 de `mudar-un-ambiente-de-nodo.md`), y el anterior
+> —`sgtm-prod-respaldos`— se queda intacto donde está, aunque ya no restaure nada.
 
 Y una cosa más, que es la que este runbook no decía y por la que se reescribió: **la
 clave con la que ese bucket se lee vive DENTRO del nodo que se pierde.**
@@ -161,7 +166,7 @@ La que no: **`clave-cifrado`, en `kamayuk-<amb>-postgres-respaldo`** — el
 > **En un clúster vacío `bootstrap-secretos.sh` no la recupera: la genera nueva.** El
 > guion «lee lo que ya existe en el clúster […] y genera SOLO lo que falta»; en un clúster
 > recién creado falta todo. Con una clave nueva, el motor arranca una cadena nueva y **el
-> histórico de `sgtm-prod-respaldos` queda ilegible, sin vuelta atrás**. No es una
+> histórico de `kamayuk-prod-backups` queda ilegible, sin vuelta atrás**. No es una
 > conjetura: `simulacro-de-restauracion.sh` §5 lo demuestra en cada PR —restaurar con la
 > clave equivocada tiene que fallar, y si no falla el propio simulacro se pone rojo—, y
 > [`rotar-clave.sh`](../../../infra/secretos/rotar-clave.sh) **se niega a rotarla** por lo
@@ -645,7 +650,7 @@ nodo viejo `vmd120205` **sigue encendido** (80 → `301`, 443 → `404`).
 
 | Paso | Por qué no |
 |---|---|
-| 0 · sacar los secretos del clúster viejo | Nunca se ha hecho en una pérdida real. Y **hoy `clave-cifrado` no está copiada fuera del clúster**: si el nodo se pierde de golpe, el histórico de `sgtm-prod-respaldos` es ilegible. Es el hueco más grande que deja este runbook, y no se cierra escribiéndolo |
+| 0 · sacar los secretos del clúster viejo | Nunca se ha hecho en una pérdida real. Y **hoy `clave-cifrado` no está copiada fuera del clúster**: si el nodo se pierde de golpe, el histórico de `kamayuk-prod-backups` es ilegible. Es el hueco más grande que deja este runbook, y no se cierra escribiéndolo |
 | 6 · devolver la clave antes del primer `up` | Se deduce de cómo funciona `bootstrap-secretos.sh` —genera sólo lo que falta— y de que `simulacro-de-restauracion.sh` demuestra en cada PR que una clave equivocada no restaura. **Las dos mitades están medidas; la secuencia entera no** |
 | 7 · con el nodo de verdad perdido | Lo medido es con el nodo viejo **encendido**, que es el caso caro. Con el nodo muerto el resultado debería ser mejor —no quedan huérfanos—, y «debería» es exactamente lo que no se afirma aquí |
 | 9 · restaurar `prod` | `--contra-cluster` se niega contra `prod` a propósito: es destructivo sobre el volumen en marcha. Lo que hay medido es `stg`. **Y hoy no habría desde dónde**: #112 |

@@ -169,13 +169,18 @@ vigilar**: `backend/*/src/main` de los cinco solo nombra el monolito en comentar
 `COMMENT ON COLUMN`. Anadir una prohibicion a la libreria compartida exigiria su clase de muestra y
 tocaria los seis builds para vigilar el conjunto vacio.
 
-**Dos excepciones declaradas, y las dos con su motivo dentro de la guarda.** (1) Los buckets
-`sgtm-{stg,prod}-respaldos` (`infra/Pulumi.{stg,prod}.yaml`): **son el nombre de cosas que
-existen**, y renombrarlos en el codigo sin renombrar el bucket manda los respaldos a un sitio que no
-existe — y eso no da error hasta el dia que hay que restaurar. (2) Dos `COMMENT ON COLUMN` dentro de
-un `V1__baseline.sql` **ya aplicado**: Flyway valida la suma de comprobacion de cada migracion, asi
+**Una excepcion declarada, con su motivo dentro de la guarda:** dos `COMMENT ON COLUMN` dentro de
+un `V1__baseline.sql` **ya aplicado**. Flyway valida la suma de comprobacion de cada migracion, asi
 que editar una que ya corrio hace fallar el arranque de **toda base existente**. No es que no se
 quiera cambiar: **no se puede** — se corregiria con una migracion nueva, si alguna vez importa.
+
+**Eran dos hasta #112.** La otra eran los buckets `sgtm-{stg,prod}-respaldos`, y su motivo decia
+«entran cuando alguien renombre el bucket de verdad»: paso. Los dos ambientes se mudaron a
+`kamayuk-{stg,prod}-backups` —contenedores NUEVOS, no un renombrado— porque un catalogo de wal-g es
+de un CLUSTER y no de un ambiente, y los viejos se quedan intactos donde estan. Al retirarla se
+midio que la direccion de #27 de esa misma guarda **no avisaba**: la excepcion ya obsoleta pasaba en
+VERDE porque su nombre seguia apareciendo en COMENTARIOS, que es justo lo que el barrido no mira.
+Ahora esa comprobacion lee con los comentarios en blanco, igual que el barrido.
 
 ## Comandos
 

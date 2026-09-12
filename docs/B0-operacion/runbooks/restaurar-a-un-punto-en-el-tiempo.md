@@ -135,11 +135,20 @@ incidente cabe en el caso A, elígelo.
    > Se lee cuando se necesita y **no se pega en un chat, un ticket ni un mensaje**. Para
    > comprobar que está, basta con su longitud o su huella; nunca su valor.
 
-6. **Los buckets se llaman `sgtm-{stg,prod}-respaldos` y NO se renombran.** Es la
-   excepción declarada al renombrado: **son el nombre de cosas que existen**. Cambiarlos en
-   un texto manda los respaldos a un sitio que no existe, y eso **no da error el día que se
-   cambia** — da error el día que hay que restaurar. Medido el 2026-09-12: el `CronJob`
-   lleva `WALG_S3_PREFIX=s3://sgtm-prod-respaldos` y el motor el mismo valor.
+6. **Los buckets son `kamayuk-{stg,prod}-backups`, y un bucket es de un CLÚSTER.** Hasta
+   [#112](https://github.com/hneyra/infrastructure/issues/112) eran `sgtm-{stg,prod}-respaldos`
+   y aquí decía que no se renombraban nunca. **No es un renombrado**: los dos ambientes se
+   mudaron a contenedores NUEVOS, y los viejos siguen donde estaban, intactos y con su clave de
+   cifrado. El motivo de aquella regla —cambiar el nombre en el código sin cambiarlo en el
+   proveedor manda los respaldos a un sitio que no existe, y eso no da error hasta el día que
+   hay que restaurar— **sigue siendo cierto**; lo que cambió es que un catálogo de wal-g no
+   puede ser de dos clústeres, y una mudanza de nodo crea un clúster.
+   - **Los contenedores viejos ya no restauran nada, y está medido** (2026-09-12): sus siete
+     respaldos son del clúster anterior y su WAL fue sobrescrito, segmento a segmento, por el
+     que archiva hoy. No se han borrado, pero no sirven.
+   - El prefijo no se teclea: sale de `kamayuk:backupBucket` del stack, y todos los comandos
+     de aquí lo toman del entorno del pod. Para comprobar cuál es:
+     `kubectl -n kamayuk-<amb> get deploy kamayuk-<amb>-postgres -o jsonpath='{..env[?(@.name=="WALG_S3_PREFIX")].value}'`.
 
 ## 2. Pasos (caso A: el clúster entero)
 
