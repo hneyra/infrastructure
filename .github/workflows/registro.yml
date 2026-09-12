@@ -1,5 +1,6 @@
 # La guarda de #711: un PR que cierra un issue y toca codigo de produccion deja su fila en la
-# tabla «Verificar antes de afirmar» de CLAUDE.md.
+# tabla «Verificar antes de afirmar» de `docs/agent/HISTORY.md` (#114; vivio en `CLAUDE.md`
+# hasta el 2026-09-12).
 #
 # POR QUE ESTA EN CI Y NO EN UNA COSTUMBRE
 # Esa tabla es la memoria del proyecto: cada issue deja ahi que se implemento y COMO SE DEMOSTRO
