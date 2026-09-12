@@ -35,6 +35,52 @@ set -euo pipefail
 # diagnostico se volveria mudo sin que nada se pusiera rojo.
 SELECTOR_DEL_AMBIENTE="proyecto=kamayuk,ambiente="
 
+# Una linea por pod: nombre, fase, si cada contenedor esta listo, y por que espera.
+# shellcheck disable=SC2016
+FORMATO_DE_ESTADO='{range .items[*]}{.metadata.name}{"\t"}{.status.phase}{"\t"}{range .status.containerStatuses[*]}{.ready}{","}{end}{"\t"}{range .status.containerStatuses[*]}{.state.waiting.reason}{","}{end}{"\n"}{end}'
+
+# Decide que pods hay que volcar. Lee de la entrada estandar el formato de arriba y
+# escribe `nombre<TAB>fase<TAB>motivos` de los que NO estan sanos.
+#
+# Es una funcion aparte, y con su modo `--clasificar`, para que se pueda ejercer SIN un
+# cluster: `infra/verificaciones/el-diagnostico-elige-bien-los-pods.test.ts` le da casos
+# sinteticos y comprueba a quien elige. La version anterior no se podia comprobar sin
+# levantar un pod en CrashLoopBackOff a proposito, y por eso vivio rota (#67, #68).
+#
+# La regla, y las tres ramas importan:
+#   - `Succeeded`  -> fuera SIEMPRE: es un Job que termino bien.
+#   - `Running`    -> dentro SOLO si algun contenedor no esta listo. Aqui cae
+#                     CrashLoopBackOff, que tiene fase `Running` y era el caso que
+#                     nunca se volcaba.
+#   - lo demas     -> dentro: Pending, Failed, Unknown.
+clasificarPods() {
+    local nombre fase listos motivos
+    while IFS=$'\t' read -r nombre fase listos motivos; do
+        [ -n "$nombre" ] || continue
+        case "$fase" in
+            Succeeded) continue ;;
+            Running)
+                # `,$listos` para que el patron `,false` no case con un `ready` que
+                # empiece por otra cosa. Un pod sin `containerStatuses` no entra por
+                # aqui: su fase no seria `Running`.
+                case ",$listos" in
+                    *",false"*) ;;
+                    *) continue ;;
+                esac
+                ;;
+        esac
+        motivos="${motivos%,}"
+        motivos="${motivos//,,/,}"
+        printf '%s\t%s\t%s\n' "$nombre" "$fase" "${motivos#,}"
+    done
+}
+
+if [ "${1:-}" = "--clasificar" ]; then
+    # Solo para las pruebas: lee de stdin y escribe a quien volcaria.
+    clasificarPods
+    exit 0
+fi
+
 diagnosticar_uno() {
     local NAMESPACE="$1"
 
@@ -57,19 +103,38 @@ diagnosticar_uno() {
     kubectl get events -n "$NAMESPACE" --sort-by=.lastTimestamp 2>/dev/null | tail -60 || true
     echo "::endgroup::"
 
-    # Y el detalle de lo que NO esta listo, que es lo unico que hay que leer entero.
+    # Y el detalle de lo que NO esta sano, que es lo unico que hay que leer entero.
     # `describe` de un pod `Pending` trae al final el motivo exacto del planificador.
-    local NO_LISTOS
-    NO_LISTOS="$(kubectl get pods -n "$NAMESPACE" \
-        -o jsonpath='{range .items[?(@.status.phase!="Running")]}{.metadata.name}{"\n"}{end}' \
-        2>/dev/null || true)"
+    #
+    # La eleccion NO se hace por la fase (#67, #68). `status.phase` dice si los
+    # contenedores fueron admitidos y programados, no si estan sanos, y fallaba en las
+    # DOS direcciones: un pod en `CrashLoopBackOff` tiene fase `Running` y no se volcaba
+    # nunca —por eso el registro de `kamayuk-identidad-web` no salio el 2026-09-10—, y un
+    # `Job` que termino BIEN tiene fase `Succeeded`, que tampoco es `Running`, asi que se
+    # volcaba entero con su `describe` y sus 200 lineas de registro, para siempre. Lo que
+    # dice que un contenedor esta mal es `containerStatuses[].ready`.
+    local NO_SANOS
+    NO_SANOS="$(kubectl get pods -n "$NAMESPACE" -o jsonpath="$FORMATO_DE_ESTADO" 2>/dev/null \
+        | clasificarPods || true)"
 
-    if [ -z "$NO_LISTOS" ]; then
-        echo "Todos los pods de ${NAMESPACE} estan en Running."
+    if [ -z "$NO_SANOS" ]; then
+        # Cero no es «esta bien» si no habia pods: son dos estados distintos y se dicen
+        # distinto, que es la leccion de #40 aplicada aqui.
+        if [ -z "$(kubectl get pods -n "$NAMESPACE" -o name 2>/dev/null || true)" ]; then
+            echo "El namespace «${NAMESPACE}» NO TIENE NI UN POD: no hay nada que diagnosticar,"
+            echo "que no es lo mismo que estar sano."
+        else
+            echo "Todos los pods de ${NAMESPACE} estan sanos (Running con sus contenedores listos,"
+            echo "o Succeeded)."
+        fi
         return 0
     fi
 
-    for pod in $NO_LISTOS; do
+    echo "$NO_SANOS" | while IFS=$'\t' read -r pod fase motivo; do
+        echo "pod/${pod}: fase ${fase}${motivo:+, esperando por: ${motivo}}"
+    done
+
+    for pod in $(echo "$NO_SANOS" | cut -f1); do
         echo "::group::describe pod/${pod} (${NAMESPACE})"
         kubectl describe pod "$pod" -n "$NAMESPACE" || true
         echo "::endgroup::"
@@ -83,7 +148,7 @@ diagnosticar_uno() {
         echo "::endgroup::"
     done
 
-    echo "Pods no Running en ${NAMESPACE}: $(echo "$NO_LISTOS" | tr '\n' ' ')"
+    echo "Pods no sanos en ${NAMESPACE}: $(echo "$NO_SANOS" | cut -f1 | tr '\n' ' ')"
 }
 
 if [ "${1:-}" = "--ambiente" ]; then
