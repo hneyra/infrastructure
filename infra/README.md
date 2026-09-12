@@ -96,7 +96,6 @@ configuración **no contradiga lo que el proyecto ya decidió por escrito**.
 | El destino de respaldo **no** resuelve dentro del nodo | `INF-01` §1.3 |
 | El contenedor de respaldo nombra su ambiente | `INF-03` §4 |
 | `walArchiveTimeoutSeconds` ≤ 300 | RNF-076: **este valor es el RPO** |
-| `restoreSourceBucket` solo en `stg`, y distinto de su propio contenedor | `INF-03` §2 |
 | `stg` va marcada como instalación de demostración | `INF-03` §3.2, #122 |
 | Keycloak nunca en `start-dev`; usuarios de prueba nunca en `prod` | `INF-01` §1, `INF-03` §4 |
 | Las claves de los roles no se generan en el estado de Pulumi | `ADR-0011` §3 |

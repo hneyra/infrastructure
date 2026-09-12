@@ -179,14 +179,3 @@ config:
   kamayuk:backupRegion: us-east-1
   kamayuk:backupBucket: kamayuk-stg-backups
   kamayuk:walArchiveTimeoutSeconds: "300"
-  # De dónde lee stg para ensayar la restauración: el contenedor de prod (INF-03 §2).
-  #
-  # ⚠ HOY NO LO CONSUME NADIE, y esta medido (#112). Quien de verdad ensaya la restauracion es
-  # `infra/respaldo/contra-cluster.sh`, que toma el prefijo del `Deployment` de stg EN MARCHA
-  # —no de esta clave—, asi que stg se restaura A SI MISMO: justo lo que `config.ts` declara
-  # defecto en «`restoreSourceBucket` y `backupBucket` son el mismo contenedor». Y la frase que
-  # habia aqui, «la credencial con que lo lee es de SOLO LECTURA (INF-03 §4)», tampoco describe
-  # nada que exista: `variablesWalg()` inyecta UNA sola credencial, la de escritura. El valor se
-  # mantiene al dia porque una declaracion que miente es peor que ninguna; cablearlo o retirarlo
-  # es otro trabajo, y tiene issue propio.
-  kamayuk:restoreSourceBucket: kamayuk-prod-backups
