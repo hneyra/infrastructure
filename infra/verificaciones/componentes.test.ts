@@ -1954,14 +1954,17 @@ describe("#156 · observabilidad", () => {
    * Asi que la afirmacion no se debilita: se corrige para que mida el mecanismo de verdad.
    * Que `hostNetwork` no vuelva lo vigila `ninguna-alerta-vigila-el-vacio.test.ts`.
    */
-  it("node-exporter ve el nodo por /host/proc y /host/sys, no por la red del anfitrion", () => {
+  it("node-exporter ve el `/` del NODO, que es lo que la alerta del disco necesita", () => {
     const despliegue = buscar(ms, "Deployment", "observabilidad-node-exporter") as {
       spec: {
         template: {
           spec: {
             hostPID?: boolean;
             volumes: { name: string; hostPath?: { path: string } }[];
-            containers: { args: string[]; volumeMounts: { mountPath: string; readOnly?: boolean }[] }[];
+            containers: {
+              args: string[];
+              volumeMounts: { mountPath: string; readOnly?: boolean; mountPropagation?: string }[];
+            }[];
           };
         };
       };
@@ -1969,24 +1972,45 @@ describe("#156 · observabilidad", () => {
     const spec = despliegue.spec.template.spec;
     expect(spec.hostPID).toBe(true);
 
-    const rutasMontadas = spec.containers[0]?.volumeMounts.map((v) => v.mountPath) ?? [];
-    const rutasDelAnfitrion = spec.volumes.map((v) => v.hostPath?.path);
-    for (const ruta of ["/host/proc", "/host/sys"]) {
-      expect(
-        rutasMontadas,
-        `sin \`${ruta}\` montado, node_exporter mide el CONTENEDOR: un nodo que parece ` +
-          "vacio en todos los tableros.",
-      ).toContain(ruta);
-    }
-    for (const ruta of ["/proc", "/sys"]) {
-      expect(rutasDelAnfitrion, `no se monta \`${ruta}\` del anfitrion`).toContain(ruta);
-    }
+    // El montaje del `/` del anfitrion, de SOLO LECTURA y con propagacion.
+    const montaje = spec.containers[0]?.volumeMounts.find((v) => v.mountPath === "/host");
+    expect(
+      montaje,
+      "node-exporter no monta el `/` del anfitrion en `/host`. Sin el, `node_filesystem_*` " +
+        "publica los montajes de SU PROPIO contenedor —`/etc/hostname`, `/dev/shm`, `/var/run`— " +
+        "y `{mountpoint=\"/\"}` sale VACIA: `DiscoDelNodoAlto` no puede sonar y el panel «Disco " +
+        "en uso, raiz» sale vacio. Medido en `stg` el 2026-09-12 (#147).",
+    ).toBeDefined();
+    expect(montaje?.readOnly, "el `/` del anfitrion tiene que ir `readOnly`").toBe(true);
+    expect(
+      montaje?.mountPropagation,
+      "sin `HostToContainer`, el contenedor ve los montajes que habia al arrancar y ninguno " +
+        "posterior: un disco nuevo seria invisible, y su ausencia no se distingue de «ese disco " +
+        "esta bien».",
+    ).toBe("HostToContainer");
+    expect(spec.volumes.map((v) => v.hostPath?.path)).toContain("/");
+
+    // Y los tres `--path.*`, que son los que hacen que lea el anfitrion y no su contenedor.
     const args = spec.containers[0]?.args ?? [];
     expect(
       args,
-      "sin `--path.procfs`, node_exporter lee su propio /proc aunque el del nodo este montado",
-    ).toContain("--path.procfs=/host/proc");
+      "sin `--path.rootfs`, montar el `/` no sirve de nada: node-exporter seguiria resolviendo " +
+        "los puntos de montaje contra su propia raiz. Es la mitad que #141 no tenia y que #147 " +
+        "destapo — `--path.procfs` y `--path.sysfs` bastan para CPU, memoria y presion, pero el " +
+        "sistema de archivos NO sale de `/proc`.",
+    ).toContain("--path.rootfs=/host");
+    expect(args).toContain("--path.procfs=/host/proc");
     expect(args).toContain("--path.sysfs=/host/sys");
+
+    // Y que `/` no quede excluida por el filtro, que seria el mismo silencio por otro camino.
+    const exclude = args.find((a) => a.startsWith("--collector.filesystem.mount-points-exclude="));
+    expect(exclude, "no se declara ningun filtro de puntos de montaje").toBeDefined();
+    expect(
+      new RegExp((exclude ?? "").split("=")[1] ?? "").test("/"),
+      `el filtro «${exclude ?? ""}» excluye «/», que es justo la que mide DiscoDelNodoAlto: la ` +
+        "serie desapareceria igual que sin el montaje, y la alerta volveria a ser inactive para " +
+        "siempre.",
+    ).toBe(false);
   });
 
   it("Grafana no esta en ninguna IngressRoute: se administra por el tunel SSH", () => {

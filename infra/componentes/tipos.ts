@@ -102,6 +102,13 @@ export interface MontajeDeVolumen {
   mountPath: string;
   subPath?: string;
   readOnly?: boolean;
+  /**
+   * `HostToContainer` para el `/` del anfitrion que monta node-exporter (#147): sin propagacion,
+   * el contenedor ve los montajes que habia cuando arranco y **ninguno posterior**. Un volumen
+   * que el kubelet monte despues —o un disco nuevo— seria invisible para el colector de sistemas
+   * de archivos, y su ausencia no se distingue de «ese disco esta bien».
+   */
+  mountPropagation?: "None" | "HostToContainer";
 }
 
 export interface Contenedor {
@@ -164,7 +171,12 @@ export interface EspecificacionDePod {
 }
 
 export interface PlantillaDePod {
-  metadata: { labels: Record<string, string> };
+  /**
+   * `annotations` existe para la huella de la configuracion (#146): anotarla aqui —y no en el
+   * `Deployment`— es lo que hace que un cambio de `ConfigMap` recree el POD. En el objeto de
+   * arriba no cambiaria nada de la plantilla, y el pod seguiria corriendo con el archivo viejo.
+   */
+  metadata: { labels: Record<string, string>; annotations?: Record<string, string> };
   spec: EspecificacionDePod;
 }
 

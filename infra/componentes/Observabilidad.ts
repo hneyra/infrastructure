@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { commonLabels, resourceName, type Environment } from "../config";
 import {
   CLAVES,
@@ -171,6 +172,35 @@ function configuracionDePrometheus(environment: Environment): string {
   ].join("\n");
 }
 
+/**
+ * La huella del contenido de un `ConfigMap`, para anotarla en el pod que lo consume (#146).
+ *
+ * **Kubernetes actualiza el archivo dentro del pod; el proceso no se entera.** Prometheus relee
+ * su configuracion al arrancar o con `POST /-/reload`, y en el despliegue no lo llama nadie:
+ * medido en `stg` el 2026-09-12, el `ConfigMap` tenia **15** reglas y el proceso seguia
+ * evaluando **10**, raspando ademas el objetivo viejo de Traefik. El arreglo de #113 estaba
+ * desplegado y sin efecto, y **las cinco reglas que no se evaluaban eran justo las que existen
+ * para que un vigilante ciego no pase inadvertido**.
+ *
+ * Se anota la huella en el pod —y no se llama a `reload`— porque hay un caso que `reload` NO
+ * puede arreglar: **Grafana monta sus tres archivos con `subPath`, y un `ConfigMap` montado asi
+ * no recibe actualizaciones NUNCA** (documentacion de Kubernetes). Ahi lo unico que sirve es
+ * recrear el pod. Una sola forma para los tres vale mas que dos que hay que recordar cual va
+ * donde.
+ *
+ * Lo que cuesta: un cambio de configuracion recrea el pod. Para Prometheus eso es una ventana de
+ * segundos sin raspar —sus datos viven en su volumen, no en el pod—, y es lo que ya pasaba cada
+ * vez que alguien cambiaba la imagen.
+ */
+function sumaDeLaConfiguracion(data: Record<string, string>): string {
+  const huella = createHash("sha256");
+  for (const clave of Object.keys(data).sort()) {
+    huella.update(clave).update("\u0000").update(data[clave] ?? "").update("\u0000");
+  }
+  return huella.digest("hex").slice(0, 16);
+}
+
+
 function manifiestosDePrometheus(args: ArgsComunes): Manifiesto[] {
   const { environment, namespace, etiquetas, prioridad, recursos } = args;
   const nombre = servicioDePrometheus(environment);
@@ -210,7 +240,12 @@ function manifiestosDePrometheus(args: ArgsComunes): Manifiesto[] {
       strategy: { type: "Recreate" },
       selector: { matchLabels: { app: nombre } },
       template: {
-        metadata: { labels: { ...etiquetas, app: nombre } },
+        metadata: {
+          labels: { ...etiquetas, app: nombre },
+          // Recrea el pod cuando su configuracion cambia (#146): sin esto el archivo se
+          // actualiza dentro del pod y el proceso sigue con el viejo.
+          annotations: { "kamayuk.gob.pe/suma-de-la-configuracion": sumaDeLaConfiguracion(configuracion.data) },
+        },
         spec: {
           priorityClassName: prioridad,
           // La imagen ya corre como `nobody` (issue #157), pero el PVC que monta lo
@@ -344,7 +379,12 @@ function manifiestosDeAlertmanager(
       strategy: { type: "Recreate" },
       selector: { matchLabels: { app: nombre } },
       template: {
-        metadata: { labels: { ...etiquetas, app: nombre } },
+        metadata: {
+          labels: { ...etiquetas, app: nombre },
+          // Recrea el pod cuando su configuracion cambia (#146): sin esto el archivo se
+          // actualiza dentro del pod y el proceso sigue con el viejo.
+          annotations: { "kamayuk.gob.pe/suma-de-la-configuracion": sumaDeLaConfiguracion(configuracion.data) },
+        },
         spec: {
           priorityClassName: prioridad,
           // Mismo motivo que en Prometheus: el `emptyDir` de deduplicacion lo crea
@@ -450,10 +490,19 @@ function manifiestosDeNodeExporter(args: ArgsComunes): Manifiesto[] {
               args: [
                 "--path.procfs=/host/proc",
                 "--path.sysfs=/host/sys",
-                // Sin esto, `node_filesystem_*` mide el filesystem del contenedor,
-                // no el disco del nodo — y DiscoDelNodoAlto (issue #156) mediria
-                // el volumen equivocado.
-                "--collector.filesystem.mount-points-exclude=^/(host/proc|host/sys)($|/)",
+                // El `/` del anfitrion, que es lo que #147 destapo: `--path.procfs` y
+                // `--path.sysfs` bastan para CPU, memoria y presion, pero **el sistema de
+                // archivos no sale de `/proc`**. Sin `--path.rootfs`, node-exporter publica
+                // los montajes de SU PROPIO contenedor —`/etc/hostname`, `/dev/shm`,
+                // `/var/run`— y `node_filesystem_avail_bytes{mountpoint="/"}` sale VACIA.
+                // Medido en `stg` el 2026-09-12: `DiscoDelNodoAlto` no podia sonar, el panel
+                // «Disco en uso, raiz» salia vacio, y `SinMetricasDelNodo` —la guarda que
+                // #141 anadio— paso a `firing` diciendo exactamente esto.
+                "--path.rootfs=/host",
+                // Los de fabrica de node-exporter, que con `rootfs` vuelven a tener sentido:
+                // el viejo `^/(host/proc|host/sys)` describia el layout ANTERIOR y con este ya
+                // no excluia nada. `/` NO se excluye, que es la que hace falta.
+                "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run/credentials/.+|var/lib/docker/.+|var/lib/kubelet/.+)($|/)",
               ],
               ports: [{ name: "metrics", containerPort: 9100 }],
               // Lee `/proc` y `/sys` de solo lectura y no escribe nada propio: el
@@ -468,16 +517,29 @@ function manifiestosDeNodeExporter(args: ArgsComunes): Manifiesto[] {
               securityContext: seguridadSinRoot({ runAsUser: 65534, readOnlyRootFilesystem: true }),
               resources: recursos.exportador,
               volumeMounts: [
-                { name: "proc", mountPath: "/host/proc", readOnly: true },
-                { name: "sys", mountPath: "/host/sys", readOnly: true },
+                // Un solo montaje: el `/` del anfitrion en `/host`, de SOLO LECTURA. De ahi
+                // cuelgan `/host/proc` y `/host/sys`, asi que los dos `--path.*` de arriba
+                // siguen apuntando a donde apuntaban.
+                {
+                  name: "raiz-del-anfitrion",
+                  mountPath: "/host",
+                  readOnly: true,
+                  mountPropagation: "HostToContainer",
+                },
               ],
               readinessProbe: sondaHttp("/metrics", 9100, { periodSeconds: 10, failureThreshold: 3 }),
               livenessProbe: sondaHttp("/metrics", 9100, { periodSeconds: 20, failureThreshold: 5 }),
             },
           ],
           volumes: [
-            { name: "proc", hostPath: { path: "/proc" } },
-            { name: "sys", hostPath: { path: "/sys" } },
+            // El `/` entero, y hay que justificarlo porque es superficie (#147): node-exporter
+            // existe para medir el NODO, y el arbol de montajes del nodo no se puede leer desde
+            // dentro del contenedor de ninguna otra forma. Va `readOnly` en el montaje, el
+            // contenedor corre como 65534 sin root y con la raiz sellada, y los unicos colectores
+            // encendidos leen `/proc`, `/sys` y `statfs`. Lo que se gana a cambio es que la
+            // alerta del disco pueda sonar: hasta #147 no podia, y el runbook
+            // `el-disco-del-nodo-se-lleno.md` empieza justamente por ella.
+            { name: "raiz-del-anfitrion", hostPath: { path: "/" } },
           ],
         },
       },
@@ -654,7 +716,12 @@ function manifiestosDeGrafana(
       strategy: { type: "Recreate" },
       selector: { matchLabels: { app: nombre } },
       template: {
-        metadata: { labels: { ...etiquetas, app: nombre } },
+        metadata: {
+          labels: { ...etiquetas, app: nombre },
+          // Recrea el pod cuando su configuracion cambia (#146): sin esto el archivo se
+          // actualiza dentro del pod y el proceso sigue con el viejo.
+          annotations: { "kamayuk.gob.pe/suma-de-la-configuracion": sumaDeLaConfiguracion(configuracion.data) },
+        },
         spec: {
           priorityClassName: prioridad,
           // Mismo motivo que Prometheus: el PVC de `/var/lib/grafana` lo crea el
