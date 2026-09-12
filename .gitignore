@@ -31,3 +31,15 @@ infra/.local/
 build/
 librerias-backend/**/build/
 librerias-backend/.gradle/
+
+# Material local de las herramientas de agente. NO se versiona, y es una cicatriz:
+# en `rentas` un `git add -A` se trago DOCE enlaces de `.claude/worktrees/agent-*`
+# —gitlinks a arboles de trabajo efimeros— y hubo que deshacer el commit con
+# `git reset --soft HEAD~1` y volver a empujar. Un worktree es un directorio con su
+# propio `.git`, asi que git lo anota como submodulo y el clon de otro no lo puede
+# resolver: queda un `Subproject commit` que no existe en ninguna parte.
+#
+# `.claude/skills/` es lo mismo por otro camino: dependencias instaladas con
+# `npx skills add`, que son del puesto de quien trabaja y no del producto.
+.claude/worktrees/
+.claude/skills/
