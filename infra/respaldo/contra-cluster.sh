@@ -50,6 +50,7 @@ ensayar_contra_cluster() {
 
     local pod claveSuper claveOwner walgVersion walgSha256 walgPrefix awsEndpoint awsRegion
     local tBueno codigoBueno codigoMalo inicioDelReloj finDelReloj segundos estado marcadas
+    local listo codigoDeKubectl
 
     pod=$(kubectl get pod -n "$NAMESPACE" -l app="$DEPLOYMENT" -o jsonpath='{.items[0].metadata.name}')
     [ -n "$pod" ] || { echo "FALLO: no hay un pod de postgres en marcha en $NAMESPACE." >&2; exit 1; }
@@ -226,7 +227,25 @@ CONF
     pod=""
     for _ in $(seq 1 60); do
         pod=$(kubectl get pod -n "$NAMESPACE" -l app="$DEPLOYMENT" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-        [ -n "$pod" ] && kubectl get pod -n "$NAMESPACE" "$pod" -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null | grep -q true && break
+        listo=""; codigoDeKubectl=0
+        if [ -n "$pod" ]; then
+            # SIN TUBERIA (#91). `… | grep -q true` sale 141 bajo `pipefail` HABIENDO
+            # encontrado `true`: grep cierra la tuberia en cuanto casa, kubectl muere de
+            # SIGPIPE y `pipefail` se queda con SU codigo. Medido con un productor sintetico:
+            # la tuberia devuelve 141 con la coincidencia ya hecha, el `&& break` no corre y
+            # este bucle gasta sus 60 vueltas -120 s- con el pod YA listo. Se lee entero y se
+            # compara con `[ = ]`, que no abre ningun proceso al que dejar sin lector. Es la
+            # misma forma de `kcPrimeraLinea()` en despliegue/identidad/reconciliar-identidades.sh.
+            #
+            # `2>/dev/null` se conserva -no `2>&1`-: un aviso de kubectl por stderr entraria
+            # en la variable y "warning…true" ya no seria igual a `true`. Lo que se guarda del
+            # fallo del productor es su CODIGO, que es lo que la vieja forma confundia con
+            # «contesto que no».
+            listo=$(kubectl get pod -n "$NAMESPACE" "$pod" \
+                -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null) \
+                || { codigoDeKubectl=$?; listo=""; }
+            [ "$listo" = true ] && break
+        fi
         sleep 2
     done
     [ -n "$pod" ] || { echo "FALLO: el pod restaurado nunca aparecio." >&2; exit 1; }

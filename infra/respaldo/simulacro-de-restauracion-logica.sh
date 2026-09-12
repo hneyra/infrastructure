@@ -249,7 +249,21 @@ for SISTEMA in "${SISTEMAS[@]}"; do
     echo "  pg_restore (-Fc): $ERRORES_C error(es), codigo de salida $CODIGO_C"
     echo "  psql (plano)    : $ERRORES_P error(es), codigo de salida $CODIGO_P"
     if [ "$ERRORES_C" -gt 0 ]; then
-        grep '^pg_restore: error:' "$TRABAJO/$SISTEMA.fc.err" | head -3 | sed 's/^/      /'
+        # Sin `| head -3` (#91): bajo `pipefail`, `head` cierra la tuberia en cuanto tiene sus
+        # tres lineas, `grep` muere de SIGPIPE y `set -e` ABORTA el simulacro justo en el camino
+        # que existe para IMPRIMIR por que fallo. Medido con un `.fc.err` sintetico: con 5000
+        # errores el guion sale 141 y no llega al censo; con 85 sobrevive, porque caben en el
+        # buffer de la tuberia — o sea que es una carrera. Se lee entero y se recorta despues,
+        # como `kcPrimeraLinea()` de `despliegue/identidad/reconciliar-identidades.sh`.
+        CODIGO_GREP=0
+        PRIMEROS_C=$(grep '^pg_restore: error:' "$TRABAJO/$SISTEMA.fc.err") || CODIGO_GREP=$?
+        if [ "$CODIGO_GREP" -gt 1 ]; then
+            echo "      (no se pudo leer «$TRABAJO/$SISTEMA.fc.err»: grep salio $CODIGO_GREP)" >&2
+        elif [ -z "$PRIMEROS_C" ]; then
+            echo "      ($ERRORES_C error(es) contados y ni una linea «pg_restore: error:»)" >&2
+        else
+            printf '%s\n' "$PRIMEROS_C" | sed -n '1,3s/^/      /p'
+        fi
     fi
 
     # -- 6. el censo del catalogo, ORIGEN contra RESTAURADA ---------------------

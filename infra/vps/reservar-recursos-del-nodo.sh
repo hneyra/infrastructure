@@ -224,7 +224,21 @@ echo "· Comprobando que kubelet aplico la reserva -lo asignable bajo, la capaci
 kubectl get node -o custom-columns='NODO:.metadata.name,CPU_CAPACIDAD:.status.capacity.cpu,CPU_ASIGNABLE:.status.allocatable.cpu,MEM_CAPACIDAD:.status.capacity.memory,MEM_ASIGNABLE:.status.allocatable.memory'
 
 echo "· Confirmando que los pods existentes siguen en pie -el clúster «vuelve solo»-"
-if ! kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded --no-headers | grep -q .; then
+# La salida se lee ENTERA y se busca sin tuberia (#91). Con `| grep -q .` delante, grep cierra la
+# tuberia en cuanto ve la PRIMERA linea, kubectl muere de SIGPIPE -141- y `pipefail` da ese 141
+# por codigo de la tuberia entera: el `!` lo toma por «no hay coincidencia» y anuncia que no hay
+# pods pendientes HABIENDOLOS. Medido con un kubectl simulado: 200 000 lineas -> 141; dos lineas
+# -> 0. O sea que ademas es una carrera, y acierta o miente segun el tamano del cluster.
+#
+# Y el `2>&1` de la forma canonica NO va aqui: kubectl escribe «No resources found» en STDERR, y
+# mezclarlo convertiria el caso bueno -ningun pod pendiente- en un FALLO permanente.
+if ! PENDIENTES=$(kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded --no-headers); then
+    echo "FALLO: no se pudo preguntar por los pods tras el reinicio de k3s." >&2
+    echo "El nodo volvio a Ready, pero eso NO confirma que los pods siguen en pie." >&2
+    echo "kubectl get pods -A y journalctl -u k3s -n 200 tienen la razon real." >&2
+    exit 1
+fi
+if [ -z "$PENDIENTES" ]; then
     echo "  Ningun pod fuera de Running/Succeeded: el reinicio no se llevo nada por delante."
 else
     echo "FALLO: hay pods que no volvieron a Running tras el reinicio de k3s:" >&2

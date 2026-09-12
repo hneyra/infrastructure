@@ -42,8 +42,21 @@ STACK="${AQUI}/../Pulumi.${AMBIENTE}.yaml"
 # El mismo analizador minimo que `verificaciones/stacks.ts`: `config:` y debajo una
 # linea `kamayuk:clave: valor`. Se le quitan comillas y comentarios.
 valor_declarado() {
-    sed -n "s/^[[:space:]]*kamayuk:$1:[[:space:]]*\([^#]*\).*$/\1/p" "$STACK" \
-        | head -1 | tr -d '"'"'"' ' | tr -d '\r'
+    # SE LEE ENTERO Y SE RECORTA DESPUES, SIN TUBERIA (#91). `| head -1` cierra la tuberia en
+    # cuanto tiene su linea; con `pipefail` el SIGPIPE de `sed` sale 141 HABIENDO LEIDO el valor,
+    # y en un `$( … )` bajo `set -e` eso no da un dato malo: aborta el guion sin decir por que.
+    local lineas estado=0
+    lineas=$(sed -n "s/^[[:space:]]*kamayuk:$1:[[:space:]]*\([^#]*\).*$/\1/p" "$STACK") || estado=$?
+    if [ "$estado" != 0 ]; then
+        # El stderr de `sed` sale sin tocar, y esto lo nombra: no es «el stack no lo declara»
+        # —eso es la cadena vacia y lo dice el mensaje del #252— es que no se pudo mirar.
+        echo "::error::No se pudo leer ${STACK} buscando «kamayuk:$1»: sed salio ${estado}." \
+             "No es que el stack no lo declare: es que no se pudo leer el stack." >&2
+        return 1
+    fi
+    lineas=${lineas%%$'\n'*}           # «la primera linea», sin `head`
+    lineas=${lineas//[\"\' ]/}         # lo que quitaba el primer `tr`: comillas y espacios
+    printf '%s' "${lineas//$'\r'/}"    # y el segundo
 }
 
 # Milicores, desde "2" o "2000m".
