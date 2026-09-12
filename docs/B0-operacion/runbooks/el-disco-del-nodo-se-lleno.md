@@ -89,11 +89,11 @@ a ser desalojados. Es distinto de «el nodo se cayó»: aquí `ping` y SSH sigue
 
 Tres cosas que este runbook nombraba y **hoy no ocupan disco del nodo**:
 
-- **Los respaldos no están aquí.** El CronJob `kamayuk-prod-respaldo` (06:00 UTC, con
-  `wal-g`) empuja a **`s3://sgtm-prod-respaldos`**, con `RETENCION=7`. Ese bucket
-  **conserva el nombre del monolito a propósito**: es el nombre de una cosa que existe, y
-  renombrarlo en el código sin renombrarlo en S3 manda los respaldos a un sitio que no
-  existe, lo que no da error hasta el día que hay que restaurar.
+- **Los respaldos no están aquí.** El CronJob `kamayuk-prod-respaldo` empuja a
+  **`s3://kamayuk-prod-backups`**, con `RETENCION=7`. Desde
+  [#112](https://github.com/hneyra/infrastructure/issues/112) ese bucket es de ESTE clúster y
+  no del ambiente: el anterior, `sgtm-prod-respaldos`, sigue donde estaba y ya no restaura
+  nada. El nombre no se teclea en ningún sitio — sale de `kamayuk:backupBucket` del stack.
 - **Los WAL tampoco se acumulan**, mientras el archivado funcione. Medido: `archive_mode =
   on`, `archive_command = /opt/wal-g/wal-g wal-push %p`, **`failed_count = 0`**, 131
   segmentos archivados, el último a las 08:45 UTC. `pg_wal` pesaba **80 MiB** (5 segmentos
@@ -293,7 +293,7 @@ kubectl -n kamayuk-<amb> exec deploy/kamayuk-<amb>-observabilidad-prometheus -- 
 | Síntoma | Qué hacer |
 |---|---|
 | El disco se llena otra vez en días | No es un incidente, es una tendencia. Redimensionar en una ventana anunciada, en vez de repetir esto cada semana |
-| `pg_stat_archiver.failed_count > 0` tras restablecer el acceso | El problema no era de red. Revisar las credenciales del bucket en el `Secret` del CronJob —`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `WALG_LIBSODIUM_KEY`— y que `WALG_S3_PREFIX` siga siendo `s3://sgtm-prod-respaldos` |
+| `pg_stat_archiver.failed_count > 0` tras restablecer el acceso | El problema no era de red. Revisar las credenciales del bucket en el `Secret` del CronJob —`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `WALG_LIBSODIUM_KEY`— y que `WALG_S3_PREFIX` sea el del stack (`kubectl -n kamayuk-prod get deploy kamayuk-prod-postgres -o jsonpath='{..env[?(@.name=="WALG_S3_PREFIX")].value}'`; hoy `s3://kamayuk-prod-backups`). Si acaba de mudarse el ambiente de nodo, **lo primero que hay que descartar es que la credencial no alcance el contenedor nuevo** (#112) |
 | `crictl rmi --prune` no libera nada | Las imágenes en uso son las que ocupan. Son demasiadas versiones desplegadas a la vez, no basura acumulada — y por debajo del 85 % el kubelet tampoco iba a purgarlas |
 | Purgaste y el uso no baja | Mira `local-path` antes que containerd: los PVC de Prometheus (8 Gi declarados, **39.7 MiB reales** el 2026-09-12), Grafana y el motor están **en el mismo sistema de archivos**, y ninguno tiene cuota |
 | El nodo entra en `DiskPressure` | Ya estás por debajo de 9.64 GiB libres y el kubelet está desalojando. Purgar imágenes primero, que es lo menos arriesgado, y tratarlo como pérdida del nodo si no se estabiliza en minutos |

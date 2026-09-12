@@ -287,9 +287,20 @@ config:
   kamayuk:esDemostracion: "true"
   # El RPO de RNF-076, escrito. El destino está FUERA del VPS (INF-01 §1.3).
   # AWS S3 (issue #158, decision de 2026-08-24). us-east-1: es donde vive el bucket.
+  #
+  # EL BUCKET ES DE UN CLUSTER, NO DE UN AMBIENTE (#112). El anterior era
+  # `sgtm-prod-respaldos`, y la mudanza de nodo del 2026-09-11 levanto un cluster NUEVO que
+  # quedo archivando en el catalogo de wal-g del ANTERIOR. wal-g no contempla dos clusteres
+  # en un catalogo y no da error: da silencio. Medido el 2026-09-12 contra el bucket real,
+  # los siete respaldos que habia (2026-08-30 a 2026-09-05, `base_…004F`…`base_…0082`)
+  # llevan `SystemIdentifier` 7678467191030263850 y el cluster vivo es 7684396738591203366;
+  # y TODO el WAL del bucket tenia fecha de ese mismo dia, o sea que el cluster nuevo ya
+  # habia pisado entero el rango que esos siete necesitaban. Ninguno restauraba ya.
+  # El bucket viejo se deja INTACTO, con su clave de cifrado: no se pierde nada restaurable,
+  # asi que borrarlo puede decidirse cuando se quiera y no es un paso de esto.
   kamayuk:backupEndpoint: https://s3.us-east-1.amazonaws.com
   kamayuk:backupRegion: us-east-1
-  kamayuk:backupBucket: sgtm-prod-respaldos
+  kamayuk:backupBucket: kamayuk-prod-backups
   kamayuk:walArchiveTimeoutSeconds: "300"
   # A donde Alertmanager avisa (issue #156). Obligatorio en prod: `config.ts` se pone
   # rojo sin él —«una regla que no notifica a nadie no es una alerta»—. ⚠ PROVISIONAL:

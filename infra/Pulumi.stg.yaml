@@ -165,10 +165,25 @@ config:
   # marcado en los tres formatos (INF-03 §3.2, issue #122). `config.ts` lo exige.
   kamayuk:esDemostracion: "true"
   # AWS S3 (issue #158, decision de 2026-08-24). us-east-1: es donde vive el bucket.
+  #
+  # EL BUCKET ES DE UN CLUSTER, NO DE UN AMBIENTE (#112). El anterior era
+  # `sgtm-stg-respaldos`, y tenia el mismo defecto que `prod`: medido el 2026-09-12, su ultimo
+  # respaldo base es del 2026-09-05 en la linea de tiempo `00000002`, y ese mismo dia entraban
+  # segmentos en la linea `00000001` —una linea que NINGUN respaldo de ese bucket tiene—. O sea
+  # que ahi tambien archiva un cluster para el que no hay ni un respaldo base. El bucket viejo
+  # se deja INTACTO. El motivo largo esta en `Pulumi.prod.yaml`.
   kamayuk:backupEndpoint: https://s3.us-east-1.amazonaws.com
   kamayuk:backupRegion: us-east-1
-  kamayuk:backupBucket: sgtm-stg-respaldos
+  kamayuk:backupBucket: kamayuk-stg-backups
   kamayuk:walArchiveTimeoutSeconds: "300"
-  # De dónde lee stg para ensayar la restauración. Es el contenedor de prod, y la
-  # credencial con que lo lee es de SOLO LECTURA (INF-03 §4).
-  kamayuk:restoreSourceBucket: sgtm-prod-respaldos
+  # De dónde lee stg para ensayar la restauración: el contenedor de prod (INF-03 §2).
+  #
+  # ⚠ HOY NO LO CONSUME NADIE, y esta medido (#112). Quien de verdad ensaya la restauracion es
+  # `infra/respaldo/contra-cluster.sh`, que toma el prefijo del `Deployment` de stg EN MARCHA
+  # —no de esta clave—, asi que stg se restaura A SI MISMO: justo lo que `config.ts` declara
+  # defecto en «`restoreSourceBucket` y `backupBucket` son el mismo contenedor». Y la frase que
+  # habia aqui, «la credencial con que lo lee es de SOLO LECTURA (INF-03 §4)», tampoco describe
+  # nada que exista: `variablesWalg()` inyecta UNA sola credencial, la de escritura. El valor se
+  # mantiene al dia porque una declaracion que miente es peor que ninguna; cablearlo o retirarlo
+  # es otro trabajo, y tiene issue propio.
+  kamayuk:restoreSourceBucket: kamayuk-prod-backups

@@ -64,11 +64,6 @@ const EXCEPCIONES: readonly {
   readonly motivo: string;
 }[] = [
   {
-    patron: /sgtm-(stg|prod)-respaldos/,
-    archivo: /^infra\/(Pulumi\.(stg|prod)\.yaml|config\.ts)$/,
-    motivo: "el bucket de respaldos de cada ambiente, que existe con ese nombre en el proveedor",
-  },
-  {
     patron: /^COMMENT ON COLUMN /,
     archivo: /src\/main\/resources\/db\/migration\/V1__baseline\.sql$/,
     motivo:
@@ -232,9 +227,18 @@ describe("el nombre del monolito no vuelve al codigo de los seis", () => {
   it("toda excepcion declarada nombra algo que existe", () => {
     // La direccion de #27: una excepcion que no exime a nadie hace decir de mas a la guarda, y
     // el dia que aparezca algo con ese nombre pasara sin que nadie lo haya decidido.
+    //
+    // Las lineas se leen CON los comentarios en blanco, igual que el barrido de arriba, y eso
+    // es de #112. Antes se leian en crudo, y esta prueba media otra cosa de la que dice: una
+    // excepcion se quedaba «viva» porque su nombre seguia apareciendo en un COMENTARIO, que es
+    // justo lo que el barrido no mira. Medido al retirar la de los buckets de respaldo: con la
+    // excepcion ya obsoleta —ninguna linea de codigo la ejercia— estas nueve pruebas pasaban en
+    // VERDE, sostenidas por tres comentarios que explican como se llamaba el bucket anterior.
+    // Una guarda que se cumple con la prosa que la justifica es la que nadie repone el dia que
+    // alguien borra el comentario.
     const lineas = todosLosArboles().flatMap(({ raiz, rutas }) =>
       archivosDe(raiz, rutas).flatMap((f) =>
-        readFileSync(f, "utf8")
+        sinComentarios(readFileSync(f, "utf8"), extname(f))
           .split("\n")
           .map((linea) => ({ archivo: relative(raiz, f), linea: linea.trim() })),
       ),

@@ -50,18 +50,44 @@ groups:
           descripcion: "Un despliegue con el esquema a medias: nadie migra sin que esto se vea."
           runbook: "docs/B0-operacion/runbooks/la-migracion-fallo-a-mitad.md"
 
+      # El aviso inmediato. `RespaldoQueNoCorrio`, aqui debajo, llega hasta 28 horas tarde
+      # y solo dentro de su ventana de cinco minutos: sirve para el caso «el CronJob ni
+      # siquiera corrio», no para «corrio y fallo». Desde #112 un respaldo que no aterriza
+      # SALE con codigo 1 -antes escribia EXITOSO-, asi que ahora hay un Job fallido que
+      # mirar, y `failedJobsHistoryLimit: 5` mantiene el objeto vivo para que la alerta no
+      # se resuelva sola. Es la misma forma que `JobDeMigracionFallido`.
+      - alert: JobDeRespaldoFallido
+        expr: kube_job_status_failed{job_name=~".*respaldo.*"} == 1
+        for: 0m
+        labels:
+          severidad: critica
+        annotations:
+          resumen: "El Job de respaldo fallo"
+          descripcion: "RNF-079: desde #112 esto significa que el respaldo NO esta en el catalogo -o no se pudo comprobar que lo este-. El registro de wal-g va en el stdout del Job."
+          runbook: "docs/B0-operacion/runbooks/restaurar-a-un-punto-en-el-tiempo.md"
+
       - alert: RespaldoQueNoCorrio
         # `kube_cronjob_status_last_successful_time` la publica kube-state-metrics,
         # leyendo el estado del propio CronJob -no hace falta que postgres_exporter
         # entre a la tabla `respaldo` (RF-126) para saberlo, y evita darle a
         # kamayuk_monitor un privilegio sobre una tabla de negocio que pg_monitor no
-        # le da por si solo-. `Respaldo.ts` corre a las 06:00 UTC: si a las 08:00 UTC
-        # el ultimo exito tiene mas de 26 horas, o no hay ninguno, algo fallo o el
-        # CronJob ni siquiera corrio -las dos cosas son la misma emergencia: no hay
-        # con que restaurar-.
+        # le da por si solo-. Si a las 08:00 el ultimo exito tiene mas de 26 horas, o no
+        # hay ninguno, algo fallo o el CronJob ni siquiera corrio -las dos cosas son la
+        # misma emergencia: no hay con que restaurar-.
+        #
+        # El `absent(...)` es de #112 y NO es cosmetico: kube-state-metrics solo publica
+        # esa serie cuando el CronJob tiene un `lastSuccessfulTime`, asi que en un cluster
+        # recien levantado la serie NO EXISTE, `time() - max(serie ausente)` es un vector
+        # vacio, y la regla no podia disparar. O sea que la unica alerta de respaldo era
+        # estructuralmente muda exactamente en el escenario que #112 describe: una mudanza
+        # de nodo, donde no ha habido nunca un exito. «Nunca hubo uno» es la peor de las
+        # dos mitades, y era la que no se decia.
         expr: |
           (hour() == 8 and minute() < 5)
-          and (time() - max(kube_cronjob_status_last_successful_time{cronjob=~".*respaldo.*"}) > 26 * 3600)
+          and (
+            absent(kube_cronjob_status_last_successful_time{cronjob=~".*respaldo.*"})
+            or (time() - max(kube_cronjob_status_last_successful_time{cronjob=~".*respaldo.*"}) > 26 * 3600)
+          )
         for: 0m
         labels:
           severidad: critica

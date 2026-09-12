@@ -51,9 +51,9 @@ function baseline(environment: Environment = "prod"): Invariants {
     backup: {
       endpoint: "https://s3.us-east-1.amazonaws.com",
       region: "us-east-1",
-      bucket: `sgtm-${environment}-respaldos`,
+      bucket: `kamayuk-${environment}-backups`,
       walArchiveTimeoutSeconds: 300,
-      ...(isStg ? { restoreSourceBucket: "sgtm-prod-respaldos" } : {}),
+      ...(isStg ? { restoreSourceBucket: "kamayuk-prod-backups" } : {}),
     },
     identity: {
       image: "quay.io/keycloak/keycloak:26.0",
@@ -166,7 +166,7 @@ describe("INF-01 §1.3 y RNF-076 — el respaldo, fuera del nodo y a tiempo", ()
 
   it("el contenedor de respaldo tiene que nombrar el ambiente", () => {
     const c = baseline("stg");
-    c.backup.bucket = "sgtm-respaldos";
+    c.backup.bucket = "kamayuk-backups";
     expectViolation(c, "es distinto por ambiente");
   });
 
@@ -192,7 +192,7 @@ describe("INF-01 §1.3 y RNF-076 — el respaldo, fuera del nodo y a tiempo", ()
 describe("INF-03 §2 — stg es donde se ensaya la restauración", () => {
   it("producción no restaura desde el contenedor de otro ambiente", () => {
     const c = baseline("prod");
-    c.backup.restoreSourceBucket = "sgtm-stg-respaldos";
+    c.backup.restoreSourceBucket = "kamayuk-stg-backups";
     expectViolation(c, "Solo stg restaura desde los respaldos de otro ambiente");
   });
 
@@ -360,7 +360,7 @@ const VALORES_MINIMOS = {
   postgresStorageSize: "100Gi",
   backupEndpoint: "https://s3.us-east-1.amazonaws.com",
   backupRegion: "us-east-1",
-  backupBucket: "sgtm-prod-respaldos",
+  backupBucket: "kamayuk-prod-backups",
   keycloakImage: "quay.io/keycloak/keycloak:26.0",
   applicationImageRepository: "ghcr.io/hneyra/kamayuk",
   // Una por sistema, y todas obligatorias: `readInvariants` no admite que falte ninguna,

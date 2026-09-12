@@ -312,6 +312,14 @@ SQL
     #
     # Como kamayuk_owner: `respaldo_escritura` (V8) nombra solo a ese rol, y
     # `kamayuk_app` no tiene INSERT ni UPDATE a proposito (ARQ-03 §4).
+    #
+    # El `AND destino = ...` es de #112, y cierra un defecto real: lo que se acaba de
+    # restaurar es `backup-fetch LATEST` del prefijo que este guion lee del Deployment
+    # VIVO, y la fila que se marcaba era «la EXITOSA mas reciente», que son dos hechos
+    # distintos. Con un ambiente que ha cambiado de contenedor -que es lo que #112
+    # obligo a hacer- eso estamparia «restauracion verificada» sobre una fila que apunta
+    # a un contenedor que ya no recibe nada. Es el unico sitio donde la columna `destino`
+    # deja de ser decorativa, y por eso aqui se compara.
     # ─────────────────────────────────────────────────────────────────────
     echo
     echo "· Dejando constancia de la restauracion verificada en la tabla respaldo (RF-126)"
@@ -320,7 +328,9 @@ SQL
 UPDATE respaldo
    SET ultima_restauracion_verificada     = now(),
        ultima_restauracion_verificada_por = 'simulacro-de-restauracion.sh --contra-cluster ($AMBIENTE)'
- WHERE id = (SELECT id FROM respaldo WHERE resultado = 'EXITOSO' ORDER BY inicio DESC LIMIT 1)
+ WHERE id = (SELECT id FROM respaldo
+              WHERE resultado = 'EXITOSO' AND destino = '$walgPrefix'
+              ORDER BY inicio DESC LIMIT 1)
 RETURNING id;
 SQL
 )
