@@ -50,6 +50,18 @@ const CASOS = [
     dice: '#71',
   },
   {
+    // La destaparon tres carriles a la vez al mudar el registro (#114): la cabecera del
+    // archivo nuevo citaba el issue del propio trabajo, y la rotura de control -borrar el
+    // registro entero- salia VERDE. Un archivo que explica de donde viene desactivaba la
+    // comprobacion.
+    nombre: 'una cabecera o un parrafo que citen el issue NO valen como fila',
+    cuerpo: 'Cierra #71',
+    archivos: ['despliegue/plataforma.compose.yaml'],
+    anadido: '+# Registro\n+\n+Se mudo aqui por #71, y esto no es una fila.',
+    esperado: 'rojo',
+    dice: '#71',
+  },
+  {
     nombre: 'cierra un issue, toca backend y SI deja su fila',
     cuerpo: 'Cierra #711.',
     archivos: ['librerias-backend/comun-verificaciones/src/main/java/kamayuk/comun/verificaciones/Algo.java'],

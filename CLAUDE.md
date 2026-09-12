@@ -233,6 +233,7 @@ por tercera vez.
 Que la fila **exista** lo comprueba `docs/00-gobierno/verificar-fila-del-registro.mjs` en cada PR
 que cierre un issue y toque código de producción. Lo que la fila **diga** —que la mutación sea
 real y las cifras cuadren— no lo puede leer una máquina: eso lo lee la revisión.
+
 | Verificación | Cómo se demostró que puede fallar | Resultado |
 |---|---|---|
 
