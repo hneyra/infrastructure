@@ -186,7 +186,17 @@ config:
   # (ADR-0011 §5, `ignoreChanges`), pero **no es inerte**: el `Job` de migracion de ese sistema
   # lleva la version en el nombre, asi que un valor nuevo no modifica un Job — crea otro, y ese
   # Job aplica las migraciones de esa version.
-  kamayuk:versionDeRentas: 66ebe547a3ee547598711e02267a1ecfea8aae14
+  # Sube para que `prod` sirva el arreglo del retorno de la autenticacion
+  # (`rentas`#71/#73): hasta este `sha`, quien se autenticaba volvia a la raiz del SITIO
+  # —`https://<dominio>/`— y recibia un 404, con el `code` correcto. El campo `image` de
+  # los `Deployment` se ignora tras crearse (ADR-0011 §5), asi que sin subir esta linea el
+  # arreglo se queda en `main` y el nodo sigue sirviendo el paquete viejo.
+  #
+  # El salto trae ademas la etapa 5 de ADR-0039 en `rentas` —su sembrador deja de escribir
+  # la autorizacion y la recibe por el buzon, que ya funciona en este nodo—, el realm
+  # renombrado y `SgtmAplicacion` -> `KamayukAplicacion`. **Las 16 migraciones son las
+  # mismas** que las de la version anterior, medido: el `Job` de migracion no aplica nada.
+  kamayuk:versionDeRentas: 235590e243f8af8d19a402c6861e229a2c2cc28f
   kamayuk:versionDeCatastro: ac1239a26fd538c852fdc0d204dafa3d8b69cda9
   kamayuk:versionDeNormativa: e1cdad5a3e4fdfd508144a67eaa569aa9488b80f
   kamayuk:versionDeCaja: 0772e2515a68d4e659b129c057067eb88f254370
