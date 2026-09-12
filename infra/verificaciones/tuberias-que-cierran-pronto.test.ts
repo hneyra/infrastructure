@@ -78,7 +78,7 @@ const CIERRAN_PRONTO = /\|\s*(grep\s+-[a-zA-Z]*q|grep\s+-m\b|head(\s|$))/;
 const DECLARADOS: ReadonlyMap<string, string> = new Map([
   // El `&& break` no se ejecuta, asi que el bucle sigue esperando a un pod que YA esta listo
   // y acaba en un plazo agotado que acusa al pod.
-  ["infra/respaldo/contra-cluster.sh:220", "espera a un pod: el SIGPIPE alarga la espera"],
+  ["infra/respaldo/contra-cluster.sh:229", "espera a un pod: el SIGPIPE alarga la espera"],
   // `grep … | head -3` en el camino que IMPRIME los errores: con mas de tres, `set -e` mata el
   // simulacro mientras cuenta por que fallo.
   [
