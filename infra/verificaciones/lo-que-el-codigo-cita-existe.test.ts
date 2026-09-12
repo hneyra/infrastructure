@@ -66,8 +66,14 @@ const SIN_TRAER_TODAVIA: Record<string, string> = {
   "arquitectura-de-infraestructura.md":
     "INF-01. Vive en `sgtm/docs/80-infraestructura/`, pre-renombrado.",
   "gestion-de-secretos.md": "INF-06. Vive en `sgtm/docs/80-infraestructura/`, pre-renombrado.",
+  // La cita esta mal en el nombre Y en la ruta: dice
+  // `docs/80-infraestructura/mantenimiento-del-nodo.md` y el documento real es
+  // `mantenimiento-del-vps.md`, en `B0-operacion/runbooks/` del archivo — su §4 es
+  // «Aplicar la reserva de CPU/memoria del nodo», que es justo lo que hace ese guion.
+  // Se corrige al traerlo: apuntarla ahora a un archivo que aun no esta aqui no arregla
+  // nada, solo cambia un nombre roto por otro.
   "mantenimiento-del-nodo.md":
-    "NO existe en ninguna parte, tampoco en el archivo: hay que escribirlo o retirar la cita.",
+    "La cita nombra un archivo que no existe; el real es `mantenimiento-del-vps.md`, todavia en el archivo.",
 };
 
 const RAIZ = raizDelRepositorio();
