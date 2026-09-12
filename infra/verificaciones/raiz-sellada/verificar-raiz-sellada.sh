@@ -147,7 +147,17 @@ echo "· A) raiz sellada CON /tmp —lo que el manifiesto declara—"
 codigo=$(correr a sellada con-tmp)
 if [ "$codigo" = "0" ] && [ -x "$TRABAJO/bin-a/wal-g" ]; then
     echo "  Termina en 0 y deja el binario: correcto"
-    echo "  $("$TRABAJO/bin-a/wal-g" --version 2>&1 | head -1)"
+    # La version, SIN tuberia (#91): `| head -1` cierra el lector en cuanto tiene su linea, y
+    # bajo `pipefail` el productor muere de SIGPIPE con 141 —medido con una salida larga—. Aqui
+    # ese codigo ademas se perdia: dentro del `$(…)` de un argumento de `echo` no lo mira nadie,
+    # asi que un wal-g que NO arranca en el anfitrion imprimia su primera linea de error como si
+    # fuese la version, bajo el «correcto» de arriba. Se lee entera, se recorta con expansion de
+    # parametros —que no abre ningun proceso al que dejar sin lector— y el codigo decide la rama.
+    if version=$("$TRABAJO/bin-a/wal-g" --version 2>&1); then
+        echo "  ${version%%$'\n'*}"
+    else
+        echo "  AVISO: «wal-g --version» salio con $? — ${version%%$'\n'*}" >&2
+    fi
 else
     echo "  FALLO: salio con $codigo, o no dejo un binario ejecutable en $DIRECTORIO_DEL_BINARIO" >&2
     sed -n '$p' "$TRABAJO/log-a.txt" >&2

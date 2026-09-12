@@ -417,9 +417,24 @@ consultar() {
         --dbname="$BASE_DEL_PADRON" --tuples-only --no-align --command "$1"
 }
 
-if ! consultar "SELECT 1 FROM pg_tables WHERE tablename = 'simulacro_deuda'" | grep -q 1; then
-    echo "FALLO: la tabla simulacro_deuda no existe en lo restaurado -la reproduccion del WAL" >&2
-    echo "se detuvo ANTES de llegar a T_BUENO, no despues. Diagnostico:" >&2
+# Sin tuberia, y a proposito (#91): `| grep -q 1` sale en cuanto ve el «1», el psql que se
+# queda sin lector muere de SIGPIPE y `pipefail` devuelve ese 141 -255 a traves de un
+# envoltorio- HABIENDO ENCONTRADO la tabla, o sea que negaria una restauracion correcta. Se
+# lee la salida entera, se guarda aparte el codigo del productor y se busca en la cadena:
+# «la tabla no esta» y «no se pudo preguntar» son dos fallos distintos y aqui se dicen
+# distinto. El `|| estado_de_la_consulta=$?` es lo que impide que `set -e` aborte el guion
+# antes de imprimir el diagnostico.
+estado_de_la_consulta=0
+tabla_restaurada=$(consultar "SELECT 1 FROM pg_tables WHERE tablename = 'simulacro_deuda'") \
+    || estado_de_la_consulta=$?
+if [ "$estado_de_la_consulta" != "0" ] || [[ "$tabla_restaurada" != *1* ]]; then
+    if [ "$estado_de_la_consulta" != "0" ]; then
+        echo "FALLO: no se pudo preguntar a lo restaurado -psql salio $estado_de_la_consulta," >&2
+        echo "con su error arriba-. Esto NO dice nada sobre si se llego a T_BUENO. Diagnostico:" >&2
+    else
+        echo "FALLO: la tabla simulacro_deuda no existe en lo restaurado -la reproduccion del WAL" >&2
+        echo "se detuvo ANTES de llegar a T_BUENO, no despues. Diagnostico:" >&2
+    fi
     echo "-- pg_is_in_recovery / ultimo LSN aplicado --" >&2
     consultar "SELECT pg_is_in_recovery(), pg_last_wal_replay_lsn()" >&2 || true
     echo "-- Ultimas 40 lineas del log del motor restaurado --" >&2

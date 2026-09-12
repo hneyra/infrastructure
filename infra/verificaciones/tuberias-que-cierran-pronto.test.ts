@@ -72,40 +72,23 @@ import { raizDelRepositorio } from "../componentes/fuentes";
 const CIERRAN_PRONTO = /\|\s*(grep\s+-[a-zA-Z]*q|grep\s+-m\b|head(\s|$))/;
 
 /**
- * Los sitios que YA estaban cuando se escribio esta guarda, con lo que le pasa a cada uno (#91).
- * Ninguno esta en `despliegue/`. Se retiran de aqui arreglandolos, no editando la lista.
+ * La deuda de #91, y esta **vacia desde el 2026-09-13**.
+ *
+ * Nacio con **nueve** sitios fuera de `despliegue/` que se declararon en vez de arreglarse, con un
+ * motivo escrito: «ejercerlos exige un cluster, un VPS o un respaldo, y cambiar a ciegas un guion
+ * que restaura copias es peor que la carrera que arregla».
+ *
+ * Ese motivo resulto ser evitable, y ahi esta el hallazgo: **la transformacion si se puede ejercer
+ * sin nada de eso**. Un `kubectl`, un `docker` o un `wal-g` son ordenes externas, asi que se tapan
+ * con una funcion de bash del mismo nombre y el bloque se ejerce tal cual, con un productor
+ * sintetico que sigue escribiendo cuando el consumidor ya salio. Lo que hacia falta no era un
+ * cluster: era un productor grande.
+ *
+ * Se deja el mecanismo, vacio y no retirado, porque es lo que protege al SIGUIENTE: una entrada
+ * nueva tiene que costar una decision escrita, y la comprobacion de las dos direcciones (#27)
+ * impide que la lista se quede diciendo que hay deuda donde ya no la hay.
  */
-const DECLARADOS: ReadonlyMap<string, string> = new Map([
-  // El `&& break` no se ejecuta, asi que el bucle sigue esperando a un pod que YA esta listo
-  // y acaba en un plazo agotado que acusa al pod.
-  ["infra/respaldo/contra-cluster.sh:229", "espera a un pod: el SIGPIPE alarga la espera"],
-  // `grep … | head -3` en el camino que IMPRIME los errores: con mas de tres, `set -e` mata el
-  // simulacro mientras cuenta por que fallo.
-  [
-    "infra/respaldo/simulacro-de-restauracion-logica.sh:252",
-    "imprime los errores de pg_restore; con mas de 3 aborta al imprimirlos",
-  ],
-  // `if ! consultar … | grep -q 1`: diria que la tabla restaurada no esta teniendola.
-  [
-    "infra/respaldo/simulacro-de-restauracion.sh:420",
-    "comprueba la tabla restaurada: puede negar una restauracion correcta",
-  ],
-  ["infra/verificaciones/ambiente/verificar-el-ambiente.sh:216", "`ls … | head -1`"],
-  ["infra/verificaciones/ambiente/verificar-el-ambiente.sh:390", "`… | head -1 | sed`"],
-  // `if docker logs … | grep -qiE`: daria por roto un motor que arranco bien.
-  [
-    "infra/verificaciones/motor/lib-motor-local.sh:279",
-    "busca errores en el registro del motor: puede inventarlos",
-  ],
-  ["infra/verificaciones/raiz-sellada/verificar-raiz-sellada.sh:150", "`wal-g --version | head -1`"],
-  ["infra/vps/comprobar-lo-asignable.sh:46", "`… | head -1 | tr`"],
-  // `if ! kubectl get pods … | grep -q .`: `grep -q .` casa con la PRIMERA linea, asi que es el
-  // que mas probabilidad tiene de todos; diria que no hay pods pendientes habiendolos.
-  [
-    "infra/vps/reservar-recursos-del-nodo.sh:227",
-    "cuenta pods pendientes: puede decir que no hay habiendolos",
-  ],
-]);
+const DECLARADOS: ReadonlyMap<string, string> = new Map([]);
 
 /** Un sitio encontrado: `ruta:linea` y la linea de codigo, para el mensaje del rojo. */
 interface Sitio {

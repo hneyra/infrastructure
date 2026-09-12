@@ -213,7 +213,17 @@ echo
 echo "== 1b. Las extensiones que cada crear-roles.sql declara =="
 for sistema in $SISTEMAS; do
     BASE="$sistema"
-    ROLES=$(ls "$RAIZ/../$sistema"/backend/*/src/main/resources/db/roles/crear-roles.sql 2>/dev/null | head -1)
+    # Sin `ls` y sin tuberia (#91). Con `pipefail`, `| head -1` deja a `ls` sin lector y su
+    # SIGPIPE (141) aborta el guion entero desde `set -e`; y, peor, un glob que no casa deja
+    # el patron literal, `ls` sale **2** y la tuberia tambien, de modo que el `aviso` de
+    # abajo —escrito justo para «no esta el clon»— era INALCANZABLE: el guion moria aqui, sin
+    # mensaje (su stderr va a /dev/null) y sin llegar a las secciones 2..6. Medido: exit 2.
+    # El glob lo resuelve bash, que ordena igual que `ls`, y «no casa nada» es exactamente
+    # «no esta el clon». El `:-` es por si alguien enciende `nullglob`, que con `set -u`
+    # convertiria el array vacio en «unbound variable».
+    ROLES_CANDIDATOS=("$RAIZ/../$sistema"/backend/*/src/main/resources/db/roles/crear-roles.sql)
+    ROLES=""
+    if [ -e "${ROLES_CANDIDATOS[0]:-}" ]; then ROLES="${ROLES_CANDIDATOS[0]}"; fi
     if [ -z "$ROLES" ]; then
         aviso "no esta el clon de «${sistema}»: no se puede saber que extensiones declara"
         aviso "  git clone https://github.com/hneyra/$sistema $RAIZ/../$sistema"
@@ -384,10 +394,22 @@ echo "== 4. La escalera de identidad, contra los cuatro =="
 PUERTO=18080
 pide() {
     local ruta=$1; shift
-    local cuerpo codigo
+    local cuerpo codigo coincidencia estado
     cuerpo=$(curl -s -o /tmp/kamayuk-r-$$.json -w '%{http_code}' "http://127.0.0.1:$PUERTO$ruta" "$@")
-    codigo=$(grep -o '"codigo"[[:space:]]*:[[:space:]]*"[A-Z_]*"' /tmp/kamayuk-r-$$.json 2>/dev/null \
-        | head -1 | sed -E 's/.*"([A-Z_]*)"$/\1/')
+    # Sin tuberia (#91). `| head -1` deja a `grep` sin lector y, con `pipefail`, la tuberia
+    # vuelve **141 habiendo encontrado la coincidencia**: medido sobre un cuerpo con muchas
+    # coincidencias, esta misma linea da 141. Aqui no abortaba —`pide` se llama siempre
+    # dentro de `$(…)` y `set -e` no entra ahi sin `inherit_errexit`—, y por eso era peor:
+    # los cuatro casos —hallado (0), no hallado (1, legitimo: un 200 no trae `codigo`), no
+    # se pudo leer el cuerpo (2) y SIGPIPE (141)— daban todos `codigo` vacio, y el `case` de
+    # abajo lee «401 » como VERDE. Se lee entero y se recorta con expansion de parametros,
+    # que no abre ningun proceso al que dejar sin lector.
+    estado=0
+    coincidencia=$(grep -o '"codigo"[[:space:]]*:[[:space:]]*"[A-Z_]*"' /tmp/kamayuk-r-$$.json 2>/dev/null) || estado=$?
+    [ "$estado" -le 1 ] || echo "  --   no se pudo leer /tmp/kamayuk-r-$$.json (grep salio $estado): curl no dejo cuerpo" >&2
+    coincidencia=${coincidencia%%$'\n'*}
+    coincidencia=${coincidencia%\"}
+    codigo=${coincidencia##*\"}
     rm -f /tmp/kamayuk-r-$$.json
     echo "$cuerpo ${codigo:-}"
 }

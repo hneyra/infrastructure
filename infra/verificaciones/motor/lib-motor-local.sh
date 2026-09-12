@@ -276,7 +276,18 @@ elif docker pull --quiet "$MOTOR_IMAGEN" >/dev/null 2>&1; then
     echo "· Motor: contenedor con $MOTOR_IMAGEN"
     motor_arrancar_con_docker
     motor_esperar || { docker logs "$CONTENEDOR" | tail -40; echo "FALLO: el motor no acepto conexiones." >&2; exit 1; }
-    if docker logs "$CONTENEDOR" 2>&1 | grep -qiE "^psql:.*ERROR|initdb: error"; then
+    # El registro ENTERO primero, y SIN tuberia (#91). `grep -q` terminaba en cuanto encontraba
+    # la coincidencia y dejaba a `docker logs` sin lector: con `pipefail` el SIGPIPE del productor
+    # —medido 141— era el codigo de la tuberia entera, asi que el `if` salia FALSO **con el error
+    # delante** y una inicializacion rota pasaba por buena. Y un `docker logs` que fallaba de
+    # verdad salia por esa misma rama: «no se pudo mirar» se leia como «no hay errores».
+    if ! MOTOR_REGISTRO=$(docker logs "$CONTENEDOR" 2>&1); then
+        printf '%s\n' "$MOTOR_REGISTRO" >&2
+        echo "FALLO: no se pudo leer el registro de «$CONTENEDOR»." >&2
+        echo "       No es «la inicializacion registro errores»: es que no se pudo mirar." >&2
+        exit 1
+    fi
+    if grep -qiE "^psql:.*ERROR|initdb: error" <<<"$MOTOR_REGISTRO"; then
         docker logs "$CONTENEDOR" | tail -40
         echo "FALLO: la inicializacion del motor registro errores." >&2
         exit 1
