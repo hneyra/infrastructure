@@ -84,7 +84,7 @@ ensayar_contra_cluster() {
     echo
     echo "· Escribiendo la fila BUENA -T_BUENO queda entre esta y la mala-"
     codigoBueno="ENSAYO-PITR-B$$"
-    kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveOwner" \
+    kubectl exec -i -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveOwner" \
         psql --username=kamayuk_owner --dbname="$BASE_DEL_PADRON" --quiet -v ON_ERROR_STOP=1 <<SQL
 BEGIN;
 SET LOCAL app.municipalidad_id = '$MUNICIPALIDAD_DE_ENSAYO';
@@ -107,7 +107,7 @@ SQL
 
     echo "· Escribiendo la fila MALA -la que el PITR tiene que dejar fuera-"
     codigoMalo="ENSAYO-PITR-M$$"
-    kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveOwner" \
+    kubectl exec -i -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveOwner" \
         psql --username=kamayuk_owner --dbname="$BASE_DEL_PADRON" --quiet -v ON_ERROR_STOP=1 <<SQL
 BEGIN;
 SET LOCAL app.municipalidad_id = '$MUNICIPALIDAD_DE_ENSAYO';
@@ -172,7 +172,16 @@ EOF
     echo "· Instalando wal-g en el pod temporal"
     kubectl exec -n "$NAMESPACE" "$POD_TEMPORAL" -- sh -c "
         set -e
-        apk add --no-cache curl >/tmp/apk.log 2>&1 || { cat /tmp/apk.log; exit 1; }
+        # gcompat no es opcional: el binario oficial de wal-g esta enlazado contra glibc y
+        # esta imagen es musl (Alpine). Sin el, wal-g muere con «not found» y salida 127
+        # -medido contra este mismo cluster el 2026-09-12-. Es el defecto de #158, que
+        # Respaldo.ts ya tenia resuelto en su paso 0 y este guion no (#129).
+        #
+        # SIN COMILLAS INVERTIDAS, y no es descuido: este bloque va dentro de un sh -c de
+        # comillas DOBLES, donde bash las trata como sustitucion de orden — las ejecuta y
+        # las borra del texto. Medido aqui mismo: la primera version de este comentario imprimio
+        # «gcompat: command not found» tres veces al correr el simulacro.
+        apk add --no-cache curl gcompat >/tmp/apk.log 2>&1 || { cat /tmp/apk.log; exit 1; }
         curl -fsSL -o /tmp/wal-g.tar.gz \
             https://github.com/wal-g/wal-g/releases/download/v${walgVersion}/wal-g-pg-ubuntu-20.04-amd64.tar.gz
         echo '${walgSha256}  /tmp/wal-g.tar.gz' | sha256sum -c -
@@ -272,7 +281,7 @@ CONF
     [ "$(consultar 'SELECT pg_is_in_recovery()')" = "f" ] \
         || { echo "FALLO: el motor restaurado no salio de recuperacion." >&2; exit 1; }
 
-    kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveOwner" \
+    kubectl exec -i -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveOwner" \
         psql --username=kamayuk_owner --dbname="$BASE_DEL_PADRON" --quiet -v ON_ERROR_STOP=1 <<SQL >/dev/null
 BEGIN;
 SET LOCAL app.municipalidad_id = '$MUNICIPALIDAD_DE_ENSAYO';
@@ -323,7 +332,7 @@ SQL
     # ─────────────────────────────────────────────────────────────────────
     echo
     echo "· Dejando constancia de la restauracion verificada en la tabla respaldo (RF-126)"
-    marcadas=$(kubectl exec -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveOwner" \
+    marcadas=$(kubectl exec -i -n "$NAMESPACE" "$pod" -c postgres -- env PGPASSWORD="$claveOwner" \
         psql --username=kamayuk_owner --dbname="$BASE_DEL_PADRON" --tuples-only --no-align -v ON_ERROR_STOP=1 <<SQL
 UPDATE respaldo
    SET ultima_restauracion_verificada     = now(),
