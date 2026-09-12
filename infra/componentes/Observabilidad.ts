@@ -163,7 +163,10 @@ function configuracionDePrometheus(environment: Environment): string {
     "  - job_name: traefik",
     "    static_configs:",
     "      # k3s, `kube-system`: el mismo Traefik que reconfigura Ingreso.ts.",
-    '      - targets: ["traefik.kube-system.svc.cluster.local:9100"]',
+    "      # `traefik-metrics` y NO `traefik`: el segundo es el Service del",
+    "      # LoadBalancer y publica solo 80 y 443 (medido en `prod`, #113). El del",
+    "      # 9100 lo crea `metrics.prometheus.service.enabled` de Ingreso.ts.",
+    '      - targets: ["traefik-metrics.kube-system.svc.cluster.local:9100"]',
     "",
   ].join("\n");
 }
@@ -398,9 +401,13 @@ function manifiestosDeAlertmanager(
 
 /**
  * Un `Deployment`, no un `DaemonSet` —que este repositorio no modela (`tipos.ts`)—.
- * Con un solo nodo (`INF-01` §1.1), un `DaemonSet` y un `Deployment(replicas: 1)` con
- * `hostNetwork`/`hostPID` hacen exactamente lo mismo: un pod, en el unico nodo que
- * hay. Modelar `DaemonSet` para una flota de uno es complejidad que nadie pidio.
+ * Con un solo nodo (`INF-01` §1.1), un `DaemonSet` y un `Deployment(replicas: 1)`
+ * hacen exactamente lo mismo: un pod, en el unico nodo que hay. Modelar `DaemonSet`
+ * para una flota de uno es complejidad que nadie pidio.
+ *
+ * Este parrafo citaba `hostNetwork`/`hostPID` como lo que igualaba las dos formas.
+ * `hostNetwork` se retiro al cerrar #113 —hacia el pod inalcanzable, ver el comentario
+ * de dentro— y la equivalencia no dependia de el.
  */
 function manifiestosDeNodeExporter(args: ArgsComunes): Manifiesto[] {
   const { environment, namespace, etiquetas, prioridad, recursos } = args;
@@ -418,9 +425,23 @@ function manifiestosDeNodeExporter(args: ArgsComunes): Manifiesto[] {
         metadata: { labels: { ...etiquetas, app: nombre } },
         spec: {
           priorityClassName: prioridad,
-          // Sin esto, node_exporter ve la red y el PID 1 del CONTENEDOR: cero CPU,
-          // cero procesos, un nodo que parece vacio en todos los tableros.
-          hostNetwork: true,
+          // `hostPID` se queda; `hostNetwork` NO, y es lo que cerro #113.
+          //
+          // Lo que hace que esto mida el NODO y no el contenedor son `/host/proc` y
+          // `/host/sys` con `--path.procfs`/`--path.sysfs`, no el espacio de nombres
+          // de red. Con `hostNetwork: true` el `podIP` ES el `hostIP`, asi que el
+          // EndpointSlice publicaba `164.68.125.44` — y medido el 2026-09-12 desde un
+          // pod de este cluster, la IP del nodo es INALCANZABLE en todo puerto: se
+          // probaron 22, 80, 443, 6443, 9100, 10250 y 31818, y los siete rechazados.
+          // No es la NetworkPolicy: Alertmanager, con egreso `0.0.0.0/0:443`
+          // explicito, alcanza `1.1.1.1:443` y no alcanza `164.68.125.44:443`. Es el
+          // camino pod->nodo del anfitrion, que este repositorio no gobierna.
+          //
+          // El resultado era un vigilante ciego que parecia sano: el Service, su
+          // EndpointSlice y `permitir-ingreso-node-exporter` estaban los tres bien
+          // escritos y los tres inertes —una politica de ingreso no puede aplicarse
+          // a un pod `hostNetwork`, cuyo trafico no pasa por la cadena de pod—, y
+          // `up{job="node"}` llevaba 2 692 muestras con CERO en 1.
           hostPID: true,
           containers: [
             {
