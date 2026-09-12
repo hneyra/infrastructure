@@ -121,6 +121,27 @@ export interface Publicador {
 }
 
 /**
+ * Si ese `push:` publica: `true`, o una EXPRESION de GitHub que lo decide al correr.
+ *
+ * Era `=== true` a secas, y eso dejo de describir la realidad el 2026-09-12: `rentas`#75 cambio
+ * el suyo a `push: ${{ github.event_name == 'push' }}` —se construye siempre, se publica solo al
+ * integrar, para que el flujo sea ademas una verificacion del PR—. Con la comparacion estricta
+ * `rentas` desaparecia ENTERO del inventario de publicadores, y el rojo que salia no decia «el
+ * flujo cambio de forma»: decia «el ambiente pide imagenes que nadie publica», acusando a tres
+ * que se publican perfectamente.
+ *
+ * **Lo que esta funcion NO hace, y hay que decirlo: no evalua la expresion.** No puede —ni tiene
+ * el evento, ni el contexto— ni falta: la pregunta que esta guarda contesta es «¿hay quien
+ * publique esta imagen?», y un paso que la sube al integrar la publica. Lo que sigue sin contar,
+ * y es el contraste que impide que esto exima de mas, es un `push: false` literal o un paso sin
+ * `push:` — «construir una imagen y no subirla no la publica», que es la frase con la que nacio.
+ */
+function empuja(valor: unknown): boolean {
+  if (valor === true) return true;
+  return typeof valor === "string" && /\$\{\{[\s\S]*\}\}/.test(valor);
+}
+
+/**
  * Las imagenes que un flujo publica, expandiendo su matriz.
  *
  * Se analiza el YAML en vez de buscar el nombre con `grep`, y no por elegancia: los cuatro flujos
@@ -128,7 +149,8 @@ export interface Publicador {
  * que un `grep` del nombre daria positivo tambien si ese valor estuviera en un comentario o en un
  * paso que no empuja nada — que es como una guarda deja de mirar sin decirlo.
  *
- * Solo cuentan los pasos con `push: true`: construir una imagen y no subirla no la publica.
+ * Solo cuentan los pasos que empujan de verdad: construir una imagen y no subirla no la
+ * publica. Que cuenta como empujar lo decide `empuja`, aqui arriba.
  */
 export function imagenesQuePublica(textoDelFlujo: string): string[] {
   const flujo = load(textoDelFlujo) as
@@ -141,7 +163,7 @@ export function imagenesQuePublica(textoDelFlujo: string): string[] {
     for (const paso of trabajo.steps ?? []) {
       const p = paso as { uses?: string; with?: Record<string, unknown> };
       if (typeof p.uses !== "string" || !p.uses.startsWith("docker/build-push-action")) continue;
-      if (p.with?.["push"] !== true) continue;
+      if (!empuja(p.with?.["push"])) continue;
       const etiquetas = p.with?.["tags"];
       if (typeof etiquetas !== "string") continue;
 

@@ -1,0 +1,67 @@
+# Los DOS routers reclaman el MISMO prefijo, y es el caso peor del reparto.
+#
+# Aqui no hay nada «mas especifico» que preferir: las dos reglas son igual de largas, asi
+# que la comprobacion del reparto —que solo mira cuando un prefijo contiene al otro— no ve
+# nada, y `priority` tampoco lo arregla. Uno de los dos servicios queda INALCANZABLE sin
+# que falle nada: los dos routers existen, los dos contenedores estan sanos, y todas las
+# peticiones se las lleva el mismo.
+#
+# Es el estado exacto en el que se quedo `catastro` al desplegar su interfaz (#105): su
+# backend conservaba la regla ancha de cuando era el unico servicio del prefijo.
+name: kamayuk-mercados
+
+services:
+  mercados-migraciones:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: migrador
+    environment:
+      KAMAYUK_DB_URL: jdbc:postgresql://base:5432/mercados
+      KAMAYUK_DB_OWNER_USUARIO: kamayuk_owner
+      KAMAYUK_DB_OWNER_CLAVE: ${KAMAYUK_CLAVE_OWNER:?falta}
+    restart: "no"
+
+  mercados-implantacion:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: aplicacion
+    environment:
+      SPRING_PROFILES_ACTIVE: batch
+      KAMAYUK_DB_URL: jdbc:postgresql://base:5432/mercados
+      KAMAYUK_DB_USUARIO: kamayuk_app
+      KAMAYUK_DB_CLAVE: ${KAMAYUK_CLAVE_APP:?falta}
+    restart: "no"
+
+  mercados:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: aplicacion
+    environment:
+      SPRING_PROFILES_ACTIVE: web
+      KAMAYUK_DB_URL: jdbc:postgresql://base:5432/mercados
+      KAMAYUK_DB_USUARIO: kamayuk_app
+      KAMAYUK_DB_CLAVE: ${KAMAYUK_CLAVE_APP:?falta}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.mercados.rule=PathPrefix(`/mercados`)
+      - traefik.http.services.mercados.loadbalancer.server.port=8080
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8080/actuator/health || exit 1"]
+
+  mercados-interfaz:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      target: interfaz
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.mercados-interfaz.rule=PathPrefix(`/mercados`)
+      - traefik.http.services.mercados-interfaz.loadbalancer.server.port=8080
+
+networks:
+  default:
+    name: kamayuk-plataforma
+    external: true

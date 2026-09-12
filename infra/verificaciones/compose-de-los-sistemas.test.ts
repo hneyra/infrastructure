@@ -345,6 +345,21 @@ describe("las muestras: que muerde, y que no muerde de mas", () => {
     expect(hallazgos[0]).toContain("POR ACCIDENTE");
   });
 
+  /**
+   * Y el caso PEOR del reparto, que era el hueco: los dos routers con el MISMO prefijo.
+   *
+   * La comprobacion del reparto solo miraba cuando un prefijo es estrictamente mas especifico
+   * que otro, asi que dos reglas identicas se le escapaban enteras — y son las que dejan a un
+   * servicio inalcanzable sin que falle nada. Lo destapo `catastro`#105.
+   */
+  it("dos routers con el mismo prefijo salen nombrados, y `priority` no es el remedio", () => {
+    const hallazgos = hallazgosDeLaMuestra("dos-routers-con-el-mismo-prefijo.compose.yaml");
+    expect(hallazgos).toHaveLength(1);
+    expect(hallazgos[0]).toContain("el MISMO prefijo «/mercados»");
+    expect(hallazgos[0]).toContain("«mercados-interfaz»");
+    expect(hallazgos[0]).toContain("no recibira nada nunca");
+  });
+
   it("repartirlo al reves sale nombrado, con las dos prioridades dentro", () => {
     const hallazgos = hallazgosDeLaMuestra("reparte-su-prefijo-al-reves.compose.yaml");
     expect(hallazgos).toHaveLength(1);
