@@ -83,8 +83,10 @@ la desengancha, si la entrada nace marcada, o si su descripción deja de avisar.
    - Crear el contenedor en el proveedor —a mano: no hay recurso de Pulumi ni paso de CI que lo
      haga— y comprobar que la credencial del respaldo **puede escribir en él**. Que pueda
      listarlo no lo prueba: la política concede `ListBucket` en general.
-   - Poner su nombre en `kamayuk:backupBucket` de `Pulumi.<ambiente>.yaml`, y —si el ambiente es
-     `prod`— en `kamayuk:restoreSourceBucket` de `Pulumi.stg.yaml`, que una guarda ata.
+   - Poner su nombre en `kamayuk:backupBucket` de `Pulumi.<ambiente>.yaml`. **Y ya está**: hasta
+     #121 había que copiarlo además en `kamayuk:restoreSourceBucket` de `Pulumi.stg.yaml`, y esa
+     clave se retiró porque no la leía nadie
+     ([el ensayo cruzado no existe](el-ensayo-cruzado-no-existe.md)).
    - **El contenedor viejo no se toca.** Se queda donde está, con su clave de cifrado.
 5. **Lanzar `Infraestructura` a mano** (`workflow_dispatch`) con
    **`soltar_recursos_inalcanzables` marcado**. Es la corrida de la mudanza, y la única que debe

@@ -53,7 +53,6 @@ function baseline(environment: Environment = "prod"): Invariants {
       region: "us-east-1",
       bucket: `kamayuk-${environment}-backups`,
       walArchiveTimeoutSeconds: 300,
-      ...(isStg ? { restoreSourceBucket: "kamayuk-prod-backups" } : {}),
     },
     identity: {
       image: "quay.io/keycloak/keycloak:26.0",
@@ -186,20 +185,6 @@ describe("INF-01 §1.3 y RNF-076 — el respaldo, fuera del nodo y a tiempo", ()
     const c = baseline();
     c.backup.walArchiveTimeoutSeconds = 0;
     expectViolation(c, "al menos 1 segundo");
-  });
-});
-
-describe("INF-03 §2 — stg es donde se ensaya la restauración", () => {
-  it("producción no restaura desde el contenedor de otro ambiente", () => {
-    const c = baseline("prod");
-    c.backup.restoreSourceBucket = "kamayuk-stg-backups";
-    expectViolation(c, "Solo stg restaura desde los respaldos de otro ambiente");
-  });
-
-  it("stg restaurándose a sí mismo no ensaya nada", () => {
-    const c = baseline("stg");
-    c.backup.restoreSourceBucket = c.backup.bucket;
-    expectViolation(c, "se restaura a sí mismo");
   });
 });
 
@@ -484,7 +469,6 @@ describe("un valor obligatorio que falta revienta al principio, y dice cuál", (
     expect(leidas.implantacion.tipo).toBe("DISTRITAL");
     expect(leidas.implantacion.nombreDelAdministrador).toBe("Administrador del sistema");
     expect(leidas.ingress.publishedNodePorts).toEqual([]);
-    expect(leidas.backup.restoreSourceBucket).toBeUndefined();
   });
 
   it("con `keycloakSmtpHost` puesto, `keycloakSmtpFrom` pasa a ser obligatorio", () => {
