@@ -35,7 +35,6 @@ describe("los stacks versionados cumplen sus invariantes", () => {
     const prod = readInvariants("prod", leerStack("prod"));
     expect(prod.ingress.acmeStaging).toBe(false);
     expect(prod.identity.seedTestUsers).toBe(false);
-    expect(prod.backup.restoreSourceBucket).toBeUndefined();
   });
 
   it("stg va marcada como instalacion de demostracion", () => {
@@ -43,37 +42,29 @@ describe("los stacks versionados cumplen sus invariantes", () => {
     expect(stg.application.isDemonstration).toBe(true);
   });
 
+  /**
+   * La ultima fila de `INF-03` §4, y desde #121 lo UNICO que la protege.
+   *
+   * Hasta aqui habia al lado una guarda que ataba `stg.restoreSourceBucket` al contenedor de
+   * `prod`. Salio con la clave: **no la consumia nadie**, y una invariante que se comprueba
+   * sobre un dato que nadie usa hace decir de mas a la comprobacion. Lo que se ensaya de
+   * verdad —`infra/respaldo/contra-cluster.sh`— toma el prefijo del `Deployment` de `stg` en
+   * marcha, asi que `stg` se restaura a si mismo; el hueco que eso deja esta declarado, no
+   * tapado, en `docs/00-gobierno/el-ensayo-cruzado-no-existe.md`.
+   *
+   * <p>Lo que esta si protege es el escenario que da miedo: que un `pulumi up` de `stg` mal
+   * configurado pueda escribir sobre los respaldos de `prod`. Con los dos contenedores
+   * distintos no puede.
+   */
   it("los dos ambientes respaldan en contenedores distintos", () => {
     const stg = readInvariants("stg", leerStack("stg"));
     const prod = readInvariants("prod", leerStack("prod"));
-    expect(stg.backup.bucket).not.toBe(prod.backup.bucket);
-  });
-
-  /**
-   * El origen del ensayo de `stg` es el contenedor de `prod`, y nada lo ataba (#112).
-   *
-   * `config.ts` valida POR STACK: exige que `restoreSourceBucket` solo este en `stg` y que no
-   * sea el suyo propio, pero ninguna de las dos puede saber como se llama el contenedor de
-   * `prod`. Y la unica prueba cruzada que habia solo exige que los dos sean DISTINTOS. O sea
-   * que al mudar `prod` de contenedor —que es lo que #112 obligo a hacer— olvidarse de esta
-   * linea pasaba en verde, y dejaba el ensayo de INF-03 §2 apuntando a un contenedor retirado.
-   * Es la forma de C-17: dos mitades de una frontera y nada que las compare.
-   *
-   * <p>⚠ Lo que esta guarda NO prueba, y hay que decirlo para que nadie lo suponga: que ese
-   * valor lo use alguien. Medido el 2026-09-12, <b>no lo consume nadie</b> —
-   * `infra/respaldo/contra-cluster.sh` toma el prefijo del `Deployment` de `stg` en marcha, asi
-   * que lo que se ensaya es restaurar `stg` desde `stg`—. Esto ata dos declaraciones para que
-   * no puedan discrepar en silencio; cablearlo o retirarlo es otro trabajo, y tiene issue.
-   */
-  it("el origen del ensayo de stg es el contenedor de respaldo real de prod", () => {
-    const stg = readInvariants("stg", leerStack("stg"));
-    const prod = readInvariants("prod", leerStack("prod"));
     expect(
-      stg.backup.restoreSourceBucket,
-      "«restoreSourceBucket» de stg tiene que ser el contenedor en el que prod respalda HOY: " +
-        "si no, el ensayo de INF-03 §2 lee un contenedor que ya no recibe nada, y eso no da " +
-        "error el dia que se cambia — da error el dia que hay que restaurar",
-    ).toBe(prod.backup.bucket);
+      stg.backup.bucket,
+      "los dos ambientes comparten contenedor de respaldo. INF-03 §4: un `pulumi up` de stg " +
+        "mal configurado podria escribir sobre los respaldos de prod, y ademas wal-g no " +
+        "contempla dos clusteres en un catalogo — no da error, da silencio (#112)",
+    ).not.toBe(prod.backup.bucket);
   });
 
   it("ningun stack versiona un secreto en claro", () => {

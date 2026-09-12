@@ -18,10 +18,15 @@ import * as pulumi from "@pulumi/pulumi";
  * ## Un solo nodo, y lo que eso obliga a vigilar
  *
  * El SGTM corre sobre un VPS (`INF-01` §1.1). No hay quórum que sobreviva ni réplica que
- * promover, así que las tres cosas que sostienen la recuperación —el respaldo fuera del
- * VPS, el plazo de archivado del WAL y el ensayo de la restauración en `stg`— no son
- * ajustes de rendimiento: son el RPO y el RTO escritos en configuración. Por eso las
- * tres tienen invariante.
+ * promover, así que las dos cosas que sostienen la recuperación y **se pueden declarar
+ * aquí** —el respaldo fuera del VPS y el plazo de archivado del WAL— no son ajustes de
+ * rendimiento: son el RPO escrito en configuración. Por eso las dos tienen invariante.
+ *
+ * La tercera, **el ensayo de la restauración**, tenía la suya y se retiró en #121: declaraba
+ * un contenedor de origen que ningún código leía, así que la invariante afirmaba una
+ * propiedad que el sistema no tenía. Un ensayo no es un valor de configuración — es un
+ * guion que se ejecuta, y lo que hoy cubre y lo que no está escrito en
+ * `el-ensayo-cruzado-no-existe.md`.
  */
 
 /** Los dos ambientes de `INF-03` §1. El nombre del stack **es** el ambiente. */
@@ -125,13 +130,19 @@ export interface BackupSettings {
    * esta invariante existe para impedir.
    */
   walArchiveTimeoutSeconds: number;
-  /**
-   * Contenedor **de origen** desde el que `stg` restaura para ensayar (`INF-03` §2).
-   *
-   * Solo `stg`. La credencial con que `stg` lo lee es de solo lectura: `stg` restaura
-   * leyendo de donde `prod` escribe, y sus propios respaldos van a otro sitio.
-   */
-  restoreSourceBucket?: string;
+  // AQUI NO HAY un contenedor de origen para ensayar la restauracion, y es deliberado.
+  //
+  // Lo hubo: `restoreSourceBucket`, solo en `stg`, con dos invariantes propias y una guarda que
+  // lo ataba al contenedor de `prod`. **No lo consumia nadie** —quien ensaya de verdad,
+  // `infra/respaldo/contra-cluster.sh`, toma el prefijo del `Deployment` de `stg` en marcha—,
+  // asi que `stg` se restauraba a si mismo mientras tres comprobaciones decian otra cosa. Salio
+  // en #121: una invariante sobre un dato que nadie usa hace decir de mas a la comprobacion.
+  //
+  // Y cablearlo no era conectar una clave: exigia la clave de cifrado de `prod` dentro del
+  // espacio de nombres de `stg` —la genera `bootstrap-secretos.sh` en cada cluster, Pulumi no
+  // emite ninguna—, restaurar datos reales sobre el volumen de `stg`, y una anonimizacion que
+  // no existe. El hueco que eso deja esta DECLARADO y no tapado en
+  // `el-ensayo-cruzado-no-existe.md`, con lo que sigue cubierto y lo que no.
   /**
    * Punto HTTP al que el CronJob de respaldo avisa si `wal-g backup-push` falla
    * (issue #155). Opcional: sin el, el fallo sigue quedando en la tabla `respaldo`
@@ -577,9 +588,6 @@ export function readInvariants(environment: Environment, reader: ConfigReader): 
       region: requireText(reader, "backupRegion", "la región AWS del almacenamiento de objetos"),
       bucket: requireText(reader, "backupBucket", "el contenedor de destino de los respaldos"),
       walArchiveTimeoutSeconds: reader.number("walArchiveTimeoutSeconds") ?? 300,
-      ...(reader.text("restoreSourceBucket") === undefined
-        ? {}
-        : { restoreSourceBucket: reader.text("restoreSourceBucket") }),
       ...(reader.text("backupAlertWebhookUrl") === undefined
         ? {}
         : { alertWebhookUrl: reader.text("backupAlertWebhookUrl") }),
@@ -776,20 +784,6 @@ export function checkInvariants(s: Invariants): string[] {
   }
   if (s.backup.walArchiveTimeoutSeconds < 1) {
     problems.push("`walArchiveTimeoutSeconds` tiene que ser al menos 1 segundo.");
-  }
-  if (s.backup.restoreSourceBucket !== undefined && !isStg) {
-    problems.push(
-      `\`restoreSourceBucket\` está puesto en «${s.environment}». Solo stg restaura desde los ` +
-        "respaldos de otro ambiente, porque es donde se ensaya la restauración (INF-03 §2). " +
-        "En prod, restaurar desde otro contenedor es un incidente, no una configuración.",
-    );
-  }
-  if (isStg && s.backup.restoreSourceBucket === s.backup.bucket) {
-    problems.push(
-      "`restoreSourceBucket` y `backupBucket` son el mismo contenedor. Entonces stg no ensaya " +
-        "restaurar los respaldos de prod: se restaura a sí mismo, y el simulacro de INF-03 §2 " +
-        "no demuestra nada.",
-    );
   }
 
   // ── INF-03 §3.2 — una instalación de demostración lo dice en cada documento ─
