@@ -69,10 +69,20 @@ Medido contra `prod` (`vmd206041`) el **2026-09-12**. Los `sha` son los que el s
 | `caja` (interfaz) | `kamayuk-caja-prod` | `kamayuk-caja-interfaz` | `interfaz` | `ghcr.io/hneyra/kamayuk-caja-interfaz` | el mismo |
 | `identidad` | `kamayuk-identidad-prod` | `kamayuk-identidad-web` | `identidad` | `ghcr.io/hneyra/kamayuk-identidad` | `226ec6ffdc62…` |
 
-**Sólo dos de los cinco despliegan interfaz.** `catastro` **publica** la suya —y con un nombre
-que es una trampa: `ghcr.io/hneyra/kamayuk-catastro-web`, que se lee igual que el `Deployment`
-del **backend**— pero su descriptor no la despliega: no hay ningún `componente:
-catastro-interfaz` en el manifiesto de `prod`. `normativa` e `identidad` no tienen interfaz.
+**La tabla es lo que el clúster corre hoy; los manifiestos ya declaran dos interfaces más.**
+Hasta `normativa`#41 y `catastro`#104 sólo dos de los cinco desplegaban interfaz —y la de
+`catastro` se publicaba con un nombre que era una trampa, `ghcr.io/hneyra/kamayuk-catastro-web`,
+que se lee igual que el `Deployment` del **backend**—. Los dos PR lo cambian: `catastro` la
+renombra a `ghcr.io/hneyra/kamayuk-catastro-interfaz` y la despliega, y `normativa` estrena la
+suya. Así que desde que se mezclen, `yarn manifiestos` compone **cuatro** `Deployment` de
+interfaz y el único de los cinco sin pantalla es `identidad`, que sirve el buzón.
+
+> **Antes de liberar cualquiera de esos dos, comprobar la imagen.** El `sha` clavado aquí es
+> anterior a esos PR, así que `ghcr.io/hneyra/kamayuk-catastro-interfaz:ac1239a26fd5…` y
+> `ghcr.io/hneyra/kamayuk-normativa-interfaz:e1cdad5a3e4f…` **no existen todavía en el
+> registro**: la etiqueta nueva nace en el primer `push` a `main` que ejecute su
+> `publicar-imagenes.yml`. Desplegar antes deja el pod en `ImagePullBackOff` (D-23). Lo dice la
+> Precondición 2 con `yarn imagenes --ambiente prod`, que corre **antes** del `up`.
 
 > **La etiqueta de la interfaz ya no lleva el prefijo del ambiente.** El documento del archivo
 > decía `sgtm-interfaz:<amb>-<sha>`, y medido contra `prod` es
@@ -436,7 +446,7 @@ cómo, en [Abrir la consola de Keycloak](./abrir-la-consola-de-keycloak.md).
 | `error: no rollout history found for deployment "…"` | Ese `Deployment` tiene **una sola** revisión y no hay a dónde volver. Hoy es el caso de cuatro de los cinco. Hay que poner el `sha` anterior con `set image`, y para eso hay que saberlo: leerlo **antes** de liberar |
 | `namespaces "sgtm-prod" not found` | Comando pre-renombrado, de la época del archivo. Los namespaces son `kamayuk-<sistema>-<amb>`, y el de la plataforma `kamayuk-<amb>` |
 | Se desplegó Keycloak en vez del sistema `identidad` | `--componente identidad` es la **plataforma**. El sistema es `--componente identidad-sistema` |
-| El backend arrancó con la imagen de una interfaz | `ghcr.io/hneyra/kamayuk-catastro-web` es la **interfaz** de `catastro`; el `Deployment` `kamayuk-catastro-web` es el **backend** y tira de `ghcr.io/hneyra/kamayuk-catastro`. Los nombres se parecen y no son lo mismo |
+| El backend arrancó con la imagen de una interfaz | Era la trampa de `catastro`: `ghcr.io/hneyra/kamayuk-catastro-web` era la **interfaz** y el `Deployment` `kamayuk-catastro-web` es el **backend**, que tira de `ghcr.io/hneyra/kamayuk-catastro`. `catastro`#104 renombra la imagen a `-interfaz` y la trampa desaparece; el `Deployment` del backend **sigue llamándose `kamayuk-catastro-web`**, así que el parecido entre ese nombre y el de una imagen que ya no existe sigue mereciendo una segunda lectura |
 | El `Job` de migración falla | No seguir con el paso 3. El runbook `la-migracion-fallo-a-mitad.md` sigue en el archivo `sgtm`, sin traer ni remedir (#100) |
 | Tras revertir, la comprobación 3 sigue mal | El problema no era la versión. Revisar [Keycloak no responde](./keycloak-no-responde.md) o el motor antes de volver a liberar nada |
 | La imagen volvió sola al `sha` viejo | Un `pulumi up` posterior. Ver «Qué protege `ignoreChanges` y qué no»: subir `versionDe<Sistema>` al `sha` liberado |

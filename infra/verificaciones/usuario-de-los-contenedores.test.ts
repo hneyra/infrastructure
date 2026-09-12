@@ -121,6 +121,11 @@ describe("el UID de cada contenedor, sobre el ambiente ENTERO", () => {
    *
    * «Cada exencion es un `USER` numerico leido, no una suposicion» lo decia la guarda anterior y
    * no lo comprobaba nadie: la cifra vivia en un comentario. Aqui se ejecuta.
+   *
+   * **Y se lee del ARBOL DE TRABAJO del clon desde que las dos interfaces nuevas lo destaparon**:
+   * el motivo entero esta en {@link usersDeLosClones}, y se resume en que los manifiestos contra
+   * los que se compara salen de ese mismo arbol. Leer otra revision daba un `USER` cierto de una
+   * imagen que este repositorio no pide.
    */
   it("el `USER` de cada imagen del producto se lee de su Dockerfile", () => {
     const users = usersDeLosClones();
@@ -154,11 +159,23 @@ describe("el UID de cada contenedor, sobre el ambiente ENTERO", () => {
   /**
    * Y todo `USER` por NOMBRE de los cinco clones esta declarado, con su issue.
    *
-   * `USER nginx` no lo puede verificar el kubelet. Hoy ninguno de estos se despliega; la lista es
-   * la de trabajo pendiente, y se comprueba en las dos direcciones.
+   * `USER nginx` no lo puede verificar el kubelet. La lista es la de trabajo pendiente y se
+   * comprueba en las dos direcciones — **y desde `catastro`#104 esta vacia**: su interfaz era la
+   * unica entrada y paso a `USER 101` en el mismo PR que la despliega, que era el unico final
+   * bueno de esa anotacion. Lo que se recorre sigue teniendo sujeto: los catorce `USER` de los
+   * `Dockerfile` de los cinco clones, hoy los catorce numericos.
    */
   it("todo `USER` por nombre de los clones esta declarado, y ninguno declarado de mas", () => {
-    const porNombre = usersDeLosClones().filter((u) => !/^\d+$/.test(u.valor));
+    const todos = usersDeLosClones();
+    // El centinela, que aqui hace falta desde que la lista se quedo VACIA (`catastro`#104): sin
+    // el, «ningun `USER` por nombre» y «no se leyo ningun Dockerfile» se leen igual, y el segundo
+    // es el estado en el que esta comprobacion dejaria de proteger nada.
+    expect(
+      todos.length,
+      "no se leyo ni un `USER` de los clones: esta guarda no midio nada",
+    ).toBeGreaterThan(5);
+
+    const porNombre = todos.filter((u) => !/^\d+$/.test(u.valor));
     const clave = (u: { clon: string; ruta: string; valor: string }) =>
       `${u.clon} ${u.ruta} ${u.valor}`;
 

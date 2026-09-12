@@ -298,8 +298,16 @@ describe("#16 · la sonda de un contenedor que no es el backend, contra su nginx
    * ese comentario NO anticipo es que la de `rentas` llevaria su nginx **dentro de la imagen**, y
    * por eso el censo dice ahora tambien **de donde** sale la configuracion de cada una: si una
    * cambia de forma, esta cifra lo dice en vez de dejarlo pasar.
+   *
+   * **Y de dos pasan a CUATRO** con `normativa`#41 y `catastro`#104: los dos ultimos sistemas con
+   * pantalla estrenan su despliegue, y los dos llevan su nginx **dentro de la imagen**, que es la
+   * forma de `rentas` y no la de `caja`. Asi que lo que este censo vigila deja de ser un empate:
+   * **tres de cuatro viajan en la imagen** y solo `caja` monta un `ConfigMap` encima. Los cinco
+   * sistemas tienen ya su interfaz desplegada; el que no sale aqui es `identidad`, que no tiene
+   * pantalla —sirve el buzon—, y por eso este censo no puede crecer mas sin que alguien estrene
+   * un contenedor que no sea ni el backend ni una interfaz.
    */
-  it("hoy hay exactamente dos, y cada una dice de donde sale su nginx", () => {
+  it("hoy hay exactamente cuatro, y cada una dice de donde sale su nginx", () => {
     const censo = SISTEMAS_DEL_PRODUCTO.flatMap((sistema) =>
       sondasDe(sistema)
         .filter((s) => !s.backend)
@@ -311,6 +319,8 @@ describe("#16 · la sonda de un contenedor que no es el backend, contra su nginx
     );
     expect([...new Set(censo)].sort()).toEqual([
       "caja: kamayuk-caja-interfaz <- configmap",
+      "catastro: kamayuk-catastro-interfaz <- imagen",
+      "normativa: kamayuk-normativa-interfaz <- imagen",
       "rentas: kamayuk-rentas-interfaz <- imagen",
     ]);
   });

@@ -151,7 +151,14 @@ export function reenviosDe(configuracion: string, donde: string): Reenvio[] {
 /** Una interfaz: el nginx que la sirve y donde correria su pod. */
 export interface InterfazDelProducto {
   sistema: string;
-  /** El nombre publicado de su imagen: `kamayuk-caja-interfaz`, `kamayuk-catastro-web`. */
+  /**
+   * El nombre publicado de su imagen: `kamayuk-caja-interfaz`, `kamayuk-rentas-interfaz`.
+   *
+   * **No se deriva del sistema, y por eso es un campo.** Hasta `catastro`#104 los cinco no se
+   * llamaban igual —`catastro` publicaba la suya como `kamayuk-catastro-web`, que ademas era el
+   * nombre del `Service` de su BACKEND— y este modulo tuvo que leer el nombre en vez de
+   * componerlo. Que hoy los cuatro acaben en `-interfaz` no es una regla que nadie haya escrito.
+   */
   imagen: string;
   /** El espacio de nombres en el que resuelve —o resolveria— su `proxy_pass`. */
   namespace: string;
@@ -278,7 +285,9 @@ export function interfacesDelProducto(
       const fuente = nginxDelClon(publicador.clon);
       // Una imagen huerfana que no sea una interfaz —un exportador, una herramienta— no tiene
       // `frontend/nginx.conf` y no es de esta comprobacion. Se salta por AUSENCIA DEL ARCHIVO y
-      // no por su nombre: `caja` la llama «interfaz» y `catastro` la llama «web».
+      // no por su nombre: `caja` la llamaba «interfaz» y `catastro` la llamaba «web», dos nombres
+      // para la misma cosa, y desde `catastro`#104 los cuatro la llaman igual — lo cual no vuelve
+      // fiable el nombre, solo lo vuelve una coincidencia.
       if (fuente === undefined) continue;
       desplegadas.add(imagen);
       interfaces.push({

@@ -22,7 +22,10 @@ import {
  *   - **las publicadas y no desplegadas son CENSO con su motivo**, que es lo que `C-2` decidio
  *     para las extensiones y `F` para las imagenes huerfanas: un rojo ahi naceria disparado el
  *     primer dia del trabajo de otro repositorio (#437). Lo que el censo NO hace es callarse:
- *     dice, con su nombre, que esa interfaz **no arrancaria tal como esta hoy**.
+ *     dice, con su nombre, que esa interfaz **no arrancaria tal como esta hoy**. **Hoy ese censo
+ *     esta a cero** —la unica que lo poblaba, la de `catastro`, se arreglo y se desplego— y por
+ *     eso las dos listas llevan delante cuantas interfaces se miraron: un cero sin sujeto se lee
+ *     igual que un recorrido que dejo de encontrarlas.
  *
  * Y las muestras miden que `reenviosDe` muerde y que **no muerde de mas**: sin el contraste, una
  * lectura que no encontrara ningun reenvio pasaria igual de verde, que es exactamente el estado
@@ -63,18 +66,28 @@ describe("#12 · el reenvio de una interfaz DESPLEGADA resuelve en su espacio de
    * Y el censo que impide que ese verde signifique «no hay nada que mirar» sin decirlo.
    *
    * **Hoy la comprobacion de arriba se cumple sobre CERO reenvios**, y eso no es un defecto de
-   * las dos interfaces desplegadas: las dos llegan a su backend por el INGRESO —dos `IngressRoute`
-   * sobre el mismo anfitrion con `priority` explicita— y no por un reenvio de nginx. Es una
-   * decision de diseno de `rentas`#44 y de `caja`#16, escrita en los dos.
+   * las cuatro interfaces desplegadas: las cuatro llegan a su backend por el INGRESO —dos
+   * `IngressRoute` sobre el mismo anfitrion con `priority` explicita— y no por un reenvio de
+   * nginx. Es una decision de diseno de `rentas`#44 y de `caja`#16, escrita en los dos y copiada
+   * despues por `normativa`#41 y `catastro`#104.
    *
-   * Lo que esta cifra vale es que el dia que una de las dos gane un `proxy_pass` —o entre una
-   * tercera interfaz que lo traiga— esta linea cambia y hay que mirarla, en vez de que la
+   * Lo que esta cifra vale es que el dia que una de las cuatro gane un `proxy_pass` —o entre una
+   * quinta interfaz que lo traiga— esta linea cambia y hay que mirarla, en vez de que la
    * comprobacion de arriba siga en verde sobre el conjunto vacio.
+   *
+   * **De dos a cuatro, y la de `catastro` llega aqui por el camino largo**: era la unica que
+   * traia un `proxy_pass` —`http://catastro:8080`, un nombre del `compose.yaml` que en el clúster
+   * no existe— y es justamente lo que este modulo midio y dijo primero; `catastro`#104 se lo
+   * quito antes de desplegarla. O sea que esta guarda no cambio de lado: la interfaz que contaba
+   * como «publicada y no desplegada, y no arrancaria» pasa a contar como desplegada **porque el
+   * defecto que se le anoto se arreglo**, y no porque nadie lo mirara.
    */
   it.each(ENVIRONMENTS)("y en «%s» se cuenta cuantas se miraron y cuantos reenvios", (ambiente) => {
     const desplegadas = conSusReenvios(ambiente).filter((i) => i.interfaz.desplegada);
     expect(desplegadas.map((i) => `${i.interfaz.imagen} <- ${i.interfaz.fuente.clase}`)).toEqual([
       "kamayuk-caja-interfaz <- configmap",
+      "kamayuk-catastro-interfaz <- imagen",
+      "kamayuk-normativa-interfaz <- imagen",
       "kamayuk-rentas-interfaz <- imagen",
     ]);
     expect(
@@ -85,56 +98,61 @@ describe("#12 · el reenvio de una interfaz DESPLEGADA resuelve en su espacio de
 });
 
 /**
- * La otra mitad, y es el issue entero: **`catastro` publica una interfaz que ningun descriptor
- * despliega, y tal como esta hoy NO arrancaria.**
+ * La otra mitad, que es el issue entero — y **hoy esta a cero, con lo que ese cero costo escrito
+ * al lado**.
  *
- * `hneyra/catastro#45` la construyo y la subio —las tres imagenes de `catastro` contestan 200 a
- * un token anonimo de `ghcr.io`, medido el 2026-09-07 contra el `sha` que los dos stacks
- * declaran—, y su `frontend/nginx.conf` lleva dentro `proxy_pass http://catastro:8080`. En el
- * clúster el `Service` de su backend se llama `kamayuk-catastro-web`, asi que **no hay ningun
- * `catastro` que resolver** y el pod se quedaria en `CrashLoopBackOff` con un `[emerg]` de nginx.
+ * Durante meses el sujeto fue uno: `catastro` publicaba `kamayuk-catastro-web`, ningun descriptor
+ * la desplegaba, y **tal como estaba NO habria arrancado**. `hneyra/catastro#45` la construyo y la
+ * subio —las tres imagenes de `catastro` contestaban 200 a un token anonimo de `ghcr.io`, medido
+ * el 2026-09-07 contra el `sha` que los dos stacks declaraban—, y su `frontend/nginx.conf` llevaba
+ * dentro `proxy_pass http://catastro:8080`. En el clúster el `Service` de su backend se llama
+ * `kamayuk-catastro-web`, asi que **no habia ningun `catastro` que resolver** y el pod se habria
+ * quedado en `CrashLoopBackOff` con un `[emerg]` de nginx.
  *
- * Esto se afirma como censo y no como rojo por lo mismo que `F` decidio para la imagen huerfana:
- * publicar por delante es como se estrena una interfaz, `caja` y `rentas` pasaron por ahi, y un
- * rojo aqui pondria en rojo este repositorio por el trabajo en curso de otro. Lo que no vale es
- * callarlo: el dia que `catastro` la despliegue, o el dia que arregle su `nginx.conf`, esta
- * prueba se pone roja y obliga a venir aqui a decir cual de las dos cosas paso.
+ * Aquello se afirmo como censo y no como rojo por lo mismo que `F` decidio para la imagen
+ * huerfana: publicar por delante es como se estrena una interfaz, `caja` y `rentas` pasaron por
+ * ahi, y un rojo aqui habria puesto en rojo este repositorio por el trabajo en curso de otro. Lo
+ * que el censo no hizo fue callarlo, y su propio comentario escribio la cita que hay que leer
+ * ahora: «**el dia que `catastro` la despliegue, o el dia que arregle su `nginx.conf`, esta prueba
+ * se pone roja y obliga a venir aqui a decir cual de las dos cosas paso**».
+ *
+ * **Paso: las dos.** `catastro`#104 le quito el `proxy_pass` —el reparto entre la API y la
+ * interfaz lo hace el ingreso, que es el patron de `rentas`— y ademas la desplego, renombrada a
+ * `kamayuk-catastro-interfaz`. Asi que este censo se vacia por la puerta buena: no porque nadie
+ * publique ya una interfaz suelta, sino porque la unica que habia se arreglo antes de desplegarse.
+ *
+ * ## Y se queda, afirmando el conjunto vacio, en vez de retirarse
+ *
+ * Lo que esta comprobacion vigila no es «catastro»: es que una interfaz que se publica y todavia
+ * no se despliega **se pueda leer antes del `up`**, que es la unica ventana en la que este defecto
+ * se ve —el manifiesto es valido, `pulumi up` sale en verde y el pod no arranca—. Esa ventana se
+ * vuelve a abrir con la siguiente interfaz que alguien estrene, y estrenarla publicando por
+ * delante es como se hizo las cuatro veces. Retirarla ahora seria quitar la lectura justo cuando
+ * se queda sin trabajo.
+ *
+ * Lo que cambia al pasar a cero es que hace falta un **sujeto**: una lista vacia tiene ahora dos
+ * lecturas —«no queda ninguna publicada sin desplegar» y «el recorrido dejo de encontrar
+ * interfaces»— y hasta hoy solo tenia una. Se cuenta por delante cuantas se miraron, que es
+ * C-15/C-16. Y las aserciones que solo vivian aqui —el mensaje entero de
+ * {@link reenviosQueNoResuelven}, con sus dos remedios dentro— **bajan a las muestras**, que es
+ * donde tienen sujeto propio: una interfaz inventada no exige que ningun clon este roto.
  */
 describe("#12 · lo que se publica y no se despliega, con su motivo", () => {
-  it.each(ENVIRONMENTS)("«%s»: `catastro` la publica, y hoy no arrancaria", (ambiente) => {
-    const sinDesplegar = conSusReenvios(ambiente).filter((i) => !i.interfaz.desplegada);
+  it.each(ENVIRONMENTS)("«%s»: hoy no queda ninguna, y se dice sobre cuantas se miro", (ambiente) => {
+    const todas = conSusReenvios(ambiente);
+
+    // El sujeto. Sin esto, «ninguna sin desplegar» y «ninguna en absoluto» se leen igual.
+    expect(
+      todas.length,
+      "el recorrido no encontro ni una interfaz: esta guarda no estaria midiendo nada",
+    ).toBe(4);
 
     expect(
-      sinDesplegar.map((i) => i.interfaz.imagen),
-      "si esta lista se vacia es que alguien la desplego —o que dejo de publicarse—, y las dos " +
-        "cosas hay que decirlas aqui",
-    ).toEqual(["kamayuk-catastro-web"]);
-
-    const catastro = sinDesplegar[0];
-    if (catastro === undefined) throw new Error("sin sujeto: lo de abajo se cumpliria solo");
-
-    // El nginx sale de su clon, porque nadie le monta ningun ConfigMap: no hay descriptor.
-    expect(catastro.interfaz.fuente.clase).toBe("imagen");
-    expect(
-      catastro.reenvios.map((r) => `${r.anfitrion}:${r.puerto}`),
-      "si el `proxy_pass` de `catastro/frontend/nginx.conf` cambia de anfitrion, cambia el " +
-        "diagnostico entero: puede haber pasado a resolver —y entonces esta prueba sobra— o a " +
-        "no resolver por otro nombre. Las dos cosas se deciden aqui, no en silencio",
-    ).toEqual(["catastro:8080"]);
-    // Y en su espacio de nombres el unico Service es el del backend, que se llama de otra manera.
-    expect(catastro.servicios).toEqual([`kamayuk-catastro-web`]);
-
-    const problemas = reenviosQueNoResuelven(
-      catastro.interfaz,
-      catastro.reenvios,
-      catastro.servicios,
-    );
-    expect(problemas).toHaveLength(1);
-    expect(problemas[0]).toContain('host not found in upstream "catastro"');
-    expect(problemas[0]).toContain("kamayuk-catastro-web");
-    // Y las dos salidas, porque un rojo sin remedio manda a alguien a inventarse uno.
-    expect(problemas[0]).toContain("llamar «catastro» al Service del backend");
-    expect(problemas[0]).toContain("montarle a esta interfaz un ConfigMap");
+      todas.filter((i) => !i.interfaz.desplegada).map((i) => i.interfaz.imagen),
+      "si esta lista deja de estar vacia es que alguien publica una interfaz que ningun " +
+        "descriptor despliega, y hay que venir aqui a decir si arrancaria: nginx resuelve su " +
+        "`proxy_pass` AL ARRANCAR y `pulumi up` sale en verde igual",
+    ).toEqual([]);
     expect(ambiente).toMatch(/^(stg|prod)$/);
   });
 });
@@ -199,11 +217,22 @@ describe("las muestras de `reenviosQueNoResuelven`: el contraste", () => {
     expect(reenviosQueNoResuelven(interfaz, [reenvio], ["catastro"])).toEqual([]);
   });
 
-  it("y sin el, se nombra el anfitrion y los Service que si hay", () => {
+  /**
+   * El mensaje entero, que hasta `catastro`#104 lo afirmaba el censo de arriba sobre su clon.
+   *
+   * Bajo aqui cuando aquel censo se quedo sin sujeto, y gana con el cambio: la interfaz es
+   * inventada, asi que lo que el rojo dice **no depende de que ningun clon hermano siga roto**.
+   * Se afirma el sintoma —el `[emerg]` con el que nginx se niega a arrancar— y **los dos
+   * remedios**, porque un rojo sin salida manda a alguien a inventarse una.
+   */
+  it("y sin el, se nombra el anfitrion, el sintoma, los Service que si hay y las dos salidas", () => {
     const problemas = reenviosQueNoResuelven(interfaz, [reenvio], ["kamayuk-catastro-web"]);
     expect(problemas).toHaveLength(1);
     expect(problemas[0]).toContain("no hay ningun Service con ese nombre");
     expect(problemas[0]).toContain("Los Service que hay: kamayuk-catastro-web");
+    expect(problemas[0]).toContain('host not found in upstream "catastro"');
+    expect(problemas[0]).toContain("llamar «catastro» al Service del backend");
+    expect(problemas[0]).toContain("montarle a esta interfaz un ConfigMap");
   });
 
   /**
