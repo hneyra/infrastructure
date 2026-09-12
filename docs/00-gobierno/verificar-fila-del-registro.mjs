@@ -131,9 +131,31 @@ console.log(`Cada issue que este PR cierra tiene su fila: #${issues.join(', #')}
 
 // ---------------------------------------------------------------------------
 
-/** Si ese texto nombra al issue como tal y no como parte de otro numero. */
+/**
+ * Si alguna FILA DE LA TABLA nombra al issue.
+ *
+ * ## Por que mira la fila y no el texto entero
+ *
+ * Buscaba el numero en cualquier linea anadida, y eso lo satisface cualquier mencion:
+ * un enlace, un parrafo, la cabecera del archivo. **Lo destaparon tres carriles a la vez**
+ * al mudar el registro (#114): los tres escribieron en su archivo nuevo una cabecera que
+ * citaba el issue del propio trabajo —«se mudo aqui por #37»— y su rotura de control, la
+ * que borra el registro entero, **salio VERDE**. El archivo traia de fabrica una forma de
+ * cumplir esta guarda vacia.
+ *
+ * Que sean tres y no uno es lo que lo convierte en un defecto del mecanismo: un archivo
+ * nuevo tiende a explicar de donde viene, y explicarlo desactivaba la comprobacion.
+ *
+ * Asi que se exige que el numero aparezca en una linea que **sea una fila**: empieza por
+ * `|`. Es lo que la tabla es, y una cabecera o un parrafo ya no cuentan.
+ */
 function nombra(texto, numero) {
-  return new RegExp(`#${numero}(?![0-9])`).test(texto);
+  const patron = new RegExp(`#${numero}(?![0-9])`);
+  return texto
+    .split('\n')
+    // Las lineas vienen del diff, asi que llevan el `+` delante.
+    .filter((linea) => /^\+?\s*\|/.test(linea))
+    .some((linea) => patron.test(linea));
 }
 
 function lineas(texto) {
