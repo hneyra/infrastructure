@@ -172,3 +172,64 @@ groups:
           resumen: "El nodo tiene procesos esperando CPU de forma sostenida"
           descripcion: "PSI > 0.2 durante 5 minutos: el sintoma que precede a un CrashLoopBackOff por sondas que expiran."
           runbook: "docs/B0-operacion/runbooks/mantenimiento-del-vps.md"
+
+      # --- Que el vigilante avise cuando se queda ciego (#113) -------------------
+      #
+      # Las cuatro de abajo no vigilan el producto: vigilan a las ONCE de arriba.
+      # Medido en `prod` el 2026-09-12, CINCO de las once evaluaban sobre el conjunto
+      # vacio —`CPUDelNodoAlta`, `MemoriaDelNodoAlta`, `DiscoDelNodoAlto`,
+      # `PresionDeCPUDelNodo` y `CertificadoPorExpirar`—: `count({__name__=~"node_.*"})`
+      # y `count({__name__=~"traefik_.*"})` daban CERO sobre 6 709 series.
+      #
+      # Y no se veia. Una expresion PromQL sin series devuelve vector vacio, que no
+      # dispara: la regla se queda en `health: ok, state: inactive`, que es
+      # EXACTAMENTE el aspecto de una regla que vigila algo sano. El disco podia
+      # llenarse entero sin que `health`, `state`, `lastError` ni `/api/v1/alerts`
+      # cambiaran de aspecto. Es la leccion que `pg_up` ya habia escrito arriba —«la
+      # serie no pasa a 0, deja de existir»— y que al grupo del nodo no se le aplico.
+      - alert: ObjetivoDeRaspadoCaido
+        expr: up == 0
+        for: 10m
+        labels:
+          severidad: critica
+        annotations:
+          resumen: "Prometheus no consigue raspar un objetivo"
+          descripcion: "El objetivo {{ $labels.job }} ({{ $labels.instance }}) lleva 10 minutos sin contestar. Todas las alertas que dependan de sus series estan CIEGAS mientras dure, y ninguna de ellas se pone roja por su cuenta: se quedan inactive, que es como se ve una regla sana. Es el defecto de #113, que duro 22 h sin que nada lo dijera."
+          runbook: "docs/B0-operacion/runbooks/mantenimiento-del-vps.md"
+      - alert: ObjetivoDeRaspadoQueDesaparecio
+        expr: |
+          absent(up{job="postgres"})
+          or absent(up{job="node"})
+          or absent(up{job="kube-state-metrics"})
+          or absent(up{job="traefik"})
+        for: 15m
+        labels:
+          severidad: advertencia
+        annotations:
+          resumen: "Un objetivo de raspado dejo de estar declarado"
+          descripcion: "`ObjetivoDeRaspadoCaido` solo puede disparar si la serie `up` EXISTE. Borrar o renombrar un scrape_config no la pone a 0: la hace desaparecer, y entonces la otra regla tampoco ve nada. Esta es su contrapeso."
+          runbook: "docs/B0-operacion/runbooks/mantenimiento-del-vps.md"
+      - alert: SinMetricasDelNodo
+        expr: |
+          absent(node_cpu_seconds_total)
+          or absent(node_memory_MemAvailable_bytes)
+          or absent(node_memory_MemTotal_bytes)
+          or absent(node_filesystem_avail_bytes{mountpoint="/"})
+          or absent(node_filesystem_size_bytes{mountpoint="/"})
+          or absent(node_pressure_cpu_waiting_seconds_total)
+        for: 10m
+        labels:
+          severidad: critica
+        annotations:
+          resumen: "Faltan las metricas del nodo: cuatro alertas estan ciegas"
+          descripcion: "Sin estas seis series, CPUDelNodoAlta, MemoriaDelNodoAlta, DiscoDelNodoAlto y PresionDeCPUDelNodo no pueden disparar NUNCA. Se nombran una a una y no un centinela: asi quitar un termino de esta lista es un rojo, y no un hueco silencioso."
+          runbook: "docs/B0-operacion/runbooks/mantenimiento-del-vps.md"
+      - alert: SinMetricasDeTraefik
+        expr: absent(traefik_tls_certs_not_after)
+        for: 30m
+        labels:
+          severidad: advertencia
+        annotations:
+          resumen: "Faltan las metricas de Traefik: CertificadoPorExpirar esta ciega"
+          descripcion: "Sin `traefik_tls_certs_not_after` nadie avisa de un certificado que no se renueva, y el primero en enterarse seria el navegador de un contribuyente (RNF-074). 30m porque un `helm upgrade` del ingreso recrea el pod y la serie tarda en volver."
+          runbook: "docs/B0-operacion/runbooks/mantenimiento-del-vps.md"

@@ -363,6 +363,21 @@ export function valoresDeTraefik(args: { acmeEmail: string; acmeStaging: boolean
     "  # kube-system no tiene IngressRoute, igual que el resto de lo interno-.",
     "  prometheus:",
     "    entryPoint: metrics",
+    // Y su `Service`, que es lo que faltaba (#113). Medido contra `prod` el
+    // 2026-09-12: el `Service traefik` de `kube-system` es el del LoadBalancer y
+    // publica SOLO `web:80` y `websecure:443`, asi que el 9100 no existe como puerto
+    // de Service, kube-proxy no tiene regla, y el raspado moria con «dial tcp
+    // 10.43.225.221:9100: connect: connection refused». No era que Traefik no
+    // publicara: desde el pod de Prometheus, `10.42.0.24:9100` devuelve 492 series
+    // `traefik_`. Eran 2 692 muestras de `up{job="traefik"}` y CERO con valor 1.
+    //
+    // Esta clave NO toca el LoadBalancer. El chart renderiza un Service APARTE
+    // (`templates/service-metrics.yaml`, condicionado solo a esta clave): `ClusterIP`,
+    // puerto 9100, el mismo selector que el otro. Su nombre es `traefik-metrics`
+    // (`_service.tpl`), y por eso el objetivo de `Observabilidad.ts` lo nombra asi y
+    // no `traefik`: apuntar al viejo seguiria sin encontrar el puerto.
+    "    service:",
+    "      enabled: true",
     // NO `certResolvers:` de alto nivel, y NO `ports.websecure.tls.certResolver`:
     // esta version del chart de k3s (`traefik-40.1.4+up40.1.0`) los ignora en
     // silencio. `helm upgrade` termina en "Upgrade complete" y el `Deployment`

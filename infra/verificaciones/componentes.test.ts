@@ -1859,7 +1859,9 @@ describe("#156 · observabilidad", () => {
       "kamayuk-prod-postgres:9187",
       "kamayuk-prod-observabilidad-node-exporter:9100",
       "kamayuk-prod-observabilidad-kube-state-metrics:8080",
-      "traefik.kube-system.svc.cluster.local:9100",
+      // `traefik-metrics` y no `traefik`: el segundo es el Service del LoadBalancer y
+      // publica solo 80 y 443 (medido en `prod`, #113).
+      "traefik-metrics.kube-system.svc.cluster.local:9100",
     ]) {
       expect(prometheusYml).toContain(objetivo);
     }
@@ -1940,12 +1942,51 @@ describe("#156 · observabilidad", () => {
     }
   });
 
-  it("node-exporter ve el nodo, no el contenedor", () => {
+  /**
+   * Esta prueba afirmaba que `hostNetwork: true` era parte de lo que hace a node-exporter
+   * ver el nodo. **Medido el 2026-09-12, era falso, y ademas era el defecto de #113**: lo
+   * que lo hace ver el nodo son `/host/proc` y `/host/sys` con sus dos `--path.*`; el
+   * espacio de nombres de red no aporta ninguna de las series que consumen las alertas
+   * —CPU, memoria, disco y presion salen todas de `/proc` y `/sys`—. Lo que `hostNetwork`
+   * si hacia era dejar el pod **inalcanzable**: su `podIP` pasaba a ser el `hostIP`, y
+   * desde un pod de este cluster la IP del nodo no responde en ningun puerto.
+   *
+   * Asi que la afirmacion no se debilita: se corrige para que mida el mecanismo de verdad.
+   * Que `hostNetwork` no vuelva lo vigila `ninguna-alerta-vigila-el-vacio.test.ts`.
+   */
+  it("node-exporter ve el nodo por /host/proc y /host/sys, no por la red del anfitrion", () => {
     const despliegue = buscar(ms, "Deployment", "observabilidad-node-exporter") as {
-      spec: { template: { spec: { hostNetwork?: boolean; hostPID?: boolean } } };
+      spec: {
+        template: {
+          spec: {
+            hostPID?: boolean;
+            volumes: { name: string; hostPath?: { path: string } }[];
+            containers: { args: string[]; volumeMounts: { mountPath: string; readOnly?: boolean }[] }[];
+          };
+        };
+      };
     };
-    expect(despliegue.spec.template.spec.hostNetwork).toBe(true);
-    expect(despliegue.spec.template.spec.hostPID).toBe(true);
+    const spec = despliegue.spec.template.spec;
+    expect(spec.hostPID).toBe(true);
+
+    const rutasMontadas = spec.containers[0]?.volumeMounts.map((v) => v.mountPath) ?? [];
+    const rutasDelAnfitrion = spec.volumes.map((v) => v.hostPath?.path);
+    for (const ruta of ["/host/proc", "/host/sys"]) {
+      expect(
+        rutasMontadas,
+        `sin \`${ruta}\` montado, node_exporter mide el CONTENEDOR: un nodo que parece ` +
+          "vacio en todos los tableros.",
+      ).toContain(ruta);
+    }
+    for (const ruta of ["/proc", "/sys"]) {
+      expect(rutasDelAnfitrion, `no se monta \`${ruta}\` del anfitrion`).toContain(ruta);
+    }
+    const args = spec.containers[0]?.args ?? [];
+    expect(
+      args,
+      "sin `--path.procfs`, node_exporter lee su propio /proc aunque el del nodo este montado",
+    ).toContain("--path.procfs=/host/proc");
+    expect(args).toContain("--path.sysfs=/host/sys");
   });
 
   it("Grafana no esta en ninguna IngressRoute: se administra por el tunel SSH", () => {
