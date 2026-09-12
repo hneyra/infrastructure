@@ -84,9 +84,12 @@ la desengancha, si la entrada nace marcada, o si su descripción deja de avisar.
 
 ## Lo que este documento no resuelve
 
-- **Los diez runbooks siguen en el repositorio archivo `sgtm`, y están pre-renombrado**: cero
-  `kamayuk` en todos, y cada comando copiable dice `kubectl -n sgtm-<amb>`, `sgtm_owner`, base
-  `sgtm`. Traerlos aquí y corregirlos es otro trabajo, y hasta entonces no se pueden seguir al
-  pie de la letra.
+- ~~**Los diez runbooks siguen en el repositorio archivo `sgtm`, y están pre-renombrado**~~ —
+  **cerrado el 2026-09-12**: los diez se trajeron a `docs/B0-operacion/runbooks/` y se
+  remidieron uno a uno contra `prod` ([#100](https://github.com/hneyra/infrastructure/issues/100),
+  [#102](https://github.com/hneyra/infrastructure/issues/102)). Remedirlos no fue renombrar:
+  cada uno traía afirmaciones que sólo caen al ejecutarlas — un código HTTP que ya no es, una
+  base y un rol que cambiaron, una alerta que no puede dispararse. El que continúa a este
+  documento es [Reconstruir el VPS desde cero](../B0-operacion/runbooks/reconstruir-el-vps-desde-cero.md).
 - **La asimetría con `stg` no se toca**: su estado sí está al día, así que no tiene este
   problema. El día que `stg` cambie de nodo, lo tendrá, y este procedimiento le sirve igual.

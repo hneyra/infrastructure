@@ -78,13 +78,13 @@ CONFIG="${KAMAYUK_CONFIG_K3S:-/etc/rancher/k3s/config.yaml}"
 #     estaba en uso, que es como se llega a que el nodo empiece a desalojar pods sanos.
 #
 # El resultado sobre `vmd120205` —el nodo de `prod` hasta el 2026-09-11— eran 3 CPU y ~6 GB
-# asignables. Sobre `vmd206041`, el 8 CPU / 16 GB que lo sustituye, esta misma reserva deja
-# ~7 CPU y ~14 GB, y **eso hay que MEDIRLO y escribirlo en `Pulumi.prod.yaml`, no deducirlo
-# de aqui**: el paso «Lo declarado cabe en el nodo real» de `aplicar-prod` rechaza toda
-# declaracion mayor que lo que el nodo reparte de verdad.
+# asignables. Sobre `vmd206041`, que lo sustituye, esta reserva se aplico el 2026-09-11 y se
+# MIDIO: no es el 8 CPU / 16 GB que `INF-01` §2 dimensiona sino un 6 CPU / 12242280Ki, y queda
+# en 5 CPU / 10145128Ki asignables (registro y cifras en el runbook de mas abajo). Medir y
+# escribirlo en `Pulumi.prod.yaml` es obligatorio: `aplicar-prod` rechaza declarar de mas.
 #
 # Y queda una decision abierta para el nodo nuevo: 1 CPU + 2 Gi era media maquina sobre 4
-# CPU / 8 GB y es proporcionalmente poco sobre 8 / 16. Subirla obliga a tocar
+# CPU / 8 GB y es un sexto de la CPU sobre el 6 / ~11,7 GB medido. Subirla obliga a tocar
 # `reserva-del-nodo.test.ts` en el mismo commit, que es justo lo que se quiere.
 #
 # `verificaciones/reserva-del-nodo.test.ts` exige que las dos partidas sumen el total.
@@ -234,8 +234,8 @@ fi
 
 cat <<AVISO
 
-Listo. Anote esta ejecucion en el runbook de mantenimiento
-(docs/80-infraestructura/mantenimiento-del-nodo.md): fecha, quien la corrio, y
-si el clúster volvio solo o hizo falta intervenir -es exactamente lo que el
-criterio de aceptacion del issue #157 pide poder responder despues.
+Listo. Anote esta ejecucion en la tabla «Registro de ejecuciones de la reserva»
+de docs/B0-operacion/runbooks/mantenimiento-del-vps.md: fecha, nodo, lo asignable
+antes y despues, y si el clúster volvio solo o hizo falta intervenir -es
+exactamente lo que el criterio de aceptacion del issue #157 pide contestar.
 AVISO

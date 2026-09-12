@@ -212,6 +212,40 @@ Dos avisos: **reinicia Keycloak** —una réplica, `Recreate`: hay cerca de un m
 nadie puede iniciar sesión—, y es **deriva manual**, que el siguiente `pulumi up` borra en
 silencio (ADR-0011 §6). Para revertirla antes, el mismo comando con `KC_HOSTNAME_ADMIN-`.
 
+### La clave del `Secret` ya no abre, y no te equivocaste de clave
+
+`clave-administrador` es la que Keycloak usa **en su primer arranque**
+(`KC_BOOTSTRAP_ADMIN_PASSWORD`). Cambiar la del `admin` desde la propia consola —o desde
+`kcadm`— reescribe la credencial en la base de Keycloak y **el `Secret` deja de valer**,
+sin que nada lo avise. A partir de ahí:
+
+```
+$ kcadm.sh config credentials --server … --realm master --user admin --password "$KC_BOOTSTRAP_ADMIN_PASSWORD"
+Invalid user credentials [invalid_grant]
+```
+
+Pasó en `prod` el 2026-09-12: la credencial del `admin` quedó fechada a las 08:17:49Z,
+posterior al `Secret` y al primer arranque.
+
+**Y no se repone sola.** El arranque con `KC_BOOTSTRAP_ADMIN_*` sólo crea ese usuario
+cuando no hay ninguno, así que recrear el pod no devuelve la clave del `Secret`: la única
+copia buena es la que tenga quien la cambió. Comprobar cuál es la situación:
+
+```bash
+kubectl -n kamayuk-<amb> exec deploy/kamayuk-<amb>-postgres -c postgres -- \
+  psql -U postgres -d keycloak -Atc \
+  "select u.username, to_timestamp(c.created_date/1000) from user_entity u
+     join credential c on c.user_id = u.id where u.username = 'admin';"
+```
+
+Si esa fecha es **posterior** a la del `Secret`, la clave se cambió fuera del despliegue.
+
+Las dos salidas, y las dos son decisiones: **guardar la nueva donde se guardan las claves**
+—y entonces el `Secret` miente y hay que alinearlo—, o **volver a poner la del `Secret`**
+desde la consola, con lo que el inventario vuelve a ser cierto. Lo que no vale es dejarlo
+como está: el día que alguien siga el paso 1 al pie de la letra no entrará, y el síntoma es
+idéntico al de haber leído la clave equivocada.
+
 ### La consola carga pero se rompe al navegar
 
 El `port-forward` está en un puerto distinto de `PUERTO_DE_LA_CONSOLA`. Ciérralo y

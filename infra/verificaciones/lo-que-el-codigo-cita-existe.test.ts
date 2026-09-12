@@ -27,9 +27,15 @@
  * maquina de quien sigue el documento, con un error de otra cosa.
  *
  * Midiendo la clase entera salieron **cuatro** citas y **las cuatro** apuntaban a nada.
- * La peor es `vps/reservar-recursos-del-nodo.sh:238`, que nombra
- * `mantenimiento-del-nodo.md`: ese archivo **no existe ni en el repositorio archivo** —
- * nunca se escribio, y nadie podia notarlo.
+ * La peor era `vps/reservar-recursos-del-nodo.sh:238`, que nombraba
+ * `mantenimiento-del-nodo.md`: ese archivo **no existia ni en el repositorio archivo** —
+ * el documento real se llama `mantenimiento-del-vps.md` y vive en `B0-operacion/runbooks/`,
+ * asi que la cita estaba mal en el nombre Y en la ruta, y nadie podia notarlo.
+ *
+ * **Esa quedo cerrada el 2026-09-12** ([#111]): el runbook se trajo y se remidio entero
+ * —incluido su §4, que es lo que ese guion hace—, la cita se corrigio, y con ella salio de
+ * `SIN_TRAER_TODAVIA` la entrada que la eximia. El guion ya no manda a ninguna parte: manda
+ * a la tabla «Registro de ejecuciones de la reserva», que existe porque el guion la pide.
  *
  * ## Lo que esta guarda NO hace
  *
@@ -66,14 +72,6 @@ const SIN_TRAER_TODAVIA: Record<string, string> = {
   "arquitectura-de-infraestructura.md":
     "INF-01. Vive en `sgtm/docs/80-infraestructura/`, pre-renombrado.",
   "gestion-de-secretos.md": "INF-06. Vive en `sgtm/docs/80-infraestructura/`, pre-renombrado.",
-  // La cita esta mal en el nombre Y en la ruta: dice
-  // `docs/80-infraestructura/mantenimiento-del-nodo.md` y el documento real es
-  // `mantenimiento-del-vps.md`, en `B0-operacion/runbooks/` del archivo — su §4 es
-  // «Aplicar la reserva de CPU/memoria del nodo», que es justo lo que hace ese guion.
-  // Se corrige al traerlo: apuntarla ahora a un archivo que aun no esta aqui no arregla
-  // nada, solo cambia un nombre roto por otro.
-  "mantenimiento-del-nodo.md":
-    "La cita nombra un archivo que no existe; el real es `mantenimiento-del-vps.md`, todavia en el archivo.",
 };
 
 const RAIZ = raizDelRepositorio();
