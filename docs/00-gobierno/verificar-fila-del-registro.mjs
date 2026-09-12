@@ -57,16 +57,16 @@ const RUTAS_DE_CODIGO = [
 ];
 
 /**
- * Donde puede estar la fila. **Son dos a proposito, y es una ventana de compatibilidad**
- * (#114): el registro se muda de `CLAUDE.md` a `docs/agent/HISTORY.md` —eran el 93 % de un
- * archivo que cada sesion carga entero— y los seis repositorios no migran a la vez.
+ * Donde vive la fila. **Uno solo desde el 2026-09-12**, que es el dia en que los seis
+ * repositorios acabaron de migrar (#114).
  *
- * Mientras las dos esten aqui, una fila escrita en cualquiera de los dos cuenta. El dia que
- * los seis hayan migrado se retira `CLAUDE.md` **en un cambio propio**, y entonces una fila
- * en el sitio viejo deja de contar. Estrechar antes deja rojos cruzados en los que aun no
- * han migrado.
+ * Fueron dos durante unas horas, a proposito: el registro se mudo de `CLAUDE.md` a
+ * `docs/agent/HISTORY.md` —eran el 93 % de un archivo que cada sesion carga entero— y los
+ * seis no migraban a la vez, asi que estrechar antes habria dejado rojos cruzados en los que
+ * todavia escribian en el sitio viejo. Con los seis migrados, esa ventana se cierra: **una
+ * fila escrita en `CLAUDE.md` ya no cuenta**, y el rojo lo dice nombrando el sitio bueno.
  */
-const DONDE_VIVE_LA_FILA = ['docs/agent/HISTORY.md', 'CLAUDE.md'];
+const DONDE_VIVE_LA_FILA = ['docs/agent/HISTORY.md'];
 
 /** Como se declara que un PR cierra un issue. GitHub admite estas y alguna mas. */
 const CIERRA = /\b(?:cierra|closes?|close|fixes?|fix|resuelve|resolves?)\s+#(\d+)/gi;
