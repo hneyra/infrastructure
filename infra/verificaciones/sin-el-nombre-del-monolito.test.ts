@@ -53,9 +53,14 @@ const APARTADAS = [
 /**
  * Las excepciones, cada una con su motivo. **Son el nombre de cosas que existen.**
  *
- * Renombrar un bucket en el codigo sin renombrarlo en el proveedor manda los respaldos a un
- * sitio que no existe, y **eso no da error hasta el dia que hay que restaurar**. Entran cuando
- * alguien renombre el bucket de verdad.
+ * Renombrar un contenedor en el codigo sin renombrarlo en el proveedor manda los datos a un
+ * sitio que no existe, y **eso no da error hasta el dia que hace falta lo que hay dentro**.
+ * Entran cuando alguien renombre el contenedor de verdad — que es lo que paso con los dos de
+ * respaldo en #112, y por eso aquella salio.
+ *
+ * Y las dos que hay son de la misma clase: **texto que un humano lee, no una cadena que el
+ * programa usa para hablar con nada**. Una es un comentario de SQL que Flyway ya sello; la otra
+ * es la orden que el guion te dice que teclees.
  */
 const EXCEPCIONES: readonly {
   readonly patron: RegExp;
@@ -73,6 +78,19 @@ const EXCEPCIONES: readonly {
       "no se puede. Se corrige, si alguna vez importa, con una migracion NUEVA que reemplace el " +
       "comentario",
   },
+  {
+    patron: /^\d+\. scripts\/valores-normativos\/archivar_derivado\.sh --bucket sgtm-fuentes-normativas\b/,
+    archivo: /^infra\/carga-de-datos\/publicar-cuadros\.sh$/,
+    motivo:
+      "el nombre REAL de un contenedor de S3 que existe asi, dentro del texto de ayuda que el " +
+      "guion imprime por stderr cuando un cuadro no cabe en un ConfigMap. No es una orden que " +
+      "este guion ejecute: es la que el operador tiene que teclear, y cambiarle el nombre lo " +
+      "dejaria sin el dato por el que lee el mensaje. El contenedor no se renombra aqui — el dia " +
+      "que se renombre de verdad, esta excepcion sale, igual que salieron los de respaldo en " +
+      "#112. Aparecio al arreglar el despojado de bloques (#122): vivia en las 268 lineas que la " +
+      "guarda no miraba, y NO es un comentario —esta dentro de un heredoc—, asi que el " +
+      "despojador de `#` no la cubre",
+  },
 ];
 
 const EXTENSIONES = new Set([
@@ -87,6 +105,42 @@ const EXTENSIONES = new Set([
   ".mjs",
   ".js",
   ".json",
+  ".svelte",
+  ".css",
+  ".html",
+]);
+
+/**
+ * De esas, las que su lenguaje admite comentarios de BLOQUE —los que abren con `/*`—.
+ *
+ * **Es una lista por lo que cada lenguaje admite de verdad, no por descarte** (#122). Bash no
+ * los tiene —`/*)` es una rama de `case` perfectamente normal—, YAML tampoco, y JSON no tiene
+ * comentarios de ninguna clase. SQL SI los tiene, y PostgreSQL ademas los anida, asi que se
+ * queda: medido, CERO `.sql` de los seis arboles contiene siquiera un `/*`, de modo que la
+ * decision la toma el lenguaje y no la conveniencia.
+ *
+ * De que defecto viene, para que nadie lo «simplifique» de vuelta: el despojado se aplicaba a
+ * TODA extension, asi que el `case "$relativa" in ../*)` de `publicar-cuadros.sh:240` abria un
+ * bloque falso que no cerraba hasta el cierre que un `sed` lleva dentro, 268 lineas mas abajo
+ * —el 44 % del archivo—, y ahi dentro estaban las dos etiquetas `proyecto: sgtm` de su `Job`.
+ * Es el mismo defecto que #76 cerro para los otros dos `Job` de carga, y este sobrevivio
+ * porque la guarda que #76 introdujo no podia verlo. Medido sobre los seis arboles, CUATRO
+ * archivos perdian tramos: 268, 260, 157 y 102 lineas.
+ *
+ * Las reglas de comentario de LINEA de abajo no se tocaron con esto, y tambien esta medido por
+ * que: `.css`, `.html` y `.svelte` no tienen ni un archivo bajo las rutas que se barren, y de
+ * los cuatro `.json` que contienen `/*` —los dos `tsconfig` y los dos realms— ninguno se traga
+ * nada, porque ningun realm llega a cerrar el bloque y los `tsconfig` lo cierran dentro de su
+ * propio glob.
+ */
+const CON_BLOQUES = new Set([
+  ".ts",
+  ".java",
+  ".kts",
+  ".kt",
+  ".sql",
+  ".mjs",
+  ".js",
   ".svelte",
   ".css",
   ".html",
@@ -123,7 +177,11 @@ function archivosDe(raiz: string, rutas: readonly string[]): string[] {
 
 /** Deja solo lo que NO es comentario. Sin esto la guarda obligaria a borrar la memoria. */
 export function sinComentarios(texto: string, extension: string): string {
-  const sinBloques = texto.replace(/\/\*[\s\S]*?\*\//g, " ");
+  // Solo donde el lenguaje los tiene: ver `CON_BLOQUES`. Aplicarlo a todas las extensiones es
+  // lo que dejaba 787 lineas de codigo de produccion sin mirar en cuatro guiones (#122).
+  const sinBloques = CON_BLOQUES.has(extension)
+    ? texto.replace(/\/\*[\s\S]*?\*\//g, " ")
+    : texto;
   // El `//` de un comentario NO va precedido de dos puntos; el de una URL SI. Sin ese
   // limite, `https://…` se comia el resto de la linea y **un nombre dentro de cualquier URL
   // quedaba invisible**: medido devolviendo `https://sgtm.gob.pe/errores/` al Java de
@@ -220,6 +278,34 @@ describe("el nombre del monolito no vuelve al codigo de los seis", () => {
     // filtro se comia el resto de la linea, asi que un nombre dentro de cualquier URL pasaba
     // en verde. Medido con el `type` de los cuerpos de error, que es exactamente ese caso.
     expect(sinComentarios('setType("https://sgtm.gob.pe/errores/x");', ".java")).toMatch(
+      PROHIBIDA,
+    );
+  });
+
+  it("un `/*` en un lenguaje que no tiene bloques no esconde nada detras", () => {
+    // #122. `/*)` es una rama de `case` de bash, no el principio de un comentario, y el
+    // despojado se aplicaba a TODAS las extensiones: abria un bloque falso que se comia el
+    // archivo hasta el siguiente `*/` —que en `publicar-cuadros.sh` estaba 268 lineas mas
+    // abajo, dentro de un `sed`—. La forma de abajo es la de ese archivo, reducida.
+    const bash = 'case "$x" in\n  ../*) destino=1 ;;\nesac\nBASE=sgtm\nRESUMEN=$(sed -n "s/.*\\(X\\)./\\1/p")\n';
+    expect(sinComentarios(bash, ".sh")).toMatch(PROHIBIDA);
+    // Y no es solo que la cadena aparezca: NO se pierde ni una linea por el camino.
+    expect(sinComentarios(bash, ".sh").split("\n")).toHaveLength(bash.split("\n").length);
+    // Lo mismo para las otras dos extensiones que tampoco los tienen.
+    expect(sinComentarios("rutas:\n  - /*\nbase: sgtm\nfin: '*/'\n", ".yaml")).toMatch(PROHIBIDA);
+    expect(sinComentarios('{"a": "/*", "b": "sgtm", "c": "*/"}', ".json")).toMatch(PROHIBIDA);
+  });
+
+  it("y en los lenguajes que SI los tienen se sigue despojando", () => {
+    // El contraste de #122, para no pasarse: el arreglo tenia que hacer ver MAS, no dejar de
+    // omitir comentarios de verdad. Si esto se cayera, volveria a exigirse borrar la memoria.
+    expect(sinComentarios("/* viene de sgtm */\nconst a = 1;", ".ts")).not.toMatch(PROHIBIDA);
+    expect(sinComentarios("/*\n * copiado de sgtm@abc\n */\nclass A {}", ".java")).not.toMatch(
+      PROHIBIDA,
+    );
+    // SQL los tiene —PostgreSQL incluso los anida—, y por eso `.sql` NO entro en la lista de
+    // exclusion que pedia el issue: la decision la toma el lenguaje, no el descarte.
+    expect(sinComentarios("/* la historia se queda en sgtm */\nSELECT 1;", ".sql")).not.toMatch(
       PROHIBIDA,
     );
   });
