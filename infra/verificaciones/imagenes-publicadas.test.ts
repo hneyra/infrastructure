@@ -116,6 +116,26 @@ jobs:
     expect(imagenesQuePublica(conMatriz.replace("push: true", "push: false"))).toEqual([]);
   });
 
+  /**
+   * Y la otra direccion, que es la que fallo: `rentas`#75 cambio su `push` a una EXPRESION
+   * —construir siempre, publicar solo al integrar— y con la comparacion estricta `rentas`
+   * desaparecia del inventario entero. Se publica, y por eso cuenta.
+   */
+  it("un `push` que es una expresion de GitHub SI publica", () => {
+    const conExpresion = conMatriz.replace(
+      "push: true",
+      "push: ${{ github.event_name == 'push' }}",
+    );
+    expect(imagenesQuePublica(conExpresion)).toEqual([
+      "kamayuk-rentas",
+      "kamayuk-rentas-migrador",
+    ]);
+  });
+
+  it("un paso sin `push` no publica nada", () => {
+    expect(imagenesQuePublica(conMatriz.replace("          push: true\n", ""))).toEqual([]);
+  });
+
   it("un flujo sin ningun `build-push-action` no publica nada", () => {
     expect(imagenesQuePublica("name: Registro\njobs:\n  fila:\n    steps:\n      - uses: actions/checkout@v4\n")).toEqual([]);
   });

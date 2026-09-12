@@ -456,6 +456,35 @@ export function desajustes(
     }
   }
 
+  // Dos routers del mismo sistema con el MISMO prefijo: uno de los dos no recibe nada.
+  //
+  // Es el hueco que dejaba la comprobacion de abajo, y lo destapo `catastro`#105: alli el
+  // backend se habia quedado con la regla ancha `/catastro` de cuando era el unico servicio del
+  // prefijo, y la interfaz nueva entro reclamando `/catastro` tambien. La de abajo solo mira
+  // cuando un prefijo es ESTRICTAMENTE mas especifico que otro —`s.startsWith(o + "/")` con
+  // `s !== o`—, asi que dos reglas identicas se le escapaban enteras.
+  //
+  // Y es el caso PEOR, no uno menor: con la misma longitud de regla no hay nada mas especifico
+  // que preferir, asi que `priority` **no** es el remedio, y el que pierde queda inalcanzable sin
+  // que falle nada — los dos routers existen, los dos contenedores estan sanos, y todas las
+  // peticiones se las lleva el mismo. Lo que hay que hacer es estrechar una de las dos, que es lo
+  // que el descriptor ya hace con `/<sistema>/api/v1` para la API.
+  for (const suya of rutas) {
+    for (const otra of rutas) {
+      if (suya.router >= otra.router) continue;
+      const repetido = suya.prefijos.find((s) => otra.prefijos.includes(s));
+      if (repetido === undefined) continue;
+      anotar(
+        "prefijo",
+        `«${esperado.sistema}» declara el MISMO prefijo «${repetido}» en «${suya.router}» y en ` +
+          `«${otra.router}». Uno de los dos no recibira nada nunca, y no falla nada al hacerlo: ` +
+          "los dos routers existen y los dos servicios estan sanos. `priority` no lo arregla " +
+          "—con la regla igual de larga no hay nada mas especifico que preferir—: hay que " +
+          "estrechar una, como hace el descriptor con `/<sistema>/api/v1` para la API.",
+      );
+    }
+  }
+
   // Y si reparte su prefijo entre dos routers, cual gana lo dice el compose y no la longitud.
   for (const suya of rutas) {
     for (const otra of rutas) {
