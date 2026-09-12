@@ -22,6 +22,24 @@ name: Registro
 
 on:
   pull_request:
+    # `edited` NO sobra, y quitarlo rompe el remedio de esta misma guarda (#57).
+    #
+    # Esta guarda puede salir roja por el CUERPO del PR: su patron de «cierra #N» casa
+    # tambien con prosa, asi que una frase como «esta roja la cierra #54 midiendolo»
+    # —hablando de un PR y no de un issue— le hace exigir una fila que nadie debia
+    # escribir. Paso de verdad en #55 el 2026-09-10.
+    #
+    # Y el remedio correcto para eso es EDITAR EL CUERPO, que sin este `edited` no
+    # dispara nada. Relanzar el trabajo tampoco vale, y eso hubo que medirlo: un re-run
+    # repite el MISMO evento con el payload congelado, asi que
+    # `github.event.pull_request.body` sigue siendo el cuerpo viejo. Sin `edited`, las
+    # unicas salidas eran empujar un commit —cambiar codigo para arreglar una frase— o
+    # cerrar y reabrir el PR, que este proyecto prohibe.
+    #
+    # Los otros tres son los que GitHub pone por omision. Se escriben porque declarar
+    # `types:` REEMPLAZA la lista entera: `types: [edited]` a secas dejaria de correr al
+    # abrir el PR, que es cuando mas falta hace.
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
