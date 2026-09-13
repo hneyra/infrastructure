@@ -84,3 +84,20 @@ Grafana no es producto: es el suelo, y su acceso lo decide Keycloak con un rol.
 - #149 publica la ruta, configura Grafana y sustituye la prueba «Grafana no esta en ninguna
   IngressRoute» por una guarda en `auditoria.ts`: **toda** ruta a Grafana exige OIDC y ninguna
   clave.
+
+## Lo que #149 precisó al construirlo (2026-09-13)
+
+La decisión no cambia. Tres frases de arriba se quedaban cortas frente a lo medido:
+
+- **El punto 5: el túnel no lleva a Grafana, lleva a Prometheus.** El formulario y el *basic auth*
+  se apagan en el proceso de Grafana, no en la ruta, así que la clave de `admin` tampoco abre por
+  un `port-forward`. Con Keycloak caído, el camino de emergencia es Prometheus por `port-forward`,
+  que tiene los mismos datos que los tableros.
+- **El punto 1: `grafana cli` no basta para todo.** Una cuenta borrada y recreada en Keycloak choca
+  con su usuario viejo en Grafana (`user already exists`, medido), y borrarlo es del API. El runbook
+  `abrir-grafana.md` lo hace encendiendo el *basic auth* **un momento** con `kubectl set env`, y lo
+  declara como la única entrada con clave. Es deriva, y la guarda de `auditoria.ts` no la ve,
+  porque lee lo declarado y no el clúster: el guion `verificar-login-de-grafana.sh` sí, porque prueba
+  el *basic auth* contra el ambiente.
+- **El último coste ya no se paga.** `stg` se mudó a un VPS que su dominio sí alcanza (#145), y la
+  verificación de #149 entra por el dominio en los dos ambientes.

@@ -14,6 +14,7 @@ import {
 import { namespaceName, type Environment, type Invariants } from "../config";
 import { SISTEMAS } from "../descriptor/sistemas";
 import { municipalidadesJson } from "./fuentes";
+import { CUENTAS_DE_OPERACION_DE_PRUEBA } from "./Identidad";
 import { entornoDelAmbiente } from "../herramientas/emitir-manifiestos";
 
 /**
@@ -335,7 +336,9 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       namespace: enLaPlataforma,
       secreto: nombres.grafana,
       clave: CLAVES.grafana,
-      consumidor: "Grafana (issue #156). Nunca esta en una IngressRoute: se administra por el tunel SSH",
+      consumidor:
+        "Grafana (issue #156). Desde #149 no abre nada por si sola: el formulario y el basic auth " +
+        "estan apagados, y se usa con `grafana cli` dentro del pod (runbook abrir-grafana.md)",
       periodicidad: "anual",
       // No es un rol de PostgreSQL: es la cuenta de administrador de Grafana.
       requiereReinicioDe: servicioDeGrafana(environment),
@@ -346,14 +349,16 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       secreto: nombres.grafana,
       clave: CLAVES.clienteOidcDeGrafana,
       consumidor:
-        "El cliente confidencial «kamayuk-grafana» del realm de operacion (ADR-0041, #148): se la " +
-        "fija el Job del realm. Grafana la mandara al pedir el token cuando se publique (#149)",
+        "El cliente confidencial «kamayuk-grafana» del realm de operacion (ADR-0041): se la fija " +
+        "el Job del realm (#148), y Grafana la manda al intercambiar el codigo de login (#149)",
       // Una credencial de emisor, como las de las cuentas de servicio: rotarla es volver a correr
       // el Job del realm, que la fija al cliente y comprueba que quedo puesta. Trimestral como
       // ellas.
       periodicidad: "trimestral",
-      // Sin `requiereReinicioDe` TODAVIA: ningun pod en marcha la lee hasta #149. El Job la lee
-      // fresca al crearse, igual que `kamayuk-owner`.
+      // Y ademas reiniciar Grafana, que la lee como variable de entorno al arrancar (#149): con el
+      // Job ya corrido y Grafana sin reiniciar, Grafana manda la vieja y el login muere en el
+      // intercambio del codigo. Hasta #149 no la leia ningun pod en marcha.
+      requiereReinicioDe: servicioDeGrafana(environment),
     },
     {
       rol: "postgres-carga",
@@ -518,7 +523,26 @@ export function inventarioDelAmbiente(invariantes: Invariants): EntradaDeSecreto
     });
   });
 
-  return [...plataforma, ...deLosSistemas];
+  // Las claves de las dos cuentas de prueba del realm de operacion (#149), SOLO donde se siembran
+  // usuarios de prueba. Van aqui y no en `inventarioDeSecretos` porque dependen de esa bandera del
+  // stack, y `inventarioDeSecretos` solo conoce el nombre del ambiente.
+  const deOperacionDePrueba = invariantes.identity.seedTestUsers
+    ? CUENTAS_DE_OPERACION_DE_PRUEBA.map(
+        (c): EntradaDeSecreto => ({
+          rol: `grafana-${c.cuenta}`,
+          namespace: namespaceName(invariantes.environment),
+          secreto: nombres.grafana,
+          clave: c.clave,
+          consumidor:
+            `La cuenta de prueba «${c.cuenta}» del realm de operacion: el Job del realm se la fija ` +
+            "PERMANENTE, y `verificar-login-de-grafana.sh` la usa para recorrer el login (#149)",
+          // Rotarla es volver a correr el Job, que la vuelve a fijar. Solo `stg`, sin padron detras.
+          periodicidad: "semestral",
+        }),
+      )
+    : [];
+
+  return [...plataforma, ...deOperacionDePrueba, ...deLosSistemas];
 }
 
 /**

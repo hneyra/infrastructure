@@ -180,6 +180,12 @@ export const CLAVES = {
    * el token (#149)— estan en el namespace de la plataforma.
    */
   clienteOidcDeGrafana: "clave-cliente-oidc",
+  /**
+   * Claves PERMANENTES de las dos cuentas de prueba del realm de operacion (#149), solo en `stg`:
+   * con ellas `verificar-login-de-grafana.sh` recorre el login sin navegador.
+   */
+  operadorDePruebaLector: "clave-operador-de-prueba-lector",
+  operadorDePruebaSinRol: "clave-operador-de-prueba-sin-rol",
   /** Clave de `rol_carga_parametros` (issue #387). */
   carga: "clave-carga",
   /** Clave de `rol_ingestor_catastro` (P5C, C-7 §6). */
@@ -793,6 +799,16 @@ export function jwksInterno(environment: Environment, realm: string): string {
 export function tokenInterno(environment: Environment, realm: string): string {
   const servicio = servicioDeIdentidad(environment);
   return `http://${servicio}:8080/keycloak/realms/${realm}/protocol/openid-connect/token`;
+}
+
+/**
+ * `userinfo`, por la red interna, por lo mismo que {@link tokenInterno}. Lo pide Grafana (#149)
+ * con el token que acaba de recibir. Medido contra Keycloak 26.0.8: `userinfo` acepta un token
+ * aunque se le llame por otro nombre de host que el del emisor.
+ */
+export function userinfoInterno(environment: Environment, realm: string): string {
+  const servicio = servicioDeIdentidad(environment);
+  return `http://${servicio}:8080/keycloak/realms/${realm}/protocol/openid-connect/userinfo`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

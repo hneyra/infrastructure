@@ -50,6 +50,8 @@ function prometheusYml(): string {
   const ms = manifiestosDeObservabilidad({
     environment: AMBIENTE,
     namespace: namespaceName(AMBIENTE),
+    domain: invariantesDe(AMBIENTE).ingress.domain,
+    realm: invariantesDe(AMBIENTE).identity.realm,
     recursos: recursosDe(invariantesDe(AMBIENTE).recursos.perfil),
     alertWebhookUrl: undefined,
   });
@@ -150,6 +152,8 @@ describe("#113 · ninguna alerta vigila el conjunto vacio", () => {
     const ms = manifiestosDeObservabilidad({
       environment: AMBIENTE,
       namespace: namespaceName(AMBIENTE),
+      domain: invariantesDe(AMBIENTE).ingress.domain,
+      realm: invariantesDe(AMBIENTE).identity.realm,
       recursos: recursosDe(invariantesDe(AMBIENTE).recursos.perfil),
       alertWebhookUrl: undefined,
     });

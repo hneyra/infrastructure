@@ -1,6 +1,6 @@
 import { commonLabels, resourceName, type Environment } from "../config";
 import { RUTA_DE_IDENTIDAD } from "./Identidad";
-import { servicioDeIdentidad } from "./convenciones";
+import { RUTA_DE_GRAFANA, servicioDeGrafana, servicioDeIdentidad } from "./convenciones";
 import type { HelmChartConfig, IngressRoute, Manifiesto, Middleware, TLSOption } from "./tipos";
 
 /**
@@ -174,25 +174,50 @@ export function manifiestosDeIngreso(args: IngresoArgs): Manifiesto[] {
     },
   };
 
+  /**
+   * Grafana en `https://<dominio>/grafana` (ADR-0041, #149).
+   *
+   * Es la primera ruta de administracion que se publica, y **solo porque no hay ninguna clave
+   * detras**: se entra con el realm de operacion, sin formulario ni *basic auth*. Lo exige
+   * `auditoria.ts` a toda ruta que llegue al `Service` de Grafana, asi que quitar el OIDC con
+   * esta ruta puesta no llega al cluster.
+   *
+   * `limite-de-tasa` y no `limite-de-identidad`: aqui no hay formulario que probar —el de
+   * Grafana esta apagado—, y la carga de una pantalla de Grafana son decenas de peticiones.
+   */
+  const grafana: IngressRoute = {
+    apiVersion: "traefik.io/v1alpha1",
+    kind: "IngressRoute",
+    metadata: { name: resourceName(environment, "grafana"), namespace, labels: etiquetas },
+    spec: {
+      entryPoints: ["websecure"],
+      routes: [
+        {
+          match: `Host(\`${domain}\`) && PathPrefix(\`${RUTA_DE_GRAFANA}\`)`,
+          kind: "Rule",
+          priority: 20,
+          services: [{ name: servicioDeGrafana(environment), port: 3000 }],
+          middlewares: [{ name: limiteDeTasa.metadata.name }],
+        },
+      ],
+      tls,
+    },
+  };
+
   return [
     configuracionDeTraefik,
     versionMinima,
     limiteDeTasa,
     limiteDeIdentidad,
-    // **Una sola ruta publica: la identidad** (`E`). Hasta el 2026-09-06 habia tres —la
-    // interfaz del monolito en `/`, su API en `/api/v1` y esta—, y las dos primeras se van
-    // con el monolito. Ninguno de los cuatro sistemas publica todavia interfaz ni API por
-    // el ingreso: sus `Service` viven en su propio namespace y hoy nadie los enruta, asi
-    // que la raiz del dominio contesta el 404 de Traefik. Es la diferencia que importa
-    // frente a dejar las rutas puestas: una `IngressRoute` que apunta a un `Service`
-    // ausente **no se queda callada**, contesta `503` —y un `503` en la raiz del dominio
-    // publico se lee como «el sistema esta caido» y no como «aqui no hay nada desplegado»
-    // (C-19 §2.1).
-    //
-    // `limite-de-tasa` se queda aunque ninguna ruta lo nombre: un `Middleware` sin ruta es
-    // inerte —no se aplica a nada, no ocupa nodo— y es lo que las rutas de los cuatro
-    // sistemas van a necesitar el dia que se publiquen.
+    // **Dos rutas de la plataforma: la identidad y Grafana** (#149). Hasta `E` habia tres —la
+    // interfaz del monolito en `/`, su API en `/api/v1` y la identidad—, y las dos primeras se
+    // fueron con el monolito; desde entonces solo quedo la identidad, hasta que ADR-0041
+    // publico Grafana. Las interfaces y las API de los sistemas las enruta cada uno desde su
+    // propio namespace. Lo que no se hace es dejar una ruta a un `Service` ausente: **no se
+    // queda callada**, contesta `503`, y un `503` en el dominio publico se lee como «el sistema
+    // esta caido» y no como «aqui no hay nada desplegado» (C-19 §2.1).
     identidad,
+    grafana,
   ];
 }
 

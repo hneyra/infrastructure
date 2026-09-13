@@ -108,7 +108,29 @@ export interface IdentidadArgs {
   ubigeo: string;
   /** Cuenta del primer administrador. Tiene que ser la del archivo versionado. */
   administrador: string;
+  /**
+   * Sembrar en el realm de operacion las dos cuentas con que `verificar-login-de-grafana.sh`
+   * demuestra el login sin navegador (#149). Solo `stg`, por lo mismo que el cliente de
+   * verificacion: dos cuentas con clave permanente son una puerta que `prod` no necesita.
+   */
+  cuentasDeOperacionDePrueba: boolean;
 }
+
+/**
+ * Las cuentas de prueba del realm de operacion (#149), con la clave del inventario que las abre.
+ *
+ * Son DOS y no una porque el login de Grafana tiene que demostrar las dos mitades: que quien trae
+ * rol entra, y que **quien no lo trae no entra**. Medido contra Grafana 11.3.0: sin
+ * `ROLE_ATTRIBUTE_STRICT`, la cuenta sin rol entra como `Viewer`, y solo una cuenta sin rol lo ve.
+ */
+export const CUENTAS_DE_OPERACION_DE_PRUEBA: readonly {
+  cuenta: string;
+  rol: RolDeOperacion | undefined;
+  clave: string;
+}[] = [
+  { cuenta: "operador-de-prueba-lector", rol: "lector", clave: CLAVES.operadorDePruebaLector },
+  { cuenta: "operador-de-prueba-sin-rol", rol: undefined, clave: CLAVES.operadorDePruebaSinRol },
+];
 
 /** El cliente que existe solo para que CI consiga un token sin navegador. */
 export const CLIENTE_DE_VERIFICACION = "kamayuk-verificacion";
@@ -891,7 +913,12 @@ export interface DocumentosDeOperadores {
   /**
    * Una fila por operador, campos con tabulador. Lo lee `reconciliar-identidades.sh operadores`.
    *
-   *   OPERADOR <cuenta> <nombre> <apellido> <correo> <rol>
+   *   OPERADOR           <cuenta> <nombre> <apellido> <correo> <rol>
+   *   OPERADOR_DE_PRUEBA <cuenta> <nombre> <apellido> <correo> <rol, o «-» si no tiene> <clave>
+   *
+   * `<clave>` es el NOMBRE de la clave del inventario, el archivo que el `Job` monta; nunca el
+   * valor. Y el «-»: `read` con tabulador como separador junta dos tabuladores seguidos, asi que un
+   * campo vacio desplazaria la clave a la columna del rol.
    */
   tsv: string;
   /** Las cuentas que el `Job` comprueba al terminar. */
@@ -911,7 +938,11 @@ export interface DocumentosDeOperadores {
  * #150, y hasta entonces hay un hueco declarado: **esta etapa no retira ningun rol**, asi que si
  * cambia la cuenta del stack la anterior conserva `administrador` en este realm.
  */
-export function documentosDeOperadores(args: { administrador: PersonaDeclarada }): DocumentosDeOperadores {
+export function documentosDeOperadores(args: {
+  administrador: PersonaDeclarada;
+  /** Las dos cuentas de prueba de `stg` (#149). Ver {@link CUENTAS_DE_OPERACION_DE_PRUEBA}. */
+  cuentasDePrueba?: boolean;
+}): DocumentosDeOperadores {
   const rol: RolDeOperacion = "administrador";
   const { cuenta, nombre, apellido, correo } = args.administrador;
   for (const [campo, valor] of Object.entries({ cuenta, nombre, apellido, correo })) {
@@ -921,9 +952,16 @@ export function documentosDeOperadores(args: { administrador: PersonaDeclarada }
       throw new Error(`El operador derivado «${cuenta}» no tiene «${campo}» valido.`);
     }
   }
+  const deprueba = (args.cuentasDePrueba ?? false)
+    ? CUENTAS_DE_OPERACION_DE_PRUEBA.map((c) =>
+        ["OPERADOR_DE_PRUEBA", c.cuenta, "Operador", "De prueba", `${c.cuenta}@example.pe`, c.rol ?? "-", c.clave].join(
+          "\t",
+        ),
+      )
+    : [];
   return {
-    tsv: `${["OPERADOR", cuenta, nombre, apellido, correo, rol].join("\t")}\n`,
-    cuentas: [cuenta],
+    tsv: `${[["OPERADOR", cuenta, nombre, apellido, correo, rol].join("\t"), ...deprueba].join("\n")}\n`,
+    cuentas: [cuenta, ...((args.cuentasDePrueba ?? false) ? CUENTAS_DE_OPERACION_DE_PRUEBA.map((c) => c.cuenta) : [])],
   };
 }
 
@@ -1061,6 +1099,7 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
     ubigeo,
     administrador,
     recursos,
+    cuentasDeOperacionDePrueba,
   } = args;
   const nombre = servicioDeIdentidad(environment);
   const nombreDelCorreo = resourceName(environment, "correo");
@@ -1101,7 +1140,10 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
     realm,
     ...(smtp === undefined ? {} : { smtp }),
   });
-  const operadores = documentosDeOperadores({ administrador: identidades.administrador });
+  const operadores = documentosDeOperadores({
+    administrador: identidades.administrador,
+    cuentasDePrueba: cuentasDeOperacionDePrueba,
+  });
 
   const configuracionDelRealm: ConfigMap = {
     apiVersion: "v1",
@@ -1361,6 +1403,8 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
             name: "CLAVE_DEL_CLIENTE_DE_OPERACION",
             value: `${DIRECTORIO_DE_OPERACION}/${CLAVES.clienteOidcDeGrafana}`,
           },
+          // Donde estan las claves de las cuentas de prueba, cuando las hay (#149).
+          { name: "CLAVES_DE_OPERACION", value: DIRECTORIO_DE_OPERACION },
           // Lee `identidades.tsv` del propio ConfigMap (modo «directo»).
           { name: "KC_DIRECTORIO", value: "/realm" },
           // Sin relay (Opción B): el guion crea al usuario y OMITE el enlace de
@@ -1418,13 +1462,17 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
         name: "servicios",
         secret: { secretName: secreto.serviciosDeIdentidad },
       },
-      // Del `Secret` de Grafana, SOLO la clave del cliente: ese `Secret` guarda tambien la del
-      // administrador de Grafana, y este pod no tiene nada que hacer con ella.
+      // Del `Secret` de Grafana, SOLO la clave del cliente —y en `stg` las de las dos cuentas de
+      // prueba (#149)—: ese `Secret` guarda tambien la del administrador de Grafana, y este pod no
+      // tiene nada que hacer con ella.
       {
         name: "operacion",
         secret: {
           secretName: secreto.grafana,
-          items: [{ key: CLAVES.clienteOidcDeGrafana, path: CLAVES.clienteOidcDeGrafana }],
+          items: [
+            CLAVES.clienteOidcDeGrafana,
+            ...(cuentasDeOperacionDePrueba ? CUENTAS_DE_OPERACION_DE_PRUEBA.map((c) => c.clave) : []),
+          ].map((clave) => ({ key: clave, path: clave })),
         },
       },
     ],
