@@ -88,10 +88,11 @@ describe("cada manifiesto es asignable a su tipo de @pulumi/kubernetes", () => {
   it("NetworkPolicy: denegar-todo mas las excepciones nombradas (issue #157)", () => {
     const politicas: k8s.types.input.networking.v1.NetworkPolicy[] = de("NetworkPolicy");
 
-    // Diecisiete. Eran 24 hasta `E`: se fueron las siete que seleccionaban pods del
-    // monolito —ingreso y salida de la interfaz, ingreso y salida de la aplicacion, y la
-    // salida de `migracion`, `implantacion` y `lote`—.
-    expect(politicas).toHaveLength(17);
+    // DIECIOCHO desde #81: la decimoctava es la salida del `Job` que crea las bases que
+    // faltan. Eran 24 hasta `E` —se fueron las siete que seleccionaban pods del monolito:
+    // ingreso y salida de la interfaz, ingreso y salida de la aplicacion, y la salida de
+    // `migracion`, `implantacion` y `lote`— y 17 desde entonces.
+    expect(politicas).toHaveLength(18);
   });
 
   it("los recursos de Traefik llevan el grupo de la v3", () => {

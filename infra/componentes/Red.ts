@@ -194,6 +194,12 @@ function permitirIngresoPostgres(environment: Environment, namespace: string): N
           // Job— como `kamayuk_owner`. Quien decide que puede hacer cada credencial es el motor,
           // no esta politica.
           DE_LOS_SISTEMAS,
+          // Y el `Job` que crea las bases que faltan (#81). Sin esta linea el Job no llega al
+          // motor y **el sintoma no se parece a la causa**: su espera de 120 s se agota, el
+          // contenedor muere y `pulumi up` falla con «completed with exit code 137» — que se
+          // lee como falta de memoria y es falta de ruta. Medido: rompio el despliegue de `stg`
+          // el 2026-09-13, 416 s y tres reintentos.
+          deApp("postgres-crear-bases"),
         ],
         ports: [puerto(5432)],
       },
@@ -221,6 +227,14 @@ function permitirSalidaIdentidad(
   correoDePrueba: boolean,
 ): NetworkPolicy[] {
   const politicas: NetworkPolicy[] = [
+    // El `Job` que crea las bases que faltan (#81) habla con el motor y con nadie mas. Su
+    // etiqueta es un literal y no un `resourceName`, igual que la del `Job` del realm: los Job
+    // de este namespace se nombran por lo que hacen.
+    politica(namespace, "permitir-salida-postgres-crear-bases", {
+      podSelector: { matchLabels: { app: "postgres-crear-bases" } },
+      policyTypes: ["Egress"],
+      egress: [{ to: [deApp(servicioDeBaseDeDatos(environment))], ports: [puerto(5432)] }],
+    }),
     politica(namespace, "permitir-salida-identidad", {
       podSelector: { matchLabels: { app: servicioDeIdentidad(environment) } },
       policyTypes: ["Egress"],

@@ -2101,6 +2101,11 @@ describe("#157 · endurecimiento", () => {
       // Prometheus, por el `postgres-exporter` que corre como sidecar del propio motor.
       "kamayuk-prod-observabilidad-prometheus",
       "kamayuk-prod-respaldo",
+      // El `Job` que crea las bases que faltan (#81). Su etiqueta es un literal y no un
+      // `resourceName`, como la del `Job` del realm: los Job de este namespace se nombran por
+      // lo que hacen. Sin esta entrada el Job no llega al motor, y el sintoma no lo dice:
+      // «completed with exit code 137», que se lee como falta de memoria y es falta de ruta.
+      "postgres-crear-bases",
     ]);
   });
 
