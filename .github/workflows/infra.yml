@@ -110,6 +110,13 @@ on:
       - 'despliegue/identidad/reconciliar-identidades.sh'
       - 'despliegue/identidad/municipalidades/**'
       - 'despliegue/identidad/ciudadanos/**'
+      # Lo que `el-compose-importa-el-realm-derivado.test.ts` lee (#72): el realm que el
+      # compose monta, el compose que lo monta y el guion que aplica sus ambitos sueltos.
+      # Un `realm-derivado/` editado a mano tiene que disparar la guarda que lo compara
+      # con su derivacion, o el verde que sale es rancio.
+      - 'despliegue/identidad/realm-derivado/**'
+      - 'despliegue/plataforma.compose.yaml'
+      - 'despliegue/identidad/preparar-identidades.sh'
       # El enumerado contra el que se contrasta la tabla de formas de documento (#415)
       # tampoco se puede nombrar aqui desde `E`: vivia en `backend/sgtm-dominio-compartido`
       # y hoy esta en los cuatro clones. Mismo hueco que el de las migraciones, arriba.

@@ -1,0 +1,14 @@
+{
+  "name": "municipalidad-id",
+  "protocol": "openid-connect",
+  "protocolMapper": "oidc-usermodel-attribute-mapper",
+  "consentRequired": false,
+  "config": {
+    "user.attribute": "municipalidad_id",
+    "claim.name": "municipalidad_id",
+    "jsonType.label": "long",
+    "id.token.claim": "false",
+    "access.token.claim": "true",
+    "userinfo.token.claim": "false"
+  }
+}

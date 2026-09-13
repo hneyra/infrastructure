@@ -1,0 +1,71 @@
+{
+  "ifResourceExists": "OVERWRITE",
+  "clients": [
+    {
+      "clientId": "kamayuk-backoffice",
+      "name": "Backoffice de Kamayuk",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://localhost:8081/*",
+        "https://vmd205066.contaboserver.net/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173",
+        "http://localhost:8081",
+        "https://vmd205066.contaboserver.net"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "municipalidad-id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "municipalidad_id",
+            "claim.name": "municipalidad_id",
+            "jsonType.label": "long",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "kamayuk-verificacion",
+      "name": "Cliente de verificacion del despliegue",
+      "description": "Solo para que CI consiga un token sin navegador. Sin redireccion: no sirve para personas.",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [],
+      "webOrigins": [],
+      "protocolMappers": [
+        {
+          "name": "municipalidad-id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "municipalidad_id",
+            "claim.name": "municipalidad_id",
+            "jsonType.label": "long",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ]
+}

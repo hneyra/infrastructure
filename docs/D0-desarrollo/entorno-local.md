@@ -101,17 +101,19 @@ docker compose -f ../identidad/despliegue/compose.yaml \
   --env-file despliegue/.env up --build --wait
 ```
 
-### Y para que un token SIRVA hacen falta cuatro pasos más
+### Y para que un token SIRVA hacen falta tres pasos más
 
 Los hace [`despliegue/identidad/preparar-identidades.sh`](../../despliegue/identidad/preparar-identidades.sh),
-que `levantar-todo.sh` encadena **después** de levantar el sistema —su último paso necesita el `id`
-que la secuencia le dio a la municipalidad, y esa fila la escribe la implantación—. Es idempotente,
-imprime al terminar las credenciales que el arnés de `identidad` necesita, y **tres de sus cuatro
-pasos son rodeos de defectos abiertos**
-([#72](https://github.com/hneyra/infrastructure/issues/72),
-[#73](https://github.com/hneyra/infrastructure/issues/73),
-[#74](https://github.com/hneyra/infrastructure/issues/74)), cada uno etiquetado con su número dentro
-del guión para que se caiga a trozos el día que se cierren. El detalle está en
+que `levantar-todo.sh` encadena **después** de levantar el sistema —su paso del administrador
+necesita el `id` de la municipalidad en la base, y esa fila la escribe la implantación—. Es
+idempotente, imprime al terminar las credenciales que el arnés de `identidad` necesita, y **uno de
+sus tres pasos es un rodeo de un defecto abierto**
+([#74](https://github.com/hneyra/infrastructure/issues/74)), etiquetado con su número dentro del
+guión para que se caiga a trozos el día que se cierre. Los rodeos de
+[#73](https://github.com/hneyra/infrastructure/issues/73) y
+[#72](https://github.com/hneyra/infrastructure/issues/72) ya se retiraron: el paso 1 es hoy el mismo
+`reconciliar-realm.sh` que el `Job` del clúster, sobre el realm derivado de
+`despliegue/identidad/realm-derivado/`. El detalle está en
 [`despliegue/README.md`](../../despliegue/README.md).
 
 Lo mismo corre en CI —la plataforma, `identidad` y las 55 preguntas de su e2e— en cada PR que toque
