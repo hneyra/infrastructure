@@ -706,6 +706,10 @@ function manifiestosDeGrafana(
               image: IMAGEN_DE_GRAFANA,
               env: [
                 { name: "GF_SECURITY_ADMIN_USER", value: "admin" },
+                // Grafana la lee UNA vez, al crear su base en el PVC («Set once on
+                // first-run», documentacion de Grafana). Rotar el `Secret` y reiniciar
+                // no la cambia: hay que llevarla a la base con `grafana cli`, y el
+                // runbook `abrir-grafana.md` dice como.
                 {
                   name: "GF_SECURITY_ADMIN_PASSWORD",
                   valueFrom: { secretKeyRef: { name: secreto.grafana, key: CLAVES.grafana } },
@@ -757,6 +761,10 @@ function manifiestosDeGrafana(
    * por el tunel SSH que ya usa CI (`INF-01` §1.4): `kubectl port-forward` contra
    * este `Service`. Publicarlo agregaria una segunda superficie de acceso con clave,
    * y el tunel ya existe.
+   *
+   * El procedimiento —el puerto remoto, que no es el mismo en `stg` que en `prod`, la
+   * clave y los modos de fallo del acceso— esta en el runbook `abrir-grafana.md`, y un
+   * tablero que abre vacio, en `grafana-no-muestra-datos.md`.
    */
   const servicio: Service = {
     apiVersion: "v1",

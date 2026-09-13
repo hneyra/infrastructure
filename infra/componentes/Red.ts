@@ -393,7 +393,8 @@ function politicasDeObservabilidad(environment: Environment, namespace: string):
     // Grafana no tiene politica de ingreso: nadie del clúster la consume —ni
     // Traefik, que no la publica (`Observabilidad.ts`)—, y el tunel SSH con que
     // se administra no pasa por la red del pod de la forma que un `NetworkPolicy`
-    // filtra.
+    // filtra. Que las dos puntas de este flujo tienen que casar, y como se leen del
+    // cluster cuando no casan, esta en el runbook `grafana-no-muestra-datos.md`.
     politica(namespace, "permitir-salida-grafana", {
       podSelector: { matchLabels: { app: servicioDeGrafana(environment) } },
       policyTypes: ["Egress"],
