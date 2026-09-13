@@ -374,7 +374,8 @@ const RECURSOS = {
    *
    * **De 38 a 150 segundos por llamada.** La misma llamada, en el anfitrion y sin techo, mide
    * **2,1 s** —medido al reescribir `restaurar-ambitos-de-fabrica.sh`, que paso de 12 m 31 s a
-   * 7,3 s por este mismo motivo—. O sea que el techo multiplica por veinte o setenta.
+   * 7,3 s por este mismo motivo, y que se retiro al cerrar la mitad del compose de #72—. O sea
+   * que el techo multiplica por veinte o setenta.
    *
    * ## Lo que eso costaba, y no se parecia a su causa
    *

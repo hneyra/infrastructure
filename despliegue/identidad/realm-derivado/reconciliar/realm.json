@@ -1,0 +1,19 @@
+{
+  "realm": "kamayuk",
+  "enabled": true,
+  "displayName": "Kamayuk — marcha blanca",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "accessTokenLifespan": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "smtpServer": {
+    "host": "correo",
+    "port": "1025",
+    "from": "no-responder@kamayuk.local",
+    "fromDisplayName": "Kamayuk",
+    "ssl": "false",
+    "starttls": "false",
+    "auth": "false"
+  }
+}

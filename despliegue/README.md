@@ -30,10 +30,12 @@ disfrazado de seis.
 
 ## Preparar las identidades
 
-Para que un token *sirva* hacen falta cuatro pasos más, y **tres son rodeos de defectos abiertos**
-([#72](https://github.com/hneyra/infrastructure/issues/72),
-[#73](https://github.com/hneyra/infrastructure/issues/73),
-[#74](https://github.com/hneyra/infrastructure/issues/74)). Los hace
+Para que un token *sirva* hacen falta tres pasos más, y **uno es un rodeo de un defecto abierto**
+([#74](https://github.com/hneyra/infrastructure/issues/74)). Eran cuatro y tres rodeos: el de
+[#73](https://github.com/hneyra/infrastructure/issues/73) se retiró al cerrarse, y el de
+[#72](https://github.com/hneyra/infrastructure/issues/72) —devolver al realm los trece ámbitos de
+fábrica que el import borraba— también: el compose ya no importa el realm versionado en crudo, y
+el paso 1 es ahora el mismo `reconciliar-realm.sh` que el `Job` del clúster. Los hace
 [`identidad/preparar-identidades.sh`](identidad/preparar-identidades.sh), que `levantar-todo.sh`
 encadena y que **imprime al terminar** las credenciales que el arnés de `identidad` necesita:
 
@@ -41,9 +43,9 @@ encadena y que **imprime al terminar** las credenciales que el arnés de `identi
 cd despliegue && ./identidad/preparar-identidades.sh
 ```
 
-Es idempotente, y **va después de levantar el sistema**: su paso 4 necesita el `id` que la secuencia
-le dio a la municipalidad, y esa fila la escribe la implantación. Cada rodeo lleva su número de
-issue dentro del guión, para que se caiga a trozos el día que se cierren. El detalle de los cuatro
+Es idempotente, y **va después de levantar el sistema**: su paso 2 necesita el `id` de la
+municipalidad en la base, y esa fila la escribe la implantación. El rodeo lleva su número de
+issue dentro del guión, para que se caiga a trozos el día que se cierre. El detalle de los
 pasos, con su síntoma, está en
 [`identidad/despliegue/pruebas-e2e/README.md`](https://github.com/hneyra/identidad/blob/main/despliegue/pruebas-e2e/README.md).
 
@@ -226,6 +228,17 @@ y se importa al arrancar: un realm configurado a mano en una pantalla no es
 reproducible. Fija los dos clientes, el PKCE obligatorio y **el mapeador que pone
 `municipalidad_id` en el token**, que es el claim del que sale el `SET LOCAL` y con
 él la separación entre municipalidades (ADR-0005).
+
+**Lo que Keycloak importa no es ese archivo sino su derivado**, en
+[`identidad/realm-derivado/`](identidad/realm-derivado/) (#72). El versionado declara
+`clientScopes`, y en un import completo esa clave **sustituye** los trece ámbitos de fábrica en
+vez de añadirse: sin `profile` el token no lleva `preferred_username` y todo funcionario recibe
+403 con un token válido. `importar/` es el realm sin esa clave; `reconciliar/` son los documentos
+que el paso 1 de `preparar-identidades.sh` aplica con `reconciliar-realm.sh` —entre ellos el
+ámbito `kamayuk-servicio`, suelto—. Los dos salen de la misma función que alimenta al clúster, y
+**tras editar un realm versionado hay que regenerarlos** con `cd infra && yarn realm-del-compose`:
+`el-compose-importa-el-realm-derivado.test.ts` se pone rojo si lo versionado y lo derivado no
+coinciden.
 
 **Lo que el realm no trae es ni un usuario ni una clave.** Un realm versionado con
 usuarios es la forma más cómoda de que una contraseña acabe en producción. Las

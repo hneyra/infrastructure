@@ -4,7 +4,9 @@
 
 Un realm ajustado en la pantalla de administración no es reproducible: el día que
 haya que levantar la instalación otra vez, nadie recordará qué casillas estaban
-marcadas. [`realm-kamayuk.json`](realm-kamayuk.json) se importa al arrancar Keycloak y
+marcadas. [`realm-kamayuk.json`](realm-kamayuk.json) se importa al arrancar Keycloak —a través
+de su derivado en [`realm-derivado/`](realm-derivado/), sin `clientScopes`, que es lo que le deja
+los trece ámbitos de fábrica (#72); se regenera con `cd infra && yarn realm-del-compose`— y
 fija tres cosas:
 
 - **El atributo `municipalidad_id` del perfil de usuario, y el mapeador que lo

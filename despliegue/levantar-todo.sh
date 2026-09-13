@@ -16,8 +16,8 @@
 #   2. el sistema               migraciones -> implantacion -> backend, encadenados por el
 #                               propio compose. Con `--env-file` del `.env` de AQUI: sus
 #                               claves son del motor de la plataforma, no suyas.
-#   3. preparar-identidades.sh  los ambitos, el administrador con clave, los clientes de
-#                               servicio y el inquilino.
+#   3. preparar-identidades.sh  el realm reconciliado con el guion del Job del cluster, el
+#                               administrador con clave y los clientes de servicio.
 #
 # El paso 3 va DESPUES del 2 y no antes, y es medido y no supuesto: necesita el `id` que la
 # SECUENCIA le dio a la municipalidad, y esa fila la escribe la IMPLANTACION del sistema
@@ -144,9 +144,9 @@ for _s in "${SISTEMAS[@]}"; do [ "$_s" = identidad ] && LEVANTAMOS_IDENTIDAD=1; 
 if [ "$LEVANTAMOS_IDENTIDAD" = 1 ]; then
     titulo "3 · las identidades del realm"
     "$AQUI/identidad/preparar-identidades.sh" || muere \
-"«preparar-identidades.sh» fallo. Su salida dice en cual de sus TRES pasos, y los dos que
-  son rodeos nombran el defecto abierto que rodean (#72 y #74). Eran cuatro hasta que #73 se
-  cerro y su paso se retiro."
+"«preparar-identidades.sh» fallo. Su salida dice en cual de sus TRES pasos, y el que es un
+  rodeo nombra el defecto abierto que rodea (#74). Eran cuatro hasta que #73 se cerro y su
+  paso se retiro, y dos de ellos rodeos hasta que se cerro #72."
 else
     titulo "3 · las identidades del realm — OMITIDO, y se dice"
     printf '  «identidad» no esta entre los sistemas pedidos, asi que la tabla «municipalidad»\n'

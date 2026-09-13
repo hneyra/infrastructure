@@ -204,7 +204,7 @@ export interface DocumentosDelRealm {
    *
    * Y no se pierde nada quitandolos de ahi, que es lo que hubo que comprobar: el bucle que
    * aplica estos documentos vive **DESPUES del `fi`** de crear/actualizar
-   * (`reconciliar-realm.sh:165` contra su `fi` de la 110), asi que es **incondicional** y crea
+   * (`reconciliar-realm.sh:187` contra su `fi` de la 132), asi que es **incondicional** y crea
    * el ambito que falte tanto en un realm nuevo como en uno que ya existia.
    *
    * Van sueltos para que el guion pueda crear el que falte **sin analizar JSON**: la imagen
@@ -245,28 +245,43 @@ export interface AmbitoDerivado {
   mapeadores: { nombre: string; representacion: string }[];
 }
 
-export function documentosDelRealm(args: {
-  domain: string;
-  realm: string;
-  clienteDeVerificacion: boolean;
-  smtp?: SmtpSettings;
+/**
+ * Lo que el realm versionado aporta, partido en las piezas que Keycloak consume por separado, y
+ * **todavia sin adaptar a ningun ambiente**.
+ *
+ * Es la UNICA derivacion del realm versionado, y la comparten los dos caminos que lo levantan:
+ *
+ * | Camino | Que hace con las piezas |
+ * |---|---|
+ * | El cluster ({@link documentosDelRealm}) | les pone el dominio, el relay y el nombre del stack, y las monta en el `ConfigMap` del `Job` |
+ * | El compose ({@link documentosDelRealmDelCompose}) | las escribe TAL CUAL en `despliegue/identidad/realm-derivado/`, que es lo que monta `plataforma.compose.yaml` |
+ *
+ * **Existe desde la mitad del compose de #72.** La mitad del cluster (`74b3c64`) saco
+ * `clientScopes` de lo que se importa, pero lo hizo DENTRO de `documentosDelRealm`, y el compose
+ * seguia montando el archivo versionado EN CRUDO en `/opt/keycloak/data/import/`: el arreglo no
+ * llegaba al camino que mas se usa, y una maquina nueva seguia naciendo con un realm de DOS
+ * ambitos. Con una sola funcion que decide que se importa, los dos caminos no pueden volver a
+ * separarse en eso.
+ */
+export interface PiezasDelRealm {
   /**
-   * De que archivo versionado salen. Sin esto, el de funcionarios.
-   *
-   * El del ciudadano (ADR-0020) pasa el suyo: son dos realms con dos emisores, y
-   * lo unico que comparten es este derivador —el mismo recorte de `smtpServer`,
-   * la misma reescritura de redirecciones y la misma exigencia de perfil
-   * declarativo—. Copiarlo habria duplicado las tres cosas, y la que mas duele
-   * duplicada es la ultima: sin perfil, el mapeador lee un atributo que el realm
-   * no admite y el claim sale vacio.
+   * El documento que `--import-realm` consume: el versionado ENTERO —sus clientes, su perfil, su
+   * relay— **menos `clientScopes`**, y con sus claves en el mismo orden.
    */
-  fuente?: string;
-}): DocumentosDelRealm {
-  const versionado = JSON.parse(args.fuente ?? realmDeFuncionariosJson()) as RealmVersionado;
+  importable: Record<string, unknown>;
+  /** Los ajustes del realm: el versionado sin `clients`, `components` ni `clientScopes`. */
+  ajustes: Record<string, unknown>;
+  /** Los clientes, tal como los declara el archivo. */
+  clientes: ClienteDelRealm[];
+  /** El perfil de usuario declarativo, de donde sale el atributo de cada claim. */
+  perfil: string;
+  /** Los ambitos, SUELTOS: ni en `importable` ni en `ajustes` (#72). */
+  ambitos: AmbitoDerivado[];
+}
 
-  // El `smtpServer` del archivo versionado apunta al buzon `correo` del compose y NUNCA
-  // llega asi al clúster: o lo decide el stack (ADR-0012), o el ambiente no tiene relay
-  // y el realm va sin `smtpServer` —el Job pasa `SIN_CORREO=1` (Opción B)—.
+export function piezasDelRealm(fuente: string): PiezasDelRealm {
+  const versionado = JSON.parse(fuente) as RealmVersionado;
+
   // `clientScopes` SALE de lo que se importa, y es el arreglo de #72.
   //
   // Declararlos dentro del documento que `--import-realm` consume **sustituye** el juego de
@@ -293,11 +308,14 @@ export function documentosDelRealm(args: {
   // El docblock de `DocumentosDelRealm` decia que estar dentro «no sobra: ahi es como llegan
   // cuando el realm se CREA», y eso era cierto y ya no importa: el bucle que aplica los
   // documentos sueltos de `reconciliar-realm.sh` esta **DESPUES del `fi`** de crear/actualizar
-  // (`reconciliar-realm.sh:165` contra su `fi` de la 110), o sea que es INCONDICIONAL y crea
+  // (`reconciliar-realm.sh:187` contra su `fi` de la 132), o sea que es INCONDICIONAL y crea
   // el ambito que falte en los dos caminos. La copia de dentro era redundante, y era la que
-  // borraba los trece.
+  // borraba los trece. En el compose lo aplica ese MISMO guion: lo corre el paso 1 de
+  // `preparar-identidades.sh` dentro del contenedor de Keycloak.
   const { clients = [], components = {}, clientScopes = [], ...ajustes } = versionado;
-  delete ajustes.smtpServer;
+  const importable = Object.fromEntries(
+    Object.entries(versionado).filter(([clave]) => clave !== "clientScopes"),
+  );
 
   // Se emiten SUELTOS, y solo sueltos: `kcadm update realms` no mira los `clientScopes` y el
   // `create` los mira de mas (ver arriba).
@@ -309,6 +327,55 @@ export function documentosDelRealm(args: {
       representacion: JSON.stringify(m, null, 2),
     })),
   }));
+
+  const perfil =
+    components["org.keycloak.userprofile.UserProfileProvider"]?.[0]?.config?.[
+      "kc.user.profile.config"
+    ]?.[0];
+  if (perfil === undefined) {
+    throw new Error(
+      `El realm versionado «${versionado.realm}» no trae el perfil de usuario declarativo. De ` +
+        "ahi salen los atributos de los que sale cada claim —`municipalidad_id` en el de " +
+        "funcionarios, `numero_documento` en el del ciudadano—, y sin el el mapeador " +
+        "leeria un atributo que el realm no admite: el claim saldria vacio y el backend " +
+        "responderia 403 sin decir por que.",
+    );
+  }
+
+  return { importable, ajustes, clientes: clients, perfil, ambitos };
+}
+
+/** La carga de `partialImport` de unos clientes. `OVERWRITE` reemplaza el cliente, no el realm. */
+function cargaDeClientes(clientes: ClienteDelRealm[]): Record<string, unknown> {
+  return { ifResourceExists: "OVERWRITE", clients: clientes };
+}
+
+export function documentosDelRealm(args: {
+  domain: string;
+  realm: string;
+  clienteDeVerificacion: boolean;
+  smtp?: SmtpSettings;
+  /**
+   * De que archivo versionado salen. Sin esto, el de funcionarios.
+   *
+   * El del ciudadano (ADR-0020) pasa el suyo: son dos realms con dos emisores, y
+   * lo unico que comparten es este derivador —el mismo recorte de `smtpServer`,
+   * la misma reescritura de redirecciones y la misma exigencia de perfil
+   * declarativo—. Copiarlo habria duplicado las tres cosas, y la que mas duele
+   * duplicada es la ultima: sin perfil, el mapeador lee un atributo que el realm
+   * no admite y el claim sale vacio.
+   */
+  fuente?: string;
+}): DocumentosDelRealm {
+  // Lo que se importa y lo que va suelto lo decide `piezasDelRealm`, que es la misma funcion de
+  // la que sale lo que monta el compose (#72). Aqui solo se adapta al ambiente.
+  const piezas = piezasDelRealm(args.fuente ?? realmDeFuncionariosJson());
+
+  // El `smtpServer` del archivo versionado apunta al buzon `correo` del compose y NUNCA
+  // llega asi al clúster: o lo decide el stack (ADR-0012), o el ambiente no tiene relay
+  // y el realm va sin `smtpServer` —el Job pasa `SIN_CORREO=1` (Opción B)—.
+  const ajustes = { ...piezas.ajustes };
+  delete ajustes.smtpServer;
 
   const smtpServer: Record<string, string> | undefined =
     args.smtp === undefined
@@ -323,7 +390,7 @@ export function documentosDelRealm(args: {
           auth: String(args.smtp.auth),
         };
 
-  const clientes = clients
+  const clientes = piezas.clientes
     // En `prod` no entra el cliente de verificacion. Lo decide la configuracion del
     // stack, no el nombre del ambiente.
     .filter((c) => args.clienteDeVerificacion || c.clientId !== CLIENTE_DE_VERIFICACION)
@@ -344,20 +411,6 @@ export function documentosDelRealm(args: {
         : {}),
     }));
 
-  const perfil =
-    components["org.keycloak.userprofile.UserProfileProvider"]?.[0]?.config?.[
-      "kc.user.profile.config"
-    ]?.[0];
-  if (perfil === undefined) {
-    throw new Error(
-      `El realm versionado «${args.realm}» no trae el perfil de usuario declarativo. De ` +
-        "ahi salen los atributos de los que sale cada claim —`municipalidad_id` en el de " +
-        "funcionarios, `numero_documento` en el del ciudadano—, y sin el el mapeador " +
-        "leeria un atributo que el realm no admite: el claim saldria vacio y el backend " +
-        "responderia 403 sin decir por que.",
-    );
-  }
-
   return {
     // `displayName` se reescribe: el del archivo versionado dice «marcha blanca», que es
     // lo que el compose levanta. Es lo primero que se lee en la pantalla de acceso, y en
@@ -374,12 +427,64 @@ export function documentosDelRealm(args: {
       null,
       2,
     ),
-    perfilDeUsuario: perfil,
+    perfilDeUsuario: piezas.perfil,
     // `OVERWRITE` reemplaza el cliente, no el realm: los usuarios no se tocan.
-    clientes: JSON.stringify({ ifResourceExists: "OVERWRITE", clients: clientes }, null, 2),
+    clientes: JSON.stringify(cargaDeClientes(clientes), null, 2),
     clientesComprobados: clientes.map((c) => c.clientId),
-    ambitos,
+    ambitos: piezas.ambitos,
   };
+}
+
+/** Donde vive lo que el compose monta del realm, relativo a la raiz del repositorio. */
+export const REALM_DERIVADO = "despliegue/identidad/realm-derivado";
+
+/**
+ * Lo que `plataforma.compose.yaml` monta del realm: `<ruta dentro de REALM_DERIVADO>` -> contenido.
+ *
+ * Son las MISMAS piezas que el cluster —{@link piezasDelRealm}— sin adaptarlas a ningun ambiente:
+ * el compose conserva las redirecciones a `localhost`, el buzon `correo` y el «marcha blanca» del
+ * archivo versionado, que es para lo que ese archivo los trae.
+ *
+ * ## Dos subdirectorios, porque Keycloak los consume de dos formas
+ *
+ * - **`importar/`** — un `realm-<nombre>.json` por realm, para `--import-realm`. Sin
+ *   `clientScopes`: es el arreglo de #72, y es el unico sitio donde el compose lo recibe.
+ * - **`reconciliar/`** — lo que `reconciliar-realm.sh` aplica despues, con los MISMOS nombres de
+ *   archivo que el `ConfigMap` del `Job` (`realm.json`, `perfil-de-usuario.json`,
+ *   `clientes.json` y `ambito--<n>.json` con sus mapeadores). Sin esto, sacar `clientScopes` del
+ *   import dejaria el realm local SIN `kamayuk-servicio`, y el paso de los clientes de servicio
+ *   moriria con «no se encontro el ambito kamayuk-servicio».
+ *
+ * ## Por que se VERSIONA lo generado y no se genera al arrancar
+ *
+ * Porque el comando documentado es `docker compose -f plataforma.compose.yaml up`, y ese comando
+ * no pasa por node. Un montaje de un archivo que no existe no da error: Docker crea un directorio
+ * vacio en su lugar y el import falla lejos y con otro mensaje. Asi que el archivo esta en el
+ * repositorio, se regenera con `yarn realm-del-compose`, y
+ * `el-compose-importa-el-realm-derivado.test.ts` exige que lo versionado sea, byte a byte, lo
+ * que esta funcion produce — el mismo trato que `alertas-del-corte.yml`.
+ *
+ * El realm del ciudadano solo aporta su `importar/`: en el compose nadie lo reconcilia, y la
+ * guarda exige que no emita ambitos sueltos para que el dia que los declare salga rojo alli y
+ * no como un token sin claim en una maquina nueva.
+ */
+export function documentosDelRealmDelCompose(): Record<string, string> {
+  const funcionarios = piezasDelRealm(realmDeFuncionariosJson());
+  const ciudadano = piezasDelRealm(realmCiudadanoJson());
+  const comoArchivo = (valor: unknown) => `${JSON.stringify(valor, null, 2)}\n`;
+  const importar = (piezas: PiezasDelRealm) =>
+    [`importar/realm-${String(piezas.importable.realm)}.json`, comoArchivo(piezas.importable)] as const;
+
+  return Object.fromEntries([
+    importar(funcionarios),
+    importar(ciudadano),
+    ["reconciliar/realm.json", comoArchivo(funcionarios.ajustes)],
+    ["reconciliar/perfil-de-usuario.json", `${funcionarios.perfil}\n`],
+    ["reconciliar/clientes.json", comoArchivo(cargaDeClientes(funcionarios.clientes))],
+    ...Object.entries(documentosDeAmbitos("ambito--", funcionarios.ambitos)).map(
+      ([nombre, contenido]) => [`reconciliar/${nombre}`, `${contenido}\n`] as const,
+    ),
+  ]);
 }
 
 /**

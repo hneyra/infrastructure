@@ -129,8 +129,28 @@ services:
       # que separa a las dos poblaciones estructuralmente (ADR-0020). Un login
       # para los cuatro sistemas, con un *client* publico por frontend
       # (ADR-0030 §3).
-      - ./identidad/realm-kamayuk.json:/opt/keycloak/data/import/realm-kamayuk.json:ro
-      - ./identidad/realm-kamayuk-ciudadano.json:/opt/keycloak/data/import/realm-kamayuk-ciudadano.json:ro
+      #
+      # DERIVADOS, y no el archivo versionado en crudo (#72). `realm-kamayuk.json`
+      # declara `clientScopes`, y en un import completo esa clave SUSTITUYE los trece
+      # ambitos de fabrica de Keycloak en vez de anadirse: sin `profile` el token no
+      # lleva `preferred_username`, sin `basic` no lleva `sub`, y todo funcionario
+      # recibe 403 con un token valido. `realm-derivado/` lo escribe
+      # `yarn realm-del-compose` con la MISMA funcion que alimenta al cluster
+      # (`piezasDelRealm`), y `el-compose-importa-el-realm-derivado.test.ts` exige que
+      # sea byte a byte lo que esa funcion produce. Tras editar un realm versionado,
+      # se regenera: un montaje de un archivo que no existe no da error, Docker crea
+      # un directorio vacio en su lugar.
+      - ./identidad/realm-derivado/importar/realm-kamayuk.json:/opt/keycloak/data/import/realm-kamayuk.json:ro
+      - ./identidad/realm-derivado/importar/realm-kamayuk-ciudadano.json:/opt/keycloak/data/import/realm-kamayuk-ciudadano.json:ro
+      # Y lo que el import ya no trae: los ambitos SUELTOS —`kamayuk-servicio`, con el
+      # mapeador que lleva `municipalidad_id` al token de servicio—. Los aplica el
+      # MISMO `reconciliar-realm.sh` que el `Job` del cluster, con los mismos nombres
+      # de archivo que su `ConfigMap`; lo corre el paso 1 de
+      # `identidad/preparar-identidades.sh` dentro de este contenedor. Van fuera de
+      # `data/import/` a proposito: todo `.json` que caiga ahi Keycloak lo trata como
+      # un realm entero.
+      - ./identidad/realm-derivado/reconciliar:/opt/kamayuk/realm:ro
+      - ../infra/componentes/identidad/reconciliar-realm.sh:/opt/kamayuk/reconciliar-realm.sh:ro
     ports:
       - "${KAMAYUK_PUERTO_IDENTIDAD:-8180}:8080"
 

@@ -40,9 +40,11 @@
  * ## Lo que esta guarda NO puede ver
  *
  * Que la herramienta exista no significa que se use bien. Y no mira los guiones que corren SOLO
- * en el anfitrion —`preparar-identidades.sh`, `crear-usuario.sh`, `restaurar-ambitos-de-fabrica.sh`,
- * `levantar-todo.sh`—, que pueden usar lo que quieran: es la razon por la que
- * `restaurar-ambitos-de-fabrica.sh` habla REST con `curl` y sus hermanos no.
+ * en el anfitrion —`preparar-identidades.sh`, `crear-usuario.sh`, `levantar-todo.sh`—, que pueden
+ * usar lo que quieran. Hubo un cuarto, `restaurar-ambitos-de-fabrica.sh`, que hablaba REST con
+ * `curl` justo por eso; se retiro con la mitad del compose de #72, y desde entonces el compose
+ * corre `reconciliar-realm.sh` DENTRO del contenedor de Keycloak — o sea que ese guion entra en
+ * esta guarda por los dos caminos, no solo por el `Job`.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
