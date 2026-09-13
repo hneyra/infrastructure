@@ -57,18 +57,26 @@ describe("AC-4 — el catalogo unido de «identidad» y el catalogo real de cada
    * el lado que corresponde, y es exactamente lo que hizo mientras los dos PR no estuvieron
    * juntos. `modulos` y `accesos` se quedan en `rentas`: son lecturas de su copia local, no
    * administracion.
+   *
+   * Y la tercera vez es la de `caja` (caja#77, identidad#27), que pasa de 3 a 7 **sin estrenar
+   * ninguna pantalla**: sus controladores ya exigian `duplicado_recibo`, `anulacion_recibo`,
+   * `avance_recaudacion` y `recaudacion_area`, escritos como CONSTANTES, y ni su
+   * `CatalogoDelSistema` ni `caja.json` los declaraban. Esta guarda no lo podia ver —compara las
+   * dos listas escritas, y las dos estaban igual de cortas—; lo vio del lado de `caja` la prueba
+   * que lee `@RequiereAcceso` del bytecode, que es donde vive la otra mitad de la verdad. El
+   * catalogo unido pasa de 157 a 161.
    */
-  it("y los cinco catalogos suman 157 opciones, repartidas 130·16·1·3·7", () => {
+  it("y los cinco catalogos suman 161 opciones, repartidas 130·16·1·7·7", () => {
     expect(censoDeOpciones()).toEqual({
       rentas: 130,
       catastro: 16,
       normativa: 1,
-      caja: 3,
+      caja: 7,
       identidad: 7,
     });
     expect(
       Object.values(censoDeOpciones()).reduce((total, cuantas) => total + cuantas, 0),
-    ).toBe(157);
+    ).toBe(161);
   });
 
   it("y el catalogo unido declara lo mismo, sistema a sistema", () => {
@@ -79,7 +87,7 @@ describe("AC-4 — el catalogo unido de «identidad» y el catalogo real de cada
       Object.fromEntries(
         SISTEMAS_DEL_PRODUCTO.map((sistema) => [sistema, opcionesDeclaradas(sistema).length]),
       ),
-    ).toEqual({ rentas: 130, catastro: 16, normativa: 1, caja: 3, identidad: 7 });
+    ).toEqual({ rentas: 130, catastro: 16, normativa: 1, caja: 7, identidad: 7 });
   });
 
   it("los cinco sistemas se derivan de SISTEMAS_DEL_PRODUCTO y no se escriben aqui", () => {
