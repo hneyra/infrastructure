@@ -138,7 +138,9 @@ export const LO_QUE_NO_SE_COMPARTE: readonly { readonly que: string; readonly mo
       "El MECANISMO es el mismo y la LISTA no puede serlo: `infrastructure` no tiene `backend/` " +
       "ni `frontend/` —declara `infra/`, `librerias-backend/…/src/main/` y `despliegue/`—, y el " +
       "`despliegue/` de `caja` lo anadio su #39 con su motivo escrito. Lo que si es una propiedad " +
-      "de los cinco es que cada lista cubra su propio descriptor: {@link cubreSuPropioDescriptor}.",
+      "de los cinco es que cada lista cubra su propio descriptor: {@link cubreSuPropioDescriptor}. " +
+      "Y el RESTO del guion si se comparte, desde #165: las seis copias —esta incluida— tienen que " +
+      "ser identicas salvo ese bloque, y lo exige `las-seis-copias-de-la-guarda-del-registro.ts`.",
   },
   {
     que: "seguridad",

@@ -19,6 +19,7 @@
     "espacios-con-credencial": "vite-node herramientas/espacios-con-credencial.ts --",
     "grafo": "vite-node herramientas/grafo.ts --",
     "observabilidad-del-corte": "vite-node herramientas/escribir-observabilidad.ts",
+    "realm-del-compose": "vite-node herramientas/escribir-realm-del-compose.ts",
     "imagenes": "verificaciones/imagenes/comprobar-imagenes.sh"
   },
   "dependencies": {

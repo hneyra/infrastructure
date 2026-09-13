@@ -15,18 +15,14 @@
 # lo que `levantar-todo.sh` encadena. Corrido antes, el paso 2 falla diciendo exactamente eso
 # en vez de dejar un realm a medias.
 #
-# ── DOS DE LOS TRES PASOS SON RODEOS DE DEFECTOS ABIERTOS ─────────────────────
+# ── UNO DE LOS TRES PASOS ES UN RODEO DE UN DEFECTO ABIERTO ───────────────────
 #
-# Y van etiquetados con su issue, para que este guion se caiga a trozos el dia que se cierren:
+# Y va etiquetado con su issue, para que este guion se caiga a trozos el dia que se cierre:
 #
-#   paso 1  rodeo de #72  un `clientScopes` NO VACIO en el realm versionado borra los trece
-#                         ambitos de fabrica de Keycloak. Sin `profile` el token no lleva
-#                         `preferred_username` y sin `basic` no lleva `sub`, asi que TODO
-#                         funcionario recibe 403 con un token perfectamente valido.
 #   paso 3  parte de #74  `CLAVES_DE_SERVICIO` no tiene ninguna fuente en compose: en el
 #                         cluster es un `Secret` montado, y aqui no hay quien lo escriba.
 #
-# ── Y ESTE GUION YA SE CAYO A TROZOS UNA VEZ, que es la prueba de que la etiqueta sirve ──
+# ── Y ESTE GUION YA SE CAYO A TROZOS DOS VECES, que es la prueba de que la etiqueta sirve ──
 #
 # Tenia un CUARTO paso, «alinear `municipalidad_id` con el id de la base», etiquetado «rodeo de
 # #73»: el claim se escribia con TRES valores distintos segun quien lo escribiera —el ubigeo, el
@@ -36,6 +32,17 @@
 # no-op. Lo que queda de aquel rodeo es esta nota — y la guarda
 # `el-id-de-la-municipalidad.test.ts`, que impide que las dos declaraciones vuelvan a separarse.
 #
+# Y el paso 1 era «rodeo de #72»: un `clientScopes` NO VACIO en el realm importado borraba los
+# trece ambitos de fabrica de Keycloak —sin `profile` no hay `preferred_username`, sin `basic` no
+# hay `sub`, y TODO funcionario recibia 403 con un token valido—, y un guion de 300 lineas,
+# `restaurar-ambitos-de-fabrica.sh`, los volvia a crear preguntandoselos a un realm de
+# laboratorio. **Se retiro al cerrar la mitad del compose de #72**: el compose ya no importa el
+# archivo versionado en crudo sino
+# `realm-derivado/importar/`, sin `clientScopes`, derivado por la misma funcion que el cluster, y
+# el realm nace con sus trece. Lo que el import ya no trae —el ambito `kamayuk-servicio`— lo
+# aplica ahora el paso 1, que ha dejado de ser un rodeo: es el `reconciliar-realm.sh` del `Job`.
+# La guarda que impide que vuelva es `el-compose-importa-el-realm-derivado.test.ts`.
+#
 # Y `COMPOSE_FILE` lo pone este guion, que es el resto de #74: sus tres hermanos hacen
 # `docker compose` sin `-f` y el compose de la plataforma no se llama con un nombre por
 # omision, asi que hoy hay que exportarlo a mano antes de cada uno.
@@ -43,8 +50,11 @@
 # ── UNA DESVIACION RESPECTO DEL JOB DEL CLUSTER, con su motivo ────────────────
 #
 # El Job encadena `reconciliar-realm.sh && reconciliar-identidades.sh && … servicios`
-# (`infra/componentes/Identidad.ts:986-996`). Aqui el realm lo aplica el `--import-realm` del
-# compose, y el alta del administrador NO se hace con `reconciliar-identidades.sh`: ese guion
+# (`infra/componentes/Identidad.ts`, el `command` de `plantillaDeReconciliacion`). Aqui el realm
+# lo SIEMBRA el `--import-realm` del compose —para que exista desde que la plataforma esta sana,
+# antes de que ningun sistema pida su JWKS— y lo RECONCILIA el paso 1 con ese mismo
+# `reconciliar-realm.sh`, montado en el contenedor de Keycloak. La desviacion es otra: el alta
+# del administrador NO se hace con `reconciliar-identidades.sh`: ese guion
 # da de alta a `administrador` —que es quien `municipalidades/200105.json` declara— SIN CLAVE
 # y con UPDATE_PASSWORD pendiente, y le manda un enlace por correo (ADR-0012, y es lo
 # correcto: el sistema no guarda contrasenas). Un usuario asi no puede pedir un token por
@@ -157,13 +167,45 @@ kc config credentials --server http://localhost:8080 --realm master \
   si dice «Value too long for column», es #71 y el realm no se importo."
 ok "sesion de administracion abierta"
 
-# ── PASO 1 · los ambitos de fabrica (rodeo de #72) ────────────────────────────
-paso "1/3 · los trece ambitos que el import del realm borro (rodeo de #72)"
-ejecutar "1/3 · los ambitos de fabrica" \
-"Sin este paso TODO funcionario recibe 403 con un token valido: sin el ambito «profile» el
-  token no lleva «preferred_username», que es con lo que el guardia busca su ficha." \
-  -- "$AQUI/restaurar-ambitos-de-fabrica.sh"
-ok "los trece ambitos, y asignados a los clientes que ya existian"
+# ── PASO 1 · el realm, con el MISMO guion que el Job del cluster ──────────────
+# `reconciliar-realm.sh` corre DENTRO del contenedor de Keycloak, como en el cluster: la imagen
+# trae `kcadm` y el guion no necesita nada mas. Lee los documentos de `realm-derivado/reconciliar/`
+# —los mismos nombres que el `ConfigMap` del Job, derivados por la misma funcion— y hace lo mismo
+# que alli: ajustes, perfil, los ambitos SUELTOS, los clientes, y la comprobacion del mapeador.
+#
+# Lo que este paso trae y el import no es el ambito `kamayuk-servicio` (#72): el import ya no
+# declara `clientScopes`, que es lo que le deja los trece de fabrica, y sin este paso el 3 moriria
+# con «no se encontro el ambito kamayuk-servicio».
+#
+# Los clientes que comprueba al terminar salen del documento que aplica, no de una lista escrita
+# aqui: una segunda lista es una que un dia deja de comprobar un cliente nuevo.
+REALM_DERIVADO="$AQUI/realm-derivado/reconciliar"
+CLIENTES_DEL_REALM=$(python3 -c "
+import json
+print(' '.join(c['clientId'] for c in json.load(open('$REALM_DERIVADO/clientes.json'))['clients']))" 2>/dev/null)
+[ -n "$CLIENTES_DEL_REALM" ] || muere "1/3 · el realm" \
+"No se pudieron leer los clientes de «$REALM_DERIVADO/clientes.json». Se regenera con:
+  cd $(dirname "$DESPLIEGUE")/infra && yarn realm-del-compose"
+
+# La orden va ESCRITA en la llamada y no dentro de una funcion, a proposito:
+# `el-compose-importa-el-realm-derivado.test.ts` lee esta linea para afirmar que el paso corre, y
+# una funcion definida y nunca llamada le daria la razon sin correr nada. El `</dev/null` es de la
+# llamada entera: `docker compose exec` hereda stdin, y un stdin ajeno es la trampa de #91.
+paso "1/3 · el realm «$KC_REALM»: sus ambitos sueltos y sus clientes, con el guion del Job"
+ejecutar "1/3 · el realm" \
+"Sin este paso el realm no tiene el ambito «kamayuk-servicio», y los clientes de servicio del
+  paso 3 no tendrian con que llevar «municipalidad_id» al token. Si dice «No such file», el
+  contenedor de Keycloak es de antes de montar «realm-derivado/»: recrealo con
+  «docker compose up -d --force-recreate $KAMAYUK_KEYCLOAK_SERVICIO»." \
+  -- docker compose exec -T \
+        -e KC_SERVIDOR=http://localhost:8080 \
+        -e KC_REALM="$KC_REALM" \
+        -e KC_ADMIN="$KAMAYUK_KEYCLOAK_ADMIN" \
+        -e KC_CLAVE="$KAMAYUK_CLAVE_KEYCLOAK" \
+        -e KC_CLIENTES="$CLIENTES_DEL_REALM" \
+        -e KC_DIRECTORIO=/opt/kamayuk/realm \
+        "$KAMAYUK_KEYCLOAK_SERVICIO" bash /opt/kamayuk/reconciliar-realm.sh </dev/null
+ok "ajustes, perfil, ambitos sueltos y clientes: los de «realm-derivado/reconciliar/»"
 
 # ── PASO 2 · el administrador, con una clave que sirva ────────────────────────
 paso "2/3 · «$KAMAYUK_ADMINISTRADOR» con una clave permanente"

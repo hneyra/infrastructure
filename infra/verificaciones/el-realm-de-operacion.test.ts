@@ -27,6 +27,7 @@ import { construirManifiestos } from "../componentes";
 import {
   CLAIM_DE_ROLES,
   CLIENTE_DE_GRAFANA,
+  CUENTAS_DE_OPERACION_DE_PRUEBA,
   DIRECTORIO_DE_OPERACION,
   ROLES_DE_OPERACION,
   documentosDeIdentidades,
@@ -35,6 +36,7 @@ import {
 } from "../componentes/Identidad";
 import { CLAVES, RUTA_DE_GRAFANA } from "../componentes/convenciones";
 import { municipalidadesJson, raizDelRepositorio } from "../componentes/fuentes";
+import { inventarioDelAmbiente } from "../componentes/secretos";
 import type { ConfigMap, Contenedor, Job } from "../componentes/tipos";
 import { ENVIRONMENTS, resourceName, type Environment } from "../config";
 import { invariantesDe } from "./stacks";
@@ -42,9 +44,10 @@ import { invariantesDe } from "./stacks";
 function delAmbiente(ambiente: Environment): { datos: Record<string, string>; job: Job } {
   const ms = construirManifiestos(invariantesDe(ambiente));
   const nombre = resourceName(ambiente, "realm");
-  const cm = ms.find((m) => m.kind === "ConfigMap" && m.metadata.name === nombre);
+  // Los dos llevan huella en el nombre, el `ConfigMap` desde #84: los separa el `kind`.
+  const cm = ms.find((m) => m.kind === "ConfigMap" && m.metadata.name.startsWith(`${nombre}-`));
   const job = ms.find((m) => m.kind === "Job" && m.metadata.name.startsWith(`${nombre}-`));
-  expect(cm, `el ambiente no compone el ConfigMap «${nombre}»`).toBeDefined();
+  expect(cm, `el ambiente no compone el ConfigMap «${nombre}-<huella>»`).toBeDefined();
   expect(job, `el ambiente no compone el Job «${nombre}-<huella>»`).toBeDefined();
   return { datos: (cm as ConfigMap).data, job: job as Job };
 }
@@ -150,7 +153,9 @@ describe("#148 · el realm de operacion", () => {
 
       const filas = (delAmbiente(ambiente).datos["operadores.tsv"] ?? "")
         .split("\n")
-        .filter((l) => l !== "");
+        .filter((l) => l.startsWith("OPERADOR\t"));
+      // Las de `OPERADOR_DE_PRUEBA` (#149) no son operadores: son las cuentas de la verificacion
+      // del login, y tienen su prueba aparte.
       expect(filas, "tiene que haber exactamente un operador, y derivado").toHaveLength(1);
       expect(filas[0]?.split("\t")).toEqual([
         "OPERADOR",
@@ -220,10 +225,16 @@ describe("#148 · el realm de operacion", () => {
 
       const volumen = (pod.volumes ?? []).find((v) => v.name === "operacion");
       expect(volumen?.secret?.secretName).toBe(resourceName(ambiente, "grafana"));
-      // SOLO esa: el mismo `Secret` guarda la clave del administrador de Grafana.
-      expect(volumen?.secret?.items).toEqual([
-        { key: CLAVES.clienteOidcDeGrafana, path: CLAVES.clienteOidcDeGrafana },
-      ]);
+      // SOLO la del cliente, y en `stg` las de las dos cuentas de prueba (#149): el mismo `Secret`
+      // guarda la clave del administrador de Grafana, y esa no la monta nunca.
+      const esperadas = [
+        CLAVES.clienteOidcDeGrafana,
+        ...(invariantesDe(ambiente).identity.seedTestUsers
+          ? CUENTAS_DE_OPERACION_DE_PRUEBA.map((c) => c.clave)
+          : []),
+      ];
+      expect(volumen?.secret?.items).toEqual(esperadas.map((clave) => ({ key: clave, path: clave })));
+      expect(volumen?.secret?.items?.map((i) => i.key)).not.toContain(CLAVES.grafana);
       expect(contenedor.volumeMounts).toContainEqual({
         name: "operacion",
         mountPath: DIRECTORIO_DE_OPERACION,
@@ -317,5 +328,115 @@ describe("#148 · el cliente de operacion se crea o se actualiza, nunca se reimp
 
     expect(llamadas.filter((l) => l.includes("partialImport"))).toEqual([]);
     expect(llamadas).toContainEqual(expect.stringMatching(/^create clients -r kamayuk-operacion -f .*cliente-operacion\.json$/));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #149 — las dos cuentas de prueba del realm de operacion, solo en `stg`
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("#149 · las cuentas de prueba del realm de operacion", () => {
+  it.each(ENVIRONMENTS)("«%s»: estan donde se siembran usuarios de prueba, y en ningun otro sitio", (ambiente) => {
+    const siembra = invariantesDe(ambiente).identity.seedTestUsers;
+    const filas = (delAmbiente(ambiente).datos["operadores.tsv"] ?? "")
+      .split("\n")
+      .filter((l) => l.startsWith("OPERADOR_DE_PRUEBA\t"))
+      .map((l) => l.split("\t"));
+
+    if (!siembra) {
+      expect(filas, "cuentas con clave permanente en un ambiente sin usuarios de prueba").toEqual([]);
+      expect(
+        inventarioDelAmbiente(invariantesDe(ambiente)).filter((e) => e.rol.startsWith("grafana-operador-de-prueba")),
+      ).toEqual([]);
+      return;
+    }
+    // Las dos, con el rol exacto: una con `lector` y otra con «-». La de «-» es la que demuestra
+    // que sin rol no se entra.
+    expect(filas.map((f) => [f[1], f[5], f[6]])).toEqual(
+      CUENTAS_DE_OPERACION_DE_PRUEBA.map((c) => [c.cuenta, c.rol ?? "-", c.clave]),
+    );
+    expect(
+      inventarioDelAmbiente(invariantesDe(ambiente))
+        .filter((e) => e.rol.startsWith("grafana-operador-de-prueba"))
+        .map((e) => `${e.secreto}/${e.clave}`),
+    ).toEqual(CUENTAS_DE_OPERACION_DE_PRUEBA.map((c) => `${resourceName(ambiente, "grafana")}/${c.clave}`));
+  });
+
+  it("alguno de los dos ambientes siembra usuarios de prueba, o lo de arriba no mide nada", () => {
+    expect(ENVIRONMENTS.some((a) => invariantesDe(a).identity.seedTestUsers)).toBe(true);
+    expect(ENVIRONMENTS.some((a) => !invariantesDe(a).identity.seedTestUsers)).toBe(true);
+  });
+});
+
+/**
+ * Un `kcadm` de mentira para `reconciliar-identidades.sh operadores`: las tres cuentas ya existen,
+ * y cada una contesta con los roles que `FALSO_ROLES_<cuenta>` diga.
+ */
+const KCADM_FALSO_DE_OPERADORES = `#!/bin/bash
+echo "$*" >> "$FALSO_DIR/llamadas"
+case "$*" in
+  "config credentials"*) exit 0 ;;
+  "get clients -r "*"--fields id"*) echo "id-1"; exit 0 ;;
+  "get users -r "*"username="*)
+    for a in "$@"; do case "$a" in username=*) echo "uid-\${a#username=}" ;; esac; done; exit 0 ;;
+  "get users/uid-"*) printf '{\\n  "enabled" : true\\n}\\n'; exit 0 ;;
+  "update users/uid-"*|"set-password "*|"add-roles "*|"remove-roles "*) exit 0 ;;
+  "get-roles "*)
+    for a in "$@"; do [ "$previo" = "--uusername" ] && cuenta="$a"; previo="$a"; done
+    case "$cuenta" in
+      administrador) echo "administrador" ;;
+      operador-de-prueba-lector) echo "lector" ;;
+    esac
+    exit 0 ;;
+  *) echo "kcadm falso: no se esperaba «$*»" >&2; exit 97 ;;
+esac
+`;
+
+describe("#149 · el guion trata a las cuentas de prueba como lo que son", () => {
+  it("clave PERMANENTE, y a la de rol «-» se le QUITAN los roles en vez de darselos", () => {
+    const dir = mkdtempSync(join(tmpdir(), "operadores-"));
+    try {
+      writeFileSync(join(dir, "operadores.tsv"), delAmbiente("stg").datos["operadores.tsv"] ?? "");
+      writeFileSync(join(dir, "kcadm"), KCADM_FALSO_DE_OPERADORES, { mode: 0o755 });
+      for (const c of CUENTAS_DE_OPERACION_DE_PRUEBA) writeFileSync(join(dir, c.clave), `valor-de-${c.cuenta}`);
+      execFileSync("bash", [join(raizDelRepositorio(), "despliegue/identidad/reconciliar-identidades.sh"), "operadores"], {
+        encoding: "utf8",
+        env: {
+          PATH: process.env.PATH ?? "/usr/bin:/bin",
+          KC_MODO: "directo",
+          KCADM: join(dir, "kcadm"),
+          KC_SERVIDOR: "http://keycloak.invalid/keycloak",
+          KC_ADMIN: "admin",
+          KC_CLAVE: "no-importa",
+          KC_DIRECTORIO: dir,
+          KC_REALM_OPERACION: "kamayuk-operacion",
+          KC_CLIENTE_OPERACION: CLIENTE_DE_GRAFANA,
+          KC_ROLES_OPERACION: ROLES_DE_OPERACION.join(" "),
+          CLAVES_DE_OPERACION: dir,
+          SIN_CORREO: "1",
+          KC_CLAVE_INICIAL: "no-se-usa",
+          FALSO_DIR: dir,
+        },
+      });
+      const llamadas = readFileSync(join(dir, "llamadas"), "utf8").split("\n").filter((l) => l !== "");
+
+      const [lector, sinRol] = CUENTAS_DE_OPERACION_DE_PRUEBA;
+      const claveDe = llamadas.filter((l) => l.startsWith(`set-password -r kamayuk-operacion --username ${lector?.cuenta} `));
+      expect(claveDe, "la cuenta de prueba con rol no recibio su clave").toHaveLength(1);
+      expect(claveDe[0], "la clave de una cuenta de prueba tiene que ser PERMANENTE").not.toContain("--temporary");
+      expect(claveDe[0]).toContain(`valor-de-${lector?.cuenta}`);
+
+      const aSinRol = llamadas.filter((l) => l.includes(`--uusername ${sinRol?.cuenta} `));
+      expect(
+        aSinRol.filter((l) => l.startsWith("add-roles ")),
+        "a la cuenta SIN rol se le asigno uno: deja de demostrar que sin rol no se entra",
+      ).toEqual([]);
+      expect(
+        aSinRol.filter((l) => l.startsWith("remove-roles ")).map((l) => l.replace(/.* --rolename /, "")),
+        "a la cuenta sin rol no se le quitan los roles que alguien le haya puesto a mano",
+      ).toEqual([...ROLES_DE_OPERACION]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
