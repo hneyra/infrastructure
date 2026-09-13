@@ -127,6 +127,24 @@ describe("#81 - una base que nace despues que el volumen llega igual al motor", 
     ).toBe(dir);
   });
 
+  it("un fallo se recoge solo, o el Job atasca todos los despliegues", () => {
+    const spec = (elJobQueCreaBases() as unknown as { spec: { ttlSecondsAfterFinished?: number } })
+      .spec;
+    expect(
+      spec.ttlSecondsAfterFinished,
+      "el Job no declara `ttlSecondsAfterFinished`. Su nombre sale del CONTENIDO, que puede no " +
+        "cambiar en semanas, y un `Job` de Kubernetes es INMUTABLE: uno que falla se queda con " +
+        "ese nombre y **bloquea todos los despliegues** hasta que alguien lo borre a mano — " +
+        "Pulumi lo refresca, lo ve fallido y lo informa como no sano en cada corrida. Paso el " +
+        "2026-09-13 y dejo `main` sin desplegar, y `aplicar-prod` con el.",
+    ).toBeDefined();
+    expect(
+      spec.ttlSecondsAfterFinished ?? 0,
+      "el TTL de este Job es tan largo como el de los demas (24 h). Los otros se llaman por la " +
+        "VERSION del sistema, asi que la siguiente trae un Job nuevo igualmente; este no.",
+    ).toBeLessThanOrEqual(3600);
+  });
+
   it("el nombre lleva la huella del contenido, que es lo que lo hace correr al anadir un sistema", () => {
     const nombre = elJobQueCreaBases().metadata.name;
     const ms = manifiestos();
@@ -137,6 +155,9 @@ describe("#81 - una base que nace despues que el volumen llega igual al motor", 
       | { data: Record<string, string> }
       | undefined;
     const esperada = huellaDelContenido({
+      // El marcador de version del Job, que el descriptor resume junto al contenido: cambiarlo
+      // es lo que desatasco `stg` cuando el primero murio y se quedo (un Job es inmutable).
+      "version-del-job": "2",
       ...(roles?.data ?? {}),
       "05-crear-bases.sh": init?.data["05-crear-bases.sh"] ?? "",
       "06-roles-de-los-sistemas.sh": init?.data["06-roles-de-los-sistemas.sh"] ?? "",
