@@ -1620,9 +1620,22 @@ describe("#153 · el ingreso", () => {
     expect(identidad.spec.rateLimit.average).toBeLessThan(general.spec.rateLimit.average);
   });
 
-  it("stg emite contra el entorno de pruebas de Let's Encrypt; prod, no", () => {
-    expect(valoresDelIngreso(manifiestosDe("stg"))).toContain("acme-staging-v02");
+  it("stg y prod emiten contra el Let's Encrypt real, y el de pruebas sigue disponible", () => {
+    // Hasta el 2026-09-13 `stg` emitia contra el entorno de pruebas. Daba igual: su dominio no
+    // apuntaba a su nodo. Con la mudanza a `vmd205066` (#145) tiene un nombre publico propio, y
+    // un certificado que todo navegador rechaza con `ERR_CERT_AUTHORITY_INVALID` no avisa de
+    // nada — ensena a pulsar «continuar», que es el reflejo que deja pasar el aviso de verdad.
+    expect(
+      valoresDelIngreso(manifiestosDe("stg")),
+      "`stg` vuelve a pedir el certificado de PRUEBAS de Let's Encrypt, que ningun navegador " +
+        "acepta. Si es para ajustar el ingreso sin gastar limite de tasa, que sea temporal y se diga.",
+    ).not.toContain("acme-staging-v02");
     expect(valoresDelIngreso(manifiestosDe("prod"))).not.toContain("acme-staging-v02");
+    // El modo de pruebas NO se retira: es como se ensaya un cambio del ingreso sin gastar el
+    // limite de tasa real. Con ningun stack usandolo, esto es lo unico que lo ejerce.
+    expect(valoresDeTraefik({ acmeEmail: "a@b.pe", acmeStaging: true })).toContain(
+      "acme-staging-v02",
+    );
   });
 });
 
