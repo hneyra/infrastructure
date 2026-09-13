@@ -235,6 +235,13 @@ kubectl -n kamayuk-<amb> wait --for=condition=complete job/kamayuk-<amb>-realm-<
 > no destruye nada si no han cambiado, pero un `kubectl apply -f -` ciego toca el namespace de
 > otro sistema mientras se atiende una incidencia de identidad. Si sólo hace falta el Job,
 > filtrar antes de aplicar.
+>
+> **Y al filtrar, el `ConfigMap` va con el `Job`** ([#84](https://github.com/hneyra/infrastructure/issues/84)).
+> Desde entonces también él lleva la huella de su contenido en el nombre,
+> `kamayuk-<amb>-realm-<huella de 16>`, y el `Job` lo monta por ese nombre: aplicado solo, un
+> `Job` cuyo contenido no está todavía en el clúster se queda en `ContainerCreating` con la
+> causa en los eventos del pod —«configmap … not found»—, que es el estado que #84 cierra en el
+> despliegue.
 
 El Job **reintenta cinco minutos** esperando a que Keycloak acepte la sesión de administración
 —100 intentos de 3 s en
