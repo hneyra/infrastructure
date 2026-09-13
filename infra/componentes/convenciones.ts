@@ -173,6 +173,13 @@ export const CLAVES = {
   monitoreo: "clave-monitoreo",
   /** Clave del administrador de Grafana. */
   grafana: "clave-admin",
+  /**
+   * Clave del cliente confidencial `kamayuk-grafana` del realm de operacion (ADR-0041, #148).
+   * Vive en el MISMO `Secret` que la del administrador de Grafana porque los dos consumidores que
+   * la necesitan —el `Job` del realm, que se la fija al cliente, y Grafana, que la manda al pedir
+   * el token (#149)— estan en el namespace de la plataforma.
+   */
+  clienteOidcDeGrafana: "clave-cliente-oidc",
   /** Clave de `rol_carga_parametros` (issue #387). */
   carga: "clave-carga",
   /** Clave de `rol_ingestor_catastro` (P5C, C-7 §6). */
@@ -681,6 +688,14 @@ export function servicioDeKubeStateMetrics(environment: Environment): string {
 export function servicioDeGrafana(environment: Environment): string {
   return resourceName(environment, "observabilidad-grafana");
 }
+
+/**
+ * La ruta bajo la que Grafana se publicara (#149). Vive aqui y no en `Observabilidad.ts` porque
+ * la necesita ANTES el realm de operacion (#148): la redireccion de su cliente la nombra, y dos
+ * copias del mismo camino son dos que un dia no casan — el sintoma seria un `invalid redirect_uri`
+ * en la pantalla de acceso.
+ */
+export const RUTA_DE_GRAFANA = "/grafana";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Identidad: el emisor es publico, el JWKS es interno

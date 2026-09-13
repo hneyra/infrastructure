@@ -23,10 +23,14 @@
 # mapeador se aplicaria en verde y el sintoma aparecceria como un 403 —
 # SIN_MUNICIPALIDAD o SIN_DOCUMENTO— que no dice por que se rompio.
 #
-# Sirve para LOS DOS realms (ADR-0020): sin argumento reconcilia el de
-# funcionarios; con `ciudadano`, el del portal. Cambian los tres archivos, el
-# nombre del realm y el claim que se comprueba; el procedimiento es el mismo, y
-# por eso no hay dos guiones.
+# Sirve para LOS TRES realms: sin argumento reconcilia el de funcionarios; con
+# `ciudadano`, el del portal (ADR-0020); con `operacion`, el de quien opera la
+# plataforma (ADR-0041). Cambian los archivos, el nombre del realm y el claim que
+# se comprueba; el procedimiento es el mismo, y por eso no hay tres guiones.
+#
+# **Con UNA diferencia en el paso 4, y es medida:** el cliente del realm de
+# operacion NO se importa con `OVERWRITE`, se crea o se actualiza. Ver el bloque
+# del paso 4.
 #
 # Los tres archivos JSON no se escriben a mano: los deriva `Identidad.ts` del
 # `realm-kamayuk.json` que ya usa el compose, para que haya un solo realm versionado.
@@ -78,8 +82,26 @@ case "$CUAL" in
         # responde 403 SIN_DOCUMENTO y el 403 no dice por que.
         CLAIM=numero_documento
         ;;
+    operacion)
+        # El realm de quien OPERA la plataforma (ADR-0041): un solo cliente, el de
+        # Grafana, con dos roles y una clave, y ningun ambito propio.
+        : "${KC_REALM_OPERACION:?falta KC_REALM_OPERACION}"
+        : "${KC_CLIENTE_OPERACION:?falta KC_CLIENTE_OPERACION}"
+        : "${KC_ROLES_OPERACION:?falta KC_ROLES_OPERACION}"
+        : "${CLAVE_DEL_CLIENTE_DE_OPERACION:?falta CLAVE_DEL_CLIENTE_DE_OPERACION}"
+        ARCHIVO_REALM="$DIRECTORIO/realm-operacion.json"
+        ARCHIVO_PERFIL="$DIRECTORIO/perfil-de-usuario-operacion.json"
+        ARCHIVO_CLIENTE="$DIRECTORIO/cliente-operacion.json"
+        PREFIJO_AMBITOS="ambito-operacion--"
+        KC_REALM=$KC_REALM_OPERACION
+        KC_CLIENTES=$KC_CLIENTE_OPERACION
+        # Los roles viajan en este claim. Sin el, Grafana (#149) con el rol estricto
+        # rechaza a TODO el mundo, y lo que se ve es «login failed», no esto.
+        CLAIM=roles
+        ;;
     *)
-        echo "FALLO: no se sabe reconciliar «$CUAL». Es «funcionarios» o «ciudadano»." >&2
+        echo "FALLO: no se sabe reconciliar «$CUAL». Es «funcionarios», «ciudadano» u" >&2
+        echo "«operacion»." >&2
         exit 1
         ;;
 esac
@@ -205,7 +227,88 @@ for ARCHIVO_AMBITO in "$DIRECTORIO/$PREFIJO_AMBITOS"*.json; do
     done
 done
 
-"$KCADM" create partialImport -r "$KC_REALM" -f "$ARCHIVO_CLIENTES"
+if [ "$CUAL" != operacion ]; then
+    "$KCADM" create partialImport -r "$KC_REALM" -f "$ARCHIVO_CLIENTES"
+else
+    # -----------------------------------------------------------------------
+    # El cliente de operacion: crear o actualizar, NUNCA `partialImport`.
+    #
+    # `OVERWRITE` borra el cliente y lo crea de nuevo. Con los otros dos realms
+    # da igual —sus clientes no tienen roles propios ni clave—, y con este es
+    # destructivo. Medido contra Keycloak 26.0.8, la version de `stg`, el
+    # 2026-09-13, reimportando el mismo documento:
+    #
+    #   OVERWRITE  id nuevo, roles del cliente: ninguno, rol del operador: PERDIDO,
+    #              clave: regenerada
+    #   SKIP       todo intacto, pero una redireccion cambiada NO se aplica
+    #   update -f  todo intacto, la redireccion se aplica, y un mapeador borrado
+    #              a mano SE REPONE
+    #
+    # O sea que con `OVERWRITE` cada corrida de este `Job` dejaria sin rol a todo
+    # operador, y Grafana, con el rol estricto, sin nadie que pudiera entrar.
+    # -----------------------------------------------------------------------
+    idDelCliente() {
+        # Sin tuberia (#91): se captura y se recorta con expansion de parametros.
+        local salida
+        salida=$("$KCADM" get clients -r "$KC_REALM" -q "clientId=$1" \
+            --fields id --format csv --noquotes 2>/dev/null) || salida=""
+        salida=${salida%%$'\n'*}
+        printf '%s' "${salida//$'\r'/}"
+    }
+
+    ID_CLIENTE=$(idDelCliente "$KC_CLIENTE_OPERACION")
+    if [ -z "$ID_CLIENTE" ]; then
+        "$KCADM" create clients -r "$KC_REALM" -f "$ARCHIVO_CLIENTE" >/dev/null
+        ID_CLIENTE=$(idDelCliente "$KC_CLIENTE_OPERACION")
+        if [ -z "$ID_CLIENTE" ]; then
+            echo "FALLO: se creo el cliente «$KC_CLIENTE_OPERACION» y no se le encuentra el id." >&2
+            exit 1
+        fi
+        echo "Cliente «$KC_CLIENTE_OPERACION»: creado."
+    else
+        "$KCADM" update "clients/$ID_CLIENTE" -r "$KC_REALM" -f "$ARCHIVO_CLIENTE" >/dev/null
+        echo "Cliente «$KC_CLIENTE_OPERACION»: actualizado; sus roles, sus asignaciones y su clave, intactos."
+    fi
+
+    # Sus roles. Se crean los que falten y no se borra ninguno: un rol que sobre
+    # podria estar asignado, y quitar asignaciones es de #150, no de aqui.
+    ROLES_DEL_CLIENTE=$("$KCADM" get "clients/$ID_CLIENTE/roles" -r "$KC_REALM" \
+        --fields name --format csv --noquotes 2>/dev/null) || ROLES_DEL_CLIENTE=""
+    ROLES_DEL_CLIENTE=$'\n'"${ROLES_DEL_CLIENTE//$'\r'/}"$'\n'
+    for rol in $KC_ROLES_OPERACION; do
+        case "$ROLES_DEL_CLIENTE" in
+            *$'\n'"$rol"$'\n'*)
+                echo "  = rol «$rol»"
+                ;;
+            *)
+                "$KCADM" create "clients/$ID_CLIENTE/roles" -r "$KC_REALM" -s "name=$rol" >/dev/null
+                echo "  + rol «$rol»"
+                ;;
+        esac
+    done
+
+    # Y la clave, que es lo que hace que el cliente sirva: la del `Secret`, no la
+    # que Keycloak invento al crearlo y que no conoce nadie mas. Se lee con `$(<…)`
+    # y se compara sin imprimirla.
+    if [ ! -s "$CLAVE_DEL_CLIENTE_DE_OPERACION" ]; then
+        echo "FALLO: no esta la clave del cliente «$KC_CLIENTE_OPERACION»." >&2
+        echo "Se busco en «$CLAVE_DEL_CLIENTE_DE_OPERACION», que es donde se monta" >&2
+        echo "«<amb>-grafana/clave-cliente-oidc». Sin ella Grafana mandaria una clave y el" >&2
+        echo "emisor esperaria otra: el login moriria en el intercambio del codigo." >&2
+        exit 1
+    fi
+    "$KCADM" update "clients/$ID_CLIENTE" -r "$KC_REALM" \
+        -s "secret=$(<"$CLAVE_DEL_CLIENTE_DE_OPERACION")" >/dev/null
+    PUESTA=$("$KCADM" get "clients/$ID_CLIENTE/client-secret" -r "$KC_REALM" 2>/dev/null) || PUESTA=""
+    PUESTA=${PUESTA//[[:space:]]/}
+    PUESTA=${PUESTA#*\"value\":\"}
+    PUESTA=${PUESTA%%\"*}
+    if [ -z "$PUESTA" ] || [ "$PUESTA" != "$(<"$CLAVE_DEL_CLIENTE_DE_OPERACION")" ]; then
+        echo "FALLO: la clave de «$KC_CLIENTE_OPERACION» no es la del Secret." >&2
+        exit 1
+    fi
+    echo "Cliente «$KC_CLIENTE_OPERACION»: su clave es la del Secret."
+fi
 
 # ---------------------------------------------------------------------------
 # La comprobacion. Es lo que hace que este Job valga como verificacion.
@@ -221,14 +324,23 @@ for cliente in $KC_CLIENTES; do
     # puesto: un falso rojo permanente, no una carrera.
     mapeadores=$("$KCADM" get clients -r "$KC_REALM" -q "clientId=$cliente" 2>/dev/null || true)
 
+    # En el de operacion se busca el `claim.name` exacto y no la palabra suelta:
+    # `roles` es corta y comun, y podria aparecer en el cliente por otro motivo.
+    PATRON="$CLAIM"
+    if [ "$CUAL" = operacion ]; then
+        mapeadores=${mapeadores//[[:space:]]/}
+        PATRON="\"claim.name\":\"$CLAIM\""
+    fi
     case "$mapeadores" in
-        *"$CLAIM"*) ;;
+        *"$PATRON"*) ;;
         *)
             echo "FALLO: el cliente «${cliente}» quedo SIN el mapeador de ${CLAIM}." >&2
             echo "Es el claim del que sale el sujeto de cada peticion: el SET LOCAL en el" >&2
             echo "realm de funcionarios (ADR-0005), el documento acreditado en el del" >&2
             echo "ciudadano (ADR-0020). Un realm sin ese mapeador emite tokens que el" >&2
             echo "backend rechaza con 403, y el 403 no dice por que." >&2
+            echo "En el de operacion son los roles con que Grafana decide quien entra" >&2
+            echo "(ADR-0041): sin ellos rechaza a todo el mundo con «login failed»." >&2
             exit 1
             ;;
     esac

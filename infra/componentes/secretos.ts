@@ -341,6 +341,21 @@ export function inventarioDeSecretos(environment: Environment): EntradaDeSecreto
       requiereReinicioDe: servicioDeGrafana(environment),
     },
     {
+      rol: "grafana-cliente-oidc",
+      namespace: enLaPlataforma,
+      secreto: nombres.grafana,
+      clave: CLAVES.clienteOidcDeGrafana,
+      consumidor:
+        "El cliente confidencial «kamayuk-grafana» del realm de operacion (ADR-0041, #148): se la " +
+        "fija el Job del realm. Grafana la mandara al pedir el token cuando se publique (#149)",
+      // Una credencial de emisor, como las de las cuentas de servicio: rotarla es volver a correr
+      // el Job del realm, que la fija al cliente y comprueba que quedo puesta. Trimestral como
+      // ellas.
+      periodicidad: "trimestral",
+      // Sin `requiereReinicioDe` TODAVIA: ningun pod en marcha la lee hasta #149. El Job la lee
+      // fresca al crearse, igual que `kamayuk-owner`.
+    },
+    {
       rol: "postgres-carga",
       namespace: enLaPlataforma,
       secreto: nombres.carga,

@@ -5,10 +5,13 @@ import {
   inventarioDeSecretos,
   SECRETOS_DE_ARRANQUE,
 } from "../componentes/secretos";
-import { SISTEMAS_DEL_PRODUCTO } from "../componentes/convenciones";
+import {
+  SISTEMAS_DEL_PRODUCTO,
+  secretoDeCredencialesDeRespaldo,
+} from "../componentes/convenciones";
 import { namespaceDelSistema } from "../descriptor/entorno";
 import { contenedoresDe, podsDe } from "../componentes/tipos";
-import { ENVIRONMENTS, type Environment } from "../config";
+import { ENVIRONMENTS, namespaceName, type Environment } from "../config";
 import { manifiestosDeLosSistemas } from "../herramientas/emitir-manifiestos";
 import { invariantesDe } from "./stacks";
 
@@ -46,6 +49,82 @@ describe("inventarioDeSecretos", () => {
     for (const clave of deArranque) {
       expect(deLaAplicacion.has(clave), `«${clave}» esta en las dos listas`).toBe(false);
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #148 — lo que la PLATAFORMA monta, lo genera el inventario
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Cada clave de `Secret` que un pod de la plataforma pide, por `secretKeyRef` o por un volumen
+ * con `items`, y cada `Secret` que monta ENTERO.
+ */
+function loQueMontaLaPlataforma(ambiente: Environment): { claves: Set<string>; enteros: Set<string> } {
+  const claves = new Set<string>();
+  const enteros = new Set<string>();
+  for (const m of construirManifiestos(invariantesDe(ambiente))) {
+    for (const { pod } of podsDe(m)) {
+      for (const c of contenedoresDe(pod)) {
+        for (const v of c.env ?? []) {
+          const ref = v.valueFrom?.secretKeyRef;
+          if (ref !== undefined) claves.add(`${ref.name}/${ref.key}`);
+        }
+      }
+      for (const volumen of pod.volumes ?? []) {
+        if (volumen.secret === undefined) continue;
+        if (volumen.secret.items === undefined) enteros.add(volumen.secret.secretName);
+        for (const item of volumen.secret.items ?? []) {
+          claves.add(`${volumen.secret.secretName}/${item.key}`);
+        }
+      }
+    }
+  }
+  return { claves, enteros };
+}
+
+describe("#148 · lo que la plataforma monta lo genera el inventario", () => {
+  /**
+   * **El hueco, medido al escribir el realm de operacion.** El `Job` del realm paso a montar
+   * `kamayuk-<amb>-grafana/clave-cliente-oidc`, y con la entrada del inventario SIN escribir
+   * `yarn verificar` salia verde entero: la guarda de C-17 de abajo compara lo declarado con lo
+   * montado **solo en los namespaces de los sistemas**. En el cluster eso habria sido el `Job`
+   * de identidad en `ContainerCreating` para siempre —«couldn't find key clave-cliente-oidc»—,
+   * porque `bootstrap-secretos.sh` genera lo que el inventario dice y nada mas.
+   *
+   * Solo en esta direccion, y a proposito: hay entradas de la plataforma que no monta ningun
+   * manifiesto —la clave de `rol_carga_parametros` la leen guiones de `carga-de-datos/`— y exigir
+   * la otra mitad aqui seria un rojo falso.
+   *
+   * **Una excepcion, y es la de ADR-0011 §3:** las credenciales del almacenamiento de objetos no
+   * las genera `bootstrap-secretos.sh` sino Pulumi, con el valor del stack (`index.ts`, «La unica
+   * excepcion, y deliberada»). Se eximen por su nombre de convencion, no escritas a mano: si ese
+   * `Secret` cambiara de nombre, la excepcion dejaria de casar y esto se pondria rojo.
+   */
+  it.each(ENVIRONMENTS)("%s: ninguna clave que monta la plataforma queda fuera del inventario", (a) => {
+    const declarado = inventarioDelAmbiente(invariantesDe(a)).filter(
+      (e) => e.namespace === namespaceName(a),
+    );
+    const deCreaPulumi = secretoDeCredencialesDeRespaldo(a);
+    const claves = new Set(declarado.map((e) => `${e.secreto}/${e.clave}`));
+    const secretos = new Set([...declarado.map((e) => e.secreto), deCreaPulumi]);
+    const montado = loQueMontaLaPlataforma(a);
+    for (const clave of [...montado.claves]) {
+      if (clave.startsWith(`${deCreaPulumi}/`)) montado.claves.delete(clave);
+    }
+
+    expect(montado.claves.size, "la plataforma no monta ninguna clave: ¿se dejo de mirar?")
+      .toBeGreaterThan(0);
+
+    expect(
+      [...montado.claves].filter((r) => !claves.has(r)),
+      "estas claves las monta un pod de la plataforma y no las genera nadie: el pod se queda " +
+        "esperando un `Secret` al que le falta la clave, sin que el despliegue lo diga.",
+    ).toEqual([]);
+    expect(
+      [...montado.enteros].filter((s) => !secretos.has(s)),
+      "estos `Secret` se montan enteros y el inventario no declara ninguna clave suya.",
+    ).toEqual([]);
   });
 });
 

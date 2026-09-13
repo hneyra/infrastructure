@@ -59,6 +59,23 @@
 #      dice el archivo. Sin `numero_documento` el token sale sin el claim y
 #      `/portal/situacion` responde 403 SIN_DOCUMENTO.
 #
+# ── Modo `operadores` (ADR-0041, #148) — SOLO en el cluster ────────────────────
+#
+#   Quien opera la plataforma, en el realm `<realm>-operacion`. HOY UNA persona, y no
+#   declarada sino DERIVADA: el `administrador` de la municipalidad implantada, que
+#   `Identidad.ts` ya valida unico y ya cruza con la cuenta del stack. Mismo nombre,
+#   misma cuenta, mismo correo; su login es otro, porque es otro realm.
+#
+#   1. La crea con UPDATE_PASSWORD pendiente si falta, o le actualiza nombre y correo.
+#      Sin `municipalidad_id` y sin grupo: no es de ninguna municipalidad.
+#   2. Le asigna su rol del cliente `kamayuk-grafana` (idempotente).
+#   3. A la recien creada, la misma entrega de clave que los funcionarios: el enlace
+#      por correo, o la clave inicial TEMPORAL donde no hay relay (#77).
+#   4. Comprobacion final: existe, esta `enabled` y tiene su rol.
+#
+#   **No retira ningun rol todavia**, y es un hueco declarado: los operadores
+#   declarativos, y quitar el rol a quien deje de estar, son #150.
+#
 # ── Dos modos de EJECUCION, un guion ──────────────────────────────────────────
 #
 #   directo  Corre DENTRO de la imagen de Keycloak (el Job del cluster). `kcadm.sh`
@@ -116,9 +133,14 @@ case "$CUAL" in
         REALM="${KC_REALM:-kamayuk}"
         ARCHIVO_TSV="servicios.tsv"
         ;;
+    operadores)
+        # Quien opera la plataforma, en su propio realm (ADR-0041).
+        REALM="${KC_REALM_OPERACION:-${KC_REALM:-kamayuk}-operacion}"
+        ARCHIVO_TSV="operadores.tsv"
+        ;;
     *)
-        echo "FALLO: no se sabe reconciliar «$CUAL». Es «funcionarios», «ciudadanos» o" >&2
-        echo "«servicios»." >&2
+        echo "FALLO: no se sabe reconciliar «$CUAL». Es «funcionarios», «ciudadanos»," >&2
+        echo "«servicios» u «operadores»." >&2
         exit 1
         ;;
 esac
@@ -139,9 +161,13 @@ fi
 # `kcadm`, en el modo que toque. `</dev/null` porque este guion invoca `kc` dentro
 # de bucles `while read < archivo`: sin el, `docker compose exec` heredaria el
 # archivo como stdin.
+#
+# En `directo`, el `kcadm` de la imagen. Se puede apuntar a otro con `KCADM`, como en
+# `reconciliar-realm.sh`: es como se midio el modo `operadores` contra un Keycloak 26.0.8
+# real fuera del contenedor. Dentro de la imagen no hay otro que apuntar.
 kc() {
     if [ "$MODO" = directo ]; then
-        /opt/keycloak/bin/kcadm.sh "$@" </dev/null
+        "${KCADM:-/opt/keycloak/bin/kcadm.sh}" "$@" </dev/null
     else
         docker compose exec -T "$KAMAYUK_KEYCLOAK_SERVICIO" \
             /opt/keycloak/bin/kcadm.sh "$@" </dev/null
@@ -211,6 +237,12 @@ LIMPIAR_TSV=0
 if [ -f "$DIRECTORIO/$ARCHIVO_TSV" ]; then
     TSV="$DIRECTORIO/$ARCHIVO_TSV"
     echo "Datos: $TSV (derivado por Identidad.ts)"
+elif [ "$CUAL" = operadores ]; then
+    # No hay nada que derivar aqui: el operador sale del administrador que valida
+    # `Identidad.ts`, y el realm de operacion solo existe en el cluster.
+    echo "FALLO: no hay «$DIRECTORIO/$ARCHIVO_TSV». Lo escribe Identidad.ts en el ConfigMap del" >&2
+    echo "realm; el modo «operadores» solo corre en el Job del cluster (ADR-0041)." >&2
+    exit 1
 else
     # >>> SOLO-COMPOSE: aqui dentro se puede usar `python3`, y en el resto del guion NO.
     #
@@ -649,6 +681,162 @@ buscar_usuario() {
     printf '%s' "$salida" | tr -d '\r' | sed -n '1p'
 }
 
+# --- La entrega de la clave inicial, en UN sitio ------------------------------
+# La usan los funcionarios (paso 4, mas abajo) y los operadores (ADR-0041). Era el
+# cuerpo del bucle del paso 4, movido tal cual: los dos `continue` pasaron a `return 0`
+# y nada mas. Una copia para los operadores seria la que un dia fija la clave
+# PERMANENTE, que es justo lo que `la-clave-inicial-del-administrador.test.ts` vigila.
+entregarClaveInicial() {
+    local cuenta="$1" uid="$2"
+    if [ "${SIN_CORREO:-0}" = 1 ]; then
+        # SIN relay, que es el caso de `prod` a proposito (ADR-0012 opcion B, D-05 sin decidir).
+        # Hasta #77 esto dejaba al usuario SIN clave y SIN enlace: el realm nacia con su
+        # administrador inalcanzable, y el remedio era acordarse de fijarla a mano.
+        #
+        # Con `KC_CLAVE_INICIAL` puesta se le fija ESA, y **TEMPORAL** a proposito: el operador
+        # la lee del `Secret` una vez, entra, y Keycloak le obliga a cambiarla, asi que el valor
+        # generado no sobrevive al primer acceso.
+        #
+        # ⚠ Y que sea TEMPORAL y no permanente es una diferencia MEDIDA, no de gusto. Medido
+        # contra la plataforma de compose el 2026-09-11, con `kamayuk-verificacion` —el unico
+        # cliente del realm con `directAccessGrantsEnabled`— y la MISMA clave en los dos casos:
+        #
+        #   permanente  -> token de 2 185 caracteres
+        #   temporal    -> {"error":"invalid_grant",
+        #                   "error_description":"Account is not fully set up"}
+        #
+        # Ese mensaje se lee como un problema de la cuenta y lo que dice es «Keycloak exige
+        # cambiarla al entrar». En el CLUSTER no molesta a nadie: nada pide
+        # un token como el administrador (`verificar-el-ambiente.sh` no lo hace, y las cuentas de
+        # servicio usan `client_credentials`). En COMPOSE si molesta, y por eso alli la clave la
+        # sigue fijando `crear-usuario.sh` PERMANENTE — es lo que el e2e necesita, y es la
+        # cicatriz de `identidad`#14.
+        if [ -n "${KC_CLAVE_INICIAL:-}" ]; then
+            if kc set-password -r "$REALM" --username "$cuenta" \
+                    --new-password "$KC_CLAVE_INICIAL" --temporary >/dev/null 2>&1; then
+                echo "«$cuenta» recibio su clave inicial (temporal: Keycloak le obligara a cambiarla)."
+            else
+                echo "FALLO: no se pudo fijar la clave inicial de «$cuenta»." >&2
+                echo "Sin relay y sin clave, ese usuario no puede entrar y el realm nace" >&2
+                echo "inalcanzable. Comprueba que el Secret lleva «clave-del-administrador»." >&2
+                exit 1
+            fi
+            return 0
+        fi
+        echo "SIN_CORREO=1 y sin KC_CLAVE_INICIAL: «$cuenta» queda SIN clave y SIN enlace."
+        echo "  Fijarla a mano: kcadm set-password -r $REALM --username $cuenta --new-password <clave> --temporary"
+        return 0
+    fi
+    if kc update "users/$uid/execute-actions-email" -r "$REALM" \
+            -b '["UPDATE_PASSWORD"]' >/dev/null 2>&1; then
+        echo "Enlace para fijar la clave enviado a «$cuenta»."
+    else
+        {
+            echo "FALLO: no se pudo enviar el enlace de UPDATE_PASSWORD a «$cuenta»."
+            echo "Casi siempre es SMTP sin configurar en el realm. Salidas:"
+            echo "  - configurar smtpServer (despliegue/identidad/README.md), o"
+            echo "  - fijar una clave temporal a mano:"
+            echo "      kcadm set-password -r $REALM --username $cuenta --new-password <clave> --temporary"
+            echo "  - o re-lanzar con SIN_CORREO=1 (el usuario queda sin clave)."
+        } >&2
+        exit 1
+    fi
+}
+
+# ══ Modo `operadores`: quien opera la plataforma (ADR-0041, #148) ═════════════
+#
+# Va aparte del bucle de las personas por lo mismo que `servicios`: su TSV tiene otra forma,
+# su realm otro cliente, y lo que se comprueba es un ROL y no un atributo.
+#
+#   OPERADOR <cuenta> <nombre> <apellido> <correo> <rol>
+if [ "$CUAL" = operadores ]; then
+    : "${KC_CLIENTE_OPERACION:?falta KC_CLIENTE_OPERACION}"
+
+    # El cliente lo crea `reconciliar-realm.sh operacion`, que corre antes. Sin el no hay
+    # rol que asignar, y seguir dejaria operadores que existen y no pueden entrar a nada.
+    ID_CLIENTE=$(kcPrimeraLinea get clients -r "$REALM" -q "clientId=$KC_CLIENTE_OPERACION" \
+        --fields id --format csv --noquotes)
+    if [ -z "$ID_CLIENTE" ]; then
+        echo "FALLO: el realm «$REALM» no tiene el cliente «$KC_CLIENTE_OPERACION»." >&2
+        echo "Aplica el realm primero: reconciliar-realm.sh operacion." >&2
+        exit 1
+    fi
+
+    DECLARADOS=0
+    NUEVOS=""
+    while IFS=$'\t' read -r tipo cuenta nombre apellido correo rol; do
+        [ -n "${tipo:-}" ] || continue
+        if [ "$tipo" != OPERADOR ]; then
+            echo "FALLO: linea de tipo desconocido «$tipo» en $ARCHIVO_TSV." >&2
+            exit 1
+        fi
+        DECLARADOS=$((DECLARADOS + 1))
+        uid=$(buscar_usuario "$cuenta")
+        if [ -z "$uid" ]; then
+            kc create users -r "$REALM" \
+                -s "username=$cuenta" -s enabled=true -s emailVerified=true \
+                -s "email=$correo" -s "firstName=$nombre" -s "lastName=$apellido" \
+                -s 'requiredActions=["UPDATE_PASSWORD"]' >/dev/null
+            uid=$(buscar_usuario "$cuenta")
+            [ -n "$uid" ] || { echo "FALLO: «$cuenta» no aparece despues de crearlo." >&2; exit 1; }
+            NUEVOS="$NUEVOS $cuenta:$uid"
+            echo "Operador «$cuenta» creado, con UPDATE_PASSWORD pendiente."
+        else
+            # Lo DECLARADO, y nada mas: ni la clave ni lo pendiente de quien ya entro.
+            kc update "users/$uid" -r "$REALM" \
+                -s "email=$correo" -s "firstName=$nombre" -s "lastName=$apellido" >/dev/null
+            echo "Operador «$cuenta» ya existia; nombre y correo al dia. Clave intacta."
+        fi
+        # Idempotente: asignar un rol que ya tiene no cambia nada.
+        kc add-roles -r "$REALM" --uusername "$cuenta" \
+            --cclientid "$KC_CLIENTE_OPERACION" --rolename "$rol" >/dev/null
+    done < "$TSV"
+
+    # Cero no es «todo bien», es que no se ha comprobado nada (C-15/C-16).
+    if [ "$DECLARADOS" -eq 0 ]; then
+        echo "FALLO: $ARCHIVO_TSV no declara ningun operador. Sin ninguno, nadie puede" >&2
+        echo "entrar a Grafana con login, y este guion no ha comprobado nada." >&2
+        exit 1
+    fi
+
+    for par in $NUEVOS; do
+        entregarClaveInicial "${par%%:*}" "${par#*:}"
+    done
+
+    # --- La comprobacion: crear no es haber creado -------------------------------
+    errores=0
+    while IFS=$'\t' read -r tipo cuenta nombre apellido correo rol; do
+        [ "${tipo:-}" = OPERADOR ] || continue
+        uid=$(buscar_usuario "$cuenta")
+        if [ -z "$uid" ]; then
+            echo "FALLO: el operador «$cuenta» no existe despues de reconciliar." >&2
+            errores=1
+            continue
+        fi
+        detalle=$(kc get "users/$uid" -r "$REALM" 2>/dev/null) || detalle=""
+        if [[ "${detalle//[[:space:]]/}" != *'"enabled":true'* ]]; then
+            echo "FALLO: el operador «$cuenta» no esta enabled." >&2
+            errores=1
+        fi
+        # Sin tuberia (#91), y comparando la linea entera: `lector` no puede pasar por
+        # estar dentro de otro nombre.
+        roles=$(kc get-roles -r "$REALM" --uusername "$cuenta" --cclientid "$KC_CLIENTE_OPERACION" \
+            --fields name --format csv --noquotes 2>/dev/null) || roles=""
+        if [[ $'\n'"${roles//$'\r'/}"$'\n' != *$'\n'"$rol"$'\n'* ]]; then
+            echo "FALLO: el operador «$cuenta» no tiene el rol «$rol» de «$KC_CLIENTE_OPERACION»." >&2
+            echo "  Sin el, Grafana —con el rol estricto de #149— no le deja entrar." >&2
+            errores=1
+        fi
+    done < "$TSV"
+
+    if [ "$errores" -ne 0 ]; then
+        echo "Reconciliacion de operadores: CON FALLOS." >&2
+        exit 1
+    fi
+    echo "Operadores reconciliados: $DECLARADOS cuenta(s) en el realm «$REALM», con su rol."
+    exit 0
+fi
+
 NUEVOS=""
 while IFS=$'\t' read -r tipo c1 c2 c3 c4 c5 c6; do
     [ -n "${tipo:-}" ] || continue
@@ -750,60 +938,7 @@ done < "$TSV"
 
 # --- 4: el enlace de clave, solo a los recien creados -------------------------
 for par in $NUEVOS; do
-    cuenta="${par%%:*}"; uid="${par#*:}"
-    if [ "${SIN_CORREO:-0}" = 1 ]; then
-        # SIN relay, que es el caso de `prod` a proposito (ADR-0012 opcion B, D-05 sin decidir).
-        # Hasta #77 esto dejaba al usuario SIN clave y SIN enlace: el realm nacia con su
-        # administrador inalcanzable, y el remedio era acordarse de fijarla a mano.
-        #
-        # Con `KC_CLAVE_INICIAL` puesta se le fija ESA, y **TEMPORAL** a proposito: el operador
-        # la lee del `Secret` una vez, entra, y Keycloak le obliga a cambiarla, asi que el valor
-        # generado no sobrevive al primer acceso.
-        #
-        # ⚠ Y que sea TEMPORAL y no permanente es una diferencia MEDIDA, no de gusto. Medido
-        # contra la plataforma de compose el 2026-09-11, con `kamayuk-verificacion` —el unico
-        # cliente del realm con `directAccessGrantsEnabled`— y la MISMA clave en los dos casos:
-        #
-        #   permanente  -> token de 2 185 caracteres
-        #   temporal    -> {"error":"invalid_grant",
-        #                   "error_description":"Account is not fully set up"}
-        #
-        # Ese mensaje se lee como un problema de la cuenta y lo que dice es «Keycloak exige
-        # cambiarla al entrar». En el CLUSTER no molesta a nadie: nada pide
-        # un token como el administrador (`verificar-el-ambiente.sh` no lo hace, y las cuentas de
-        # servicio usan `client_credentials`). En COMPOSE si molesta, y por eso alli la clave la
-        # sigue fijando `crear-usuario.sh` PERMANENTE — es lo que el e2e necesita, y es la
-        # cicatriz de `identidad`#14.
-        if [ -n "${KC_CLAVE_INICIAL:-}" ]; then
-            if kc set-password -r "$REALM" --username "$cuenta" \
-                    --new-password "$KC_CLAVE_INICIAL" --temporary >/dev/null 2>&1; then
-                echo "«$cuenta» recibio su clave inicial (temporal: Keycloak le obligara a cambiarla)."
-            else
-                echo "FALLO: no se pudo fijar la clave inicial de «$cuenta»." >&2
-                echo "Sin relay y sin clave, ese usuario no puede entrar y el realm nace" >&2
-                echo "inalcanzable. Comprueba que el Secret lleva «clave-del-administrador»." >&2
-                exit 1
-            fi
-            continue
-        fi
-        echo "SIN_CORREO=1 y sin KC_CLAVE_INICIAL: «$cuenta» queda SIN clave y SIN enlace."
-        echo "  Fijarla a mano: kcadm set-password -r $REALM --username $cuenta --new-password <clave> --temporary"
-        continue
-    fi
-    if kc update "users/$uid/execute-actions-email" -r "$REALM" \
-            -b '["UPDATE_PASSWORD"]' >/dev/null 2>&1; then
-        echo "Enlace para fijar la clave enviado a «$cuenta»."
-    else
-        {
-            echo "FALLO: no se pudo enviar el enlace de UPDATE_PASSWORD a «$cuenta»."
-            echo "Casi siempre es SMTP sin configurar en el realm. Salidas:"
-            echo "  - configurar smtpServer (despliegue/identidad/README.md), o"
-            echo "  - fijar una clave temporal a mano:"
-            echo "      kcadm set-password -r $REALM --username $cuenta --new-password <clave> --temporary"
-            echo "  - o re-lanzar con SIN_CORREO=1 (el usuario queda sin clave)."
-        } >&2
-        exit 1
-    fi
+    entregarClaveInicial "${par%%:*}" "${par#*:}"
 done
 
 # --- 5: comprobacion final ---------------------------------------------------
