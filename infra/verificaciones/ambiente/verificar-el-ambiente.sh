@@ -37,6 +37,9 @@
 #   2. Lo sembrado por la implantacion (#120) **en cada base**: municipalidad, grupo,
 #      usuario, miembro y permiso. `count(*) = 0` es exactamente el sintoma silencioso que
 #      el issue nombra.
+#   2b. **La tabla `respaldo` en la base del padron** (#79): que exista, con las columnas que el
+#      `CronJob` del respaldo escribe y con `kamayuk_owner` pudiendo escribirla. Sin ella el
+#      respaldo muere en su primera linea, a las 06:00 y con un sintoma que no nombra la causa.
 #   3. **El aislamiento, como `kamayuk_app` y contra esta instancia.** Un superusuario omite
 #      RLS incluso con FORCE ROW LEVEL SECURITY, asi que una comprobacion hecha con el
 #      pasa en verde sin verificar nada; aqui se demuestra en vez de afirmarse, fijando
@@ -77,6 +80,11 @@ NAMESPACE=${NAMESPACE:-kamayuk-$AMBIENTE}
 AQUI=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 INFRA=$(cd "$AQUI/../.." && pwd)
 RAIZ=$(cd "$INFRA/.." && pwd)
+# `BASE_DEL_PADRON`, que es donde el `CronJob` del respaldo registra cada copia (seccion 2b). Se
+# carga de `bases.sh` y no se escribe aqui: es la leccion de #15, cinco copias de esa eleccion y
+# nada que las pusiera de acuerdo.
+# shellcheck source=../../bases.sh
+source "$INFRA/bases.sh"
 
 command -v kubectl >/dev/null 2>&1 || { echo "Falta kubectl." >&2; exit 1; }
 
@@ -261,6 +269,60 @@ for sistema in $SISTEMAS; do
         fi
     done
 done
+
+echo
+echo "== 2b. La tabla donde el respaldo se registra (RF-126), en la base del padron =="
+# El `CronJob` `kamayuk-<ambiente>-respaldo` ESCRIBE en la tabla `respaldo` de
+# `BASE_DEL_PADRON` antes de copiar nada —`INSERT … RETURNING id`, y `exit 1` si no puede
+# (`componentes/Respaldo.ts`)—, y la tabla la trae el baseline de `rentas`. Hasta #79 nada lo
+# miraba, y el fallo aparecio como aparece este: medido en `stg` el 2026-09-10,
+#
+#     [pod/kamayuk-stg-respaldo-29811240-727ld/respaldo-base] ERROR: relation "respaldo" does not exist
+#
+# a las 06:00, en un pod que nadie mira, con un sintoma —«no se pudo registrar el inicio»— que
+# no se parece a su causa. Es la familia de #81: lo que una migracion deberia haber dejado, y en
+# una base que ya existia no dejo.
+#
+# Tres preguntas, porque el `INSERT` falla por cualquiera de las tres: que la tabla exista, que
+# tenga las columnas que el guion escribe, y que `kamayuk_owner` —quien escribe— pueda. Y «no se
+# pudo preguntar» se dice aparte: una consulta que falla no es una tabla que existe.
+#
+# Las columnas son las que `Respaldo.ts` nombra en su SQL. `el-respaldo-tiene-donde-registrarse`
+# las compara con ese SQL: si el guion del respaldo escribe una columna mas, eso se pone rojo.
+COLUMNAS_DEL_RESPALDO="id inicio resultado destino fin detalle"
+existe=$(comoSuperusuario "SELECT to_regclass('public.respaldo') IS NOT NULL" "$BASE_DEL_PADRON" \
+    2>/dev/null || true)
+if [ "$existe" = "f" ]; then
+    mal "«${BASE_DEL_PADRON}» NO tiene la tabla respaldo, y el CronJob kamayuk-${AMBIENTE}-respaldo"
+    mal "la escribe antes de copiar nada: en su proxima corrida morira con «relation \"respaldo\""
+    mal "does not exist» y «no se pudo registrar el inicio». La trae el baseline de rentas: si la"
+    mal "base existe y la tabla no, la migracion de rentas no llego a esta base (#79, #81)."
+elif [ "$existe" != "t" ]; then
+    mal "no se pudo preguntar a «${BASE_DEL_PADRON}» si tiene la tabla respaldo (contesto «${existe}»):"
+    mal "NO es que exista. Sin esa respuesta no se sabe si el respaldo de esta noche podra registrarse."
+else
+    # `coalesce(…, '-')`: sin el, «no falta ninguna» y «la consulta no devolvio nada» serian la
+    # misma cadena vacia.
+    faltan=$(comoSuperusuario "SELECT coalesce(string_agg(c, ' '), '-')
+        FROM unnest(string_to_array('${COLUMNAS_DEL_RESPALDO}', ' ')) AS c
+        WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns
+                          WHERE table_schema = 'public' AND table_name = 'respaldo'
+                            AND column_name = c)" "$BASE_DEL_PADRON" 2>/dev/null || true)
+    escribe=$(comoSuperusuario "SELECT has_table_privilege('kamayuk_owner', 'public.respaldo', 'INSERT')
+        AND has_table_privilege('kamayuk_owner', 'public.respaldo', 'UPDATE')" "$BASE_DEL_PADRON" \
+        2>/dev/null || true)
+    if [ "$faltan" = "-" ] && [ "$escribe" = "t" ]; then
+        bien "«${BASE_DEL_PADRON}».respaldo existe, con las columnas que el CronJob escribe, y kamayuk_owner puede escribirla"
+    else
+        if [ "$faltan" != "-" ]; then
+            mal "«${BASE_DEL_PADRON}».respaldo existe pero le falta lo que el CronJob escribe: «${faltan:-no se pudo preguntar}»"
+        fi
+        if [ "$escribe" != "t" ]; then
+            mal "kamayuk_owner no puede INSERT y UPDATE sobre «${BASE_DEL_PADRON}».respaldo (contesto «${escribe:-nada}»):"
+            mal "el CronJob escribe con esa credencial"
+        fi
+    fi
+fi
 
 echo
 echo "== 3. El aislamiento, como kamayuk_app y contra esta instancia =="
