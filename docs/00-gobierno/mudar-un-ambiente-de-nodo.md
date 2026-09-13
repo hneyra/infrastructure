@@ -1,7 +1,9 @@
 # Mudar un ambiente de nodo, y el paso que el runbook no tenía
 
 **Escrito el 2026-09-11, después de que la mudanza de `prod` a `vmd206041` fallara en el primer
-`pulumi up`.** No sustituye a `reconstruir-el-vps-desde-cero.md` —que vive en el repositorio
+`pulumi up`. Corregido el 2026-09-13 con la mudanza de `stg` a `vmd205066`
+([#145](https://github.com/hneyra/infrastructure/issues/145)), que falló en dos sitios que este
+documento daba por cubiertos** — el paso 5 y una precondición que no tenía. No sustituye a `reconstruir-el-vps-desde-cero.md` —que vive en el repositorio
 archivo `sgtm` y cubre perder el nodo entero—: añade el paso que a aquél le falta, y que es el
 que rompió esto.
 
@@ -29,6 +31,29 @@ cabe
 
 Así que el túnel, los secretos y el nodo nuevo estaban bien. Lo que falla es otra cosa.
 
+## El mismo defecto se presenta con DOS mensajes, y conviene saber cuál es cuál
+
+En `stg`, el 2026-09-13, el error fue otro:
+
+```
+warning: configured Kubernetes cluster is unreachable: unable to load schema information
+from the API server: Get "https://127.0.0.1:6443/openapi/v2?timeout=32s":
+tls: failed to verify certificate: x509: certificate signed by unknown authority
+...
+141 errored
+```
+
+| lo que se lee | lo que significa |
+|---|---|
+| `context deadline exceeded` | **nadie contesta** al otro lado del túnel: el nodo, el puerto o el SSH |
+| `x509: certificate signed by unknown authority` | **el túnel llega a un clúster vivo**, y la CA que lo rechaza es la del kubeconfig que Pulumi tiene **grabado en el estado** |
+
+El segundo es el bueno: dice que el túnel y el nodo están bien. Y **no se distingue mirando los
+secretos** —sus valores no se pueden leer—, pero sí sus fechas: en `stg`, `VPS_HOST` y
+`KUBECONFIG` del *environment* se habían actualizado a las 11:58 y las 12:00, y la corrida
+falló a las 12:13. El kubeconfig que CI le pasaba a Pulumi era el nuevo; la CA que rechazaba el
+certificado salía del estado.
+
 ## La causa
 
 **El estado de Pulumi de `prod` estaba congelado en la forma pre-renombrado.** `prod` no
@@ -40,6 +65,18 @@ dentro **el kubeconfig del nodo viejo**.
 Con `refresh: true`, que es correcto y está ahí por otra cicatriz, Pulumi intenta leer cada uno
 de esos objetos contra un clúster al que el stack ya no apunta. No los encuentra y no puede
 decidir solo si desaparecieron o si no llegó a ellos.
+
+**Y lo del estado congelado era un agravante, no la causa** — eso lo midió `stg` el
+2026-09-13. Este documento decía que `stg` «no tiene este problema» porque su estado sí estaba
+al día; lo tuvo igual, con **141 recursos errados**. La causa que se generaliza es más simple y
+no depende de hace cuánto se aplicó:
+
+> **El proveedor grabado en el estado lleva dentro el kubeconfig del nodo contra el que se
+> aplicó la última vez.** `pulumi config set kubeconfig` en la corrida escribe el del nodo
+> nuevo, y eso sirve para lo que se va a CREAR; lo que se va a LEER se lee con el de antes.
+
+Por eso pasa en toda mudanza de nodo, con el estado al día o congelado, y por eso el paso 5 no
+es opcional.
 
 ## El paso que falta, y lo que cuesta
 
@@ -71,8 +108,41 @@ la desengancha, si la entrada nace marcada, o si su descripción deja de avisar.
    escribir lo medido en `Pulumi.<ambiente>.yaml`. **En ese orden**: declarar más de lo que el
    nodo reparte detiene el despliegue en «Lo declarado cabe en el nodo real», y ese paso corre
    sin la condición de la brecha.
-3. Los cuatro secretos del *environment*, **y en los dos**: `prod` y `prod-preview`.
-4. **Un contenedor de respaldo NUEVO, y declararlo antes del primer `up`.** Es el paso que a
+   - **Medir es `kubectl`, no aritmética.** En `stg` la cifra vieja —`6 / 12247552Ki`— era la de
+     un k3d: un contenedor sin reserva ve la máquina entera y declara como asignable memoria que
+     el kubelet nunca reparte. La del nodo nuevo, con la reserva puesta, es `5 / 10145116Ki`.
+   - **Y lo que caza el exceso NO es `yarn capacidad`**, medido el 2026-09-13: declarar un nodo
+     más grande hace que el stack quepa *mejor*, así que sale `cabe` y en verde. Quien lo caza
+     es `infra/vps/comprobar-lo-asignable.sh --ambiente <amb>`, que lee el nodo **real**.
+3. **Comprobar que k3s trae su Traefik, ANTES del primer `up`.** Es la precondición que a este
+   documento le faltaba, y costó la mudanza de `stg`: aquel nodo tenía
+   `disable: [traefik]` en `/etc/rancher/k3s/config.yaml`, así que `kube-system` sólo llevaba
+   `coredns`, `local-path-provisioner` y `metrics-server`, no había ningún `HelmChart`, y **nadie
+   escuchaba en el 80 ni en el 443**.
+   El descriptor asume lo contrario con todas las letras (`infra/componentes/Ingreso.ts:15`):
+   «*k3s trae Traefik desplegado por su propio `HelmChart`. Lo que hace `HelmChartConfig` es
+   pasarle valores a **ése***». Sin él **no existen los CRDs `traefik.io/v1alpha1`**, así que
+   los seis `IngressRoute`, los `Middleware` y el `TLSOption` fallan al aplicarse, el
+   `HelmChartConfig` no parchea nada, ACME no tiene quién contesta su desafío HTTP-01 y el
+   objetivo `traefik-metrics` de Prometheus nunca llega a existir.
+   ```bash
+   kubectl get helmchart -A                        # tiene que salir `traefik` en kube-system
+   kubectl -n kube-system get pods | grep -i traefik
+   sudo ls /var/lib/rancher/k3s/server/manifests/  # si queda `traefik.yaml.skip`, borrarlo
+   ss -ltn | grep -E ':(80|443) '
+   ```
+4. **Los secretos del *environment*, y no son los mismos en los dos ambientes.** `prod` tiene
+   **dos** —`prod` y `prod-preview`—; `stg` tiene **uno**. Son seis: `VPS_HOST`, `VPS_USER`,
+   `SSH_PRIVATE_KEY`, `KUBECONFIG`, `BACKUP_ACCESS_KEY_ID` y `BACKUP_SECRET_ACCESS_KEY`.
+   - **El `KUBECONFIG` se regenera entero**, no se le edita el `server:`: la CA del nodo nuevo
+     es otra, y ésa es exactamente la del `x509` de arriba.
+     `sudo sed 's#https://127.0.0.1:6443#https://localhost:6443#' /etc/rancher/k3s/k3s.yaml`.
+     `0.0.0.0` **no** vale: la lista blanca es `localhost`/`127.0.0.1`/`[::1]` (`infra/config.ts`).
+   - ⚠ **Un secreto del *environment* TAPA al del repositorio con el mismo nombre.** Medido en
+     `stg` el 2026-09-13: `SSH_PRIVATE_KEY` se actualizó a nivel de repositorio a las 12:06:21Z
+     y la corrida siguió usando el del *environment*, de ocho días antes. Poner el valor nuevo
+     «en el repositorio» no rota nada si el *environment* tiene el suyo.
+5. **Un contenedor de respaldo NUEVO, y declararlo antes del primer `up`.** Es el paso que a
    este procedimiento le faltaba, y costó [#112](https://github.com/hneyra/infrastructure/issues/112):
    **un catálogo de wal-g es de un CLÚSTER, no de un ambiente.** El clúster nuevo empieza a
    archivar en cuanto el paso 5 lo levanta, y si el destino sigue siendo el catálogo del viejo
@@ -88,12 +158,22 @@ la desengancha, si la entrada nace marcada, o si su descripción deja de avisar.
      clave se retiró porque no la leía nadie
      ([el ensayo cruzado no existe](el-ensayo-cruzado-no-existe.md)).
    - **El contenedor viejo no se toca.** Se queda donde está, con su clave de cifrado.
-5. **Lanzar `Infraestructura` a mano** (`workflow_dispatch`) con
+6. **Lanzar `Infraestructura` a mano** (`workflow_dispatch`) con
    **`soltar_recursos_inalcanzables` marcado**. Es la corrida de la mudanza, y la única que debe
    llevarlo.
-6. Comprobar que la corrida siguiente, **sin** marcarlo, sale verde. Si no, el estado no quedó
+   - ⚠ **Antes, comprobar que el trabajo de ESE ambiente lleva la variable cableada.** Marcar la
+     casilla no hace nada si `PULUMI_K8S_DELETE_UNREACHABLE` no cuelga del `pulumi up` de su
+     `aplicar-<ambiente>`. Hasta el 2026-09-13 sólo la tenía `aplicar-prod` —`stg` no había
+     mudado nunca—, así que este paso **no se podía dar para `stg`** y este documento decía que
+     el procedimiento le servía igual.
+     `grep -n PULUMI_K8S_DELETE_UNREACHABLE .github/workflows/infra.yml` tiene que devolver una
+     línea de código por cada ambiente que pueda mudar.
+   - Y **`pulumi preview` del PR seguirá en rojo hasta que esta corrida pase**: corre sólo en
+     `pull_request` y no tiene —ni debe tener— esta vía de escape. Un `preview` que suelta
+     estado deja de ser una previsualización. El PR de la mudanza se integra con ese check rojo.
+7. Comprobar que la corrida siguiente, **sin** marcarlo, sale verde. Si no, el estado no quedó
    limpio y hay que mirarlo antes de seguir — no volver a marcarlo por costumbre.
-7. **Lanzar el respaldo a mano, sin esperar al `CronJob`**, y leer su salida:
+8. **Lanzar el respaldo a mano, sin esperar al `CronJob`**, y leer su salida:
    `kubectl -n kamayuk-<amb> create job --from=cronjob/kamayuk-<amb>-respaldo respaldo-mudanza`.
    Hasta que ese respaldo base aterrice, el contenedor nuevo tiene WAL y **ningún punto de
    restauración**: el ambiente pasa de «0 respaldos restaurables» a «0 respaldos restaurables»,
@@ -102,9 +182,9 @@ la desengancha, si la entrada nace marcada, o si su descripción deja de avisar.
    - Y mirar `pg_stat_archiver` en cuanto el motor vuelva: si la credencial no alcanza el
      contenedor nuevo, `archive_command` empieza a fallar, PostgreSQL **retiene el WAL en el
      disco del nodo** y el primer síntoma es el disco llenándose, horas después.
-8. Mover el DNS y esperar el certificado. ACME resuelve el desafío HTTP-01 por el 80, así que el
+9. Mover el DNS y esperar el certificado. ACME resuelve el desafío HTTP-01 por el 80, así que el
    nombre tiene que apuntar al nodo nuevo antes.
-9. **Apagar el nodo viejo**, que es lo que convierte a los huérfanos en nada. Mientras siga
+10. **Apagar el nodo viejo**, que es lo que convierte a los huérfanos en nada. Mientras siga
    encendido hay dos clústeres sirviendo el mismo producto, y solo uno está gestionado.
 
 ## Lo que este documento no resuelve
@@ -116,5 +196,16 @@ la desengancha, si la entrada nace marcada, o si su descripción deja de avisar.
   cada uno traía afirmaciones que sólo caen al ejecutarlas — un código HTTP que ya no es, una
   base y un rol que cambiaron, una alerta que no puede dispararse. El que continúa a este
   documento es [Reconstruir el VPS desde cero](../B0-operacion/runbooks/reconstruir-el-vps-desde-cero.md).
-- **La asimetría con `stg` no se toca**: su estado sí está al día, así que no tiene este
-  problema. El día que `stg` cambie de nodo, lo tendrá, y este procedimiento le sirve igual.
+- ~~**La asimetría con `stg` no se toca**: su estado sí está al día, así que no tiene este
+  problema. El día que `stg` cambie de nodo, lo tendrá, y este procedimiento le sirve igual.~~ —
+  **falso por partida doble, medido el 2026-09-13.** (a) `stg` tuvo el problema **con el estado
+  al día**: 141 recursos errados. Que el estado estuviera fresco no importaba, porque lo que
+  lleva el kubeconfig viejo es el proveedor, no la antigüedad de las entradas. (b) El
+  procedimiento **no le servía igual**: su paso del disparo no se podía ejecutar, porque la
+  variable sólo estaba cableada en `aplicar-prod`. Las dos cosas están corregidas arriba. Se
+  deja tachado y no borrado: es lo que se creyó, y saber que se creyó eso es lo que explica por
+  qué el paso faltaba.
+- **Las precondiciones del nodo no se comprueban solas.** Que k3s traiga su Traefik, que la
+  reserva esté puesta y que el DNS apunte al nodo nuevo son tres cosas que hoy se miran a mano,
+  con los comandos de los pasos 2 y 3. Ninguna guarda del repositorio las ve: `pulumi up` las
+  descubre fallando.
