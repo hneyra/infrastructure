@@ -81,6 +81,49 @@ if [ "${1:-}" = "--clasificar" ]; then
     exit 0
 fi
 
+# Dice POR QUE el selector no encontro nada. Lee de stdin los nombres de TODOS los espacios de
+# nombres del cluster —tal como los da `kubectl get namespaces -o name`— y recibe el ambiente.
+#
+# Hasta el 2026-09-13 ofrecia dos explicaciones —«no se ha creado nunca» o «cambiaron las
+# etiquetas»— y en el caso mas comun las dos eran falsas. Medido en la corrida 34761890146, el
+# primer `pulumi up` de `stg` sobre un cluster vacio: `bootstrap-secretos.sh` habia creado los
+# seis a las 14:12:35Z con `kubectl create namespace` —SIN etiquetas—, Pulumi murio en el
+# refresco, y a las 14:13:33Z este guion mando a mirar las etiquetas. Las pone `pulumi up`
+# (14:24:14Z, en la corrida siguiente). O sea: todo primer `up` fallido sobre un cluster vacio
+# cae aqui, y el sitio donde mirar es el paso de Pulumi.
+#
+# Busca por NOMBRE solo para explicar el vacio; lo que se vuelca sigue saliendo del selector,
+# por lo que dice la cabecera. Y el patron va ANCLADO a los dos extremos: como avisa
+# `infra/descriptor/entorno.ts`, un prefijo dejaria pasar `kamayuk-stg-loquesea`, y lo que no
+# puede pasar es que `stg` tome por suyos los de `prod`.
+explicarSinEspacios() {
+    local ambiente="$1" nombre sueltos=""
+    local patron="^kamayuk(-[a-z]+)?-${ambiente}\$"
+    while IFS= read -r nombre; do
+        nombre="${nombre#namespace/}"
+        if [[ "$nombre" =~ $patron ]]; then
+            sueltos="${sueltos}${nombre} "
+        fi
+    done
+    echo "NINGUN espacio de nombres lleva «${SELECTOR_DEL_AMBIENTE}${ambiente}»."
+    if [ -n "$sueltos" ]; then
+        echo "Pero SI existen, por su nombre y sin esas etiquetas: ${sueltos% }."
+        echo 'Los crea `bootstrap-secretos.sh`, que corre ANTES que Pulumi, y las etiquetas'
+        echo 'se las pone `pulumi up` al aplicarlos: no llego a hacerlo. La causa esta en el'
+        echo 'paso de `pulumi up` de este trabajo, no en las etiquetas.'
+    else
+        echo 'O el ambiente no se ha creado nunca, o las etiquetas de `commonLabels`'
+        echo "cambiaron y este diagnostico dejo de encontrarlas."
+    fi
+    echo "NO es «todo bien»."
+}
+
+if [ "${1:-}" = "--explicar-sin-espacios" ]; then
+    # Solo para las pruebas: lee los nombres de stdin.
+    explicarSinEspacios "${2:?uso: $0 --explicar-sin-espacios <stg|prod>}"
+    exit 0
+fi
+
 diagnosticar_uno() {
     local NAMESPACE="$1"
 
@@ -162,9 +205,7 @@ if [ "${1:-}" = "--ambiente" ]; then
     # casar —porque alguien renombro una etiqueta— haria que este guion saliera en verde
     # habiendo diagnosticado exactamente nada, que es el fallo que #40 existe para cerrar.
     if [ -z "$ESPACIOS" ]; then
-        echo "NINGUN espacio de nombres lleva «${SELECTOR_DEL_AMBIENTE}${AMBIENTE}»."
-        echo 'O el ambiente no se ha creado nunca, o las etiquetas de `commonLabels`'
-        echo "cambiaron y este diagnostico dejo de encontrarlas. NO es «todo bien»."
+        kubectl get namespaces -o name 2>/dev/null | explicarSinEspacios "$AMBIENTE" || true
         exit 0
     fi
 
