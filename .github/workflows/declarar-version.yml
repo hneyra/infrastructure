@@ -1,0 +1,171 @@
+# Cuando un hermano publica una versión, ésta se clava en `stg` y se pide su despliegue.
+#
+# ## El hueco que cierra
+#
+# `infra.yml` sólo puede filtrar por rutas **de este repositorio**, así que una migración de
+# `rentas` no dispara nada. Está declarado desde P6 en `infra.yml:92-94`: «se cierra con un
+# disparo entre repositorios (`repository_dispatch`), que no está hecho». Éste es ese disparo.
+#
+# Medido el 2026-09-13, antes de existir: `prod` iba **61 commits** por detrás de los cinco
+# `main` sumados —`rentas` 33, `caja` 16, `identidad` 7, `catastro` 3, `normativa` 2— y `stg`
+# estaba *más* atrás que `prod` en `rentas` (45 contra 33). No es que `stg` fuera por delante:
+# es que cada línea se clavó a mano en un momento distinto.
+#
+# ## Por qué se llama así
+#
+# Hubo un `declarar-version.yml` aquí hasta el corte del monolito (borrado en `ce0f120`). Hacía
+# esto mismo para `applicationBootstrapVersion`, una clave que era el `sha` de `sgtm` y que se
+# fue con él. Tres comentarios de este repositorio siguen citándolo como si existiera
+# —`infra.yml:121-125`, `:1076-1077` y `deriva-de-migraciones.ts:86-88`—; recuperar el nombre
+# es lo que los vuelve ciertos.
+#
+# ## SOLO `stg`, y es una decisión, no una simplificación
+#
+# ADR-0011 §6 dice, con esas palabras, que `prod` es «`pulumi up` con aprobación manual
+# explícita. **Nunca automático**». Este flujo no lo toca: escribe en `Pulumi.stg.yaml` y en
+# ningún otro sitio. Subir la línea de `prod` sigue siendo un PR, que es lo que conserva la
+# propiedad que `Pulumi.prod.yaml` declara — «`prod` no estrena una versión que `stg` no haya
+# corrido».
+name: Declarar la versión desplegable
+
+on:
+  repository_dispatch:
+    types: [version-publicada]
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  # Una a la vez: dos hermanos que mezclan a la vez escribirían el mismo archivo, y el segundo
+  # `push` rebotaría. Sin `cancel-in-progress`: cancelar la primera perdería esa versión.
+  group: declarar-version
+  cancel-in-progress: false
+
+jobs:
+  declarar:
+    name: Clavar la versión en stg y pedir que se aplique
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Se va a integrar en `main`, así que hace falta poder empujar.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # El payload viene de OTRO repositorio, así que no se da por bueno. Un `sha` inventado de
+      # cuarenta hexadecimales ya se coló una vez escribiéndolo a mano
+      # (`deriva-de-migraciones.test.ts:84-103`), y aquí ni siquiera lo escribe una persona.
+      - name: Validar lo que llega
+        id: validar
+        env:
+          SISTEMA: ${{ github.event.client_payload.sistema }}
+          SHA: ${{ github.event.client_payload.sha }}
+        run: |
+          set -euo pipefail
+          case "$SISTEMA" in
+            rentas|catastro|normativa|caja|identidad) ;;
+            *) echo "::error::«$SISTEMA» no es uno de los cinco sistemas con imagen."; exit 1 ;;
+          esac
+          case "$SHA" in
+            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*)
+              [ "${#SHA}" -eq 40 ] || { echo "::error::«$SHA» no son 40 hexadecimales."; exit 1 ;} ;;
+            *) echo "::error::«$SHA» no es un sha hexadecimal."; exit 1 ;;
+          esac
+          # La clave, tal como `claveDeVersion()` la compone en `infra/config.ts:387-389`.
+          inicial=$(printf '%s' "${SISTEMA:0:1}" | tr '[:lower:]' '[:upper:]')
+          echo "clave=kamayuk:versionDe${inicial}${SISTEMA:1}" >> "$GITHUB_OUTPUT"
+          echo "sistema=$SISTEMA" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      # Clavar una etiqueta que no existe NO falla: deja los pods en `ImagePullBackOff` con el
+      # manifiesto válido y el `up` en verde (`infra.yml:1208-1212`). Así que se pregunta antes.
+      - name: La imagen existe en el registro
+        env:
+          GHCR_USUARIO: ${{ github.repository_owner }}
+          GHCR_CLAVE: ${{ secrets.REGISTRY_PULL_TOKEN || secrets.GITHUB_TOKEN }}
+          SISTEMA: ${{ steps.validar.outputs.sistema }}
+          SHA: ${{ steps.validar.outputs.sha }}
+        run: |
+          set -euo pipefail
+          propietario=$(printf '%s' "$GHCR_USUARIO" | tr '[:upper:]' '[:lower:]')
+          imagen="kamayuk-$SISTEMA"
+          token=$(curl -sS -u "$GHCR_USUARIO:$GHCR_CLAVE" \
+            "https://ghcr.io/token?service=ghcr.io&scope=repository:$propietario/$imagen:pull" \
+            | python3 -c 'import sys, json; print(json.load(sys.stdin).get("token", ""))')
+          codigo=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $token" \
+            -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json' \
+            "https://ghcr.io/v2/$propietario/$imagen/manifests/$SHA")
+          # Los tres desenlaces se distinguen: un 403 no es «no existe», es «no se pudo saber».
+          case "$codigo" in
+            200) echo "OK ghcr.io/$propietario/$imagen:$SHA" ;;
+            404) echo "::error::ghcr.io/$propietario/$imagen:$SHA no existe. No se clava."; exit 1 ;;
+            *)   echo "::error::El registro contestó $codigo por esa etiqueta. No se da por buena una respuesta que no sea 200."; exit 1 ;;
+          esac
+
+      - name: Clavarla en `stg` — y solo en `stg`
+        id: clavar
+        env:
+          CLAVE: ${{ steps.validar.outputs.clave }}
+          SHA: ${{ steps.validar.outputs.sha }}
+        run: |
+          set -euo pipefail
+          archivo=infra/Pulumi.stg.yaml
+          actual=$(sed -n "s|^  ${CLAVE}: \(.*\)$|\1|p" "$archivo")
+          if [ -z "$actual" ]; then
+            echo "::error::«$CLAVE» no está declarada en $archivo. Este flujo actualiza una línea que existe; no la inventa."
+            exit 1
+          fi
+          if [ "$actual" = "$SHA" ]; then
+            echo "«$CLAVE» ya vale $SHA: no hay nada que declarar." >> "$GITHUB_STEP_SUMMARY"
+            echo "cambio=no" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 - "$archivo" "$CLAVE" "$SHA" <<'PY'
+          import pathlib, sys
+          archivo, clave, sha = sys.argv[1], sys.argv[2], sys.argv[3]
+          p = pathlib.Path(archivo)
+          lineas = p.read_text().split("\n")
+          for i, l in enumerate(lineas):
+              if l.startswith(f"  {clave}: "):
+                  lineas[i] = f"  {clave}: {sha}"
+                  break
+          else:
+              raise SystemExit(f"no se encontro «{clave}»")
+          p.write_text("\n".join(lineas))
+          PY
+          echo "cambio=si" >> "$GITHUB_OUTPUT"
+          echo "anterior=$actual" >> "$GITHUB_OUTPUT"
+
+      - name: Integrarla en `main`
+        if: steps.clavar.outputs.cambio == 'si'
+        env:
+          CLAVE: ${{ steps.validar.outputs.clave }}
+          SISTEMA: ${{ steps.validar.outputs.sistema }}
+          SHA: ${{ steps.validar.outputs.sha }}
+          ANTERIOR: ${{ steps.clavar.outputs.anterior }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add infra/Pulumi.stg.yaml
+          git commit -m "stg despliega ${SISTEMA}@${SHA:0:12}" \
+                     -m "Publicada por hneyra/${SISTEMA}. Anterior: ${ANTERIOR:0:12}." \
+                     -m "Solo \`stg\`: ADR-0011 §6 reserva \`prod\` para una aprobacion manual."
+          # `--rebase` y no `--force`: si alguien integró entre medias, esta línea se pone encima.
+          git pull --rebase origin main
+          git push origin HEAD:main
+          {
+            echo "### \`$CLAVE\` → \`${SHA:0:12}\`"
+            echo
+            echo "Publicada por \`hneyra/$SISTEMA\`. Anterior: \`${ANTERIOR:0:12}\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Un `push` hecho con el `GITHUB_TOKEN` **no dispara flujos**, así que sin esto la versión
+      # quedaría declarada y sin aplicar hasta el siguiente push que tocara las rutas de
+      # `infra.yml`. Es lo que el comentario de `infra.yml:130-139` describe.
+      - name: Pedirle a `infra.yml` que la aplique
+        if: steps.clavar.outputs.cambio == 'si'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run infra.yml --ref main
