@@ -164,7 +164,7 @@ config:
   # `kamayuk-<sistema>-interfaz:<sha>`, y con el `sha` anterior esa etiqueta **no existe** —medido,
   # `yarn imagenes` contestaba `NO EXISTE`—. En `catastro` ademas la imagen se llamaba `-web`.
   kamayuk:versionDeCatastro: 912b4ee5503e1b3de654162832b34332cdaa3dd8
-  kamayuk:versionDeNormativa: e9ed033017762560139e6c4b5465501f1c4636b4
+  kamayuk:versionDeNormativa: c01fe9a18e60f583f1afa84d24c2ec698c0946a9
   kamayuk:versionDeCaja: 514e6452e4d22ecc7bbf2b84926b6fdd0e54708e
   # El quinto (ADR-0039). Es el `sha` de `main` de `hneyra/identidad` —su etapa 1 se integro
   # como `89eca30`—, medido con `git -C ../identidad rev-parse origin/main` y no tecleado:
