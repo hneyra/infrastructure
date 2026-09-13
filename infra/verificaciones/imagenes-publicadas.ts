@@ -498,9 +498,15 @@ export function fuenteDeLosEspaciosConCredencial(): string {
  * Los espacios de nombres cuyos pods tienen credencial para `ghcr.io`, y de donde sale el dato.
  *
  * **No es «los que declaran `imagePullSecrets` en el pod»**, y creerlo daba un falso positivo
- * sobre el monolito: la credencial no vive en ningun `spec`. `index.ts` crea el `Secret`
+ * sobre el monolito, cuando la credencial no vivia en ningun `spec`: `index.ts` crea el `Secret`
  * `<amb>-registro-credenciales` y **parchea el `ServiceAccount` `default`**, de donde la heredan
- * todos los pods de ese espacio de nombres —ninguno declara `serviceAccountName`— (issue #257).
+ * los pods de ese espacio de nombres que se crean despues del parche (issue #257).
+ *
+ * **Desde #166 la lleva ademas cada `spec`**, y eso vuelve a hacer falsa la lectura por el pod,
+ * ahora en la otra direccion: `imagePullSecrets` nombra un `Secret` por su nombre, y solo sirve si
+ * ese `Secret` existe EN SU espacio de nombres. Una plantilla que lo nombra en un espacio donde
+ * `index.ts` no lo crea no puede bajar nada. Asi que la credencial la sigue decidiendo el espacio,
+ * por las dos vias.
  *
  * Y llegaba a **uno**, el de la plataforma. Desde ADR-0031 cada sistema vive en el suyo, y ahi no
  * habia ni `Secret` ni parche: funcionaba porque los ocho paquetes de los cuatro sistemas del
@@ -608,7 +614,12 @@ export function cargasConImagenDelProducto(ambiente: Environment): CargaConImage
       espacio,
       donde: `${String(manifiesto["kind"])}/${meta?.name ?? ""}`,
       imagenes,
-      credencial: (pod.imagePullSecrets ?? []).length > 0 || conCredencial.has(espacio),
+      // SOLO el espacio, y ya no «o su `spec` declara `imagePullSecrets`» (#166). Mientras
+      // ningun `spec` lo declaraba, ese «o» no pesaba nada; desde que `conCredencialDeRegistro`
+      // lo pone en TODAS las plantillas, lo haria verdadero para todas, y esta guarda pasaria en
+      // verde con el `Secret` ausente de cualquier espacio — el conjunto vacio otra vez. Por las
+      // dos vias, lo que hace falta es que el `Secret` exista donde vive el pod.
+      credencial: conCredencial.has(espacio),
     });
   }
 
@@ -617,7 +628,8 @@ export function cargasConImagenDelProducto(ambiente: Environment): CargaConImage
 
 /**
  * Las cargas que traen una imagen del producto y **no podrian bajarla si el paquete fuera
- * privado**: ni su `spec` declara `imagePullSecrets` ni su espacio de nombres tiene la credencial.
+ * privado**: su espacio de nombres no recibe el `Secret` de `index.ts`, que es lo unico que hace
+ * servir tanto el parche como el `imagePullSecrets` de su `spec` (#166).
  *
  * Eran DIECINUEVE —las de los cinco sistemas, porque el parche llegaba solo a la plataforma— y
  * hoy son cero, porque la credencial llega a los seis espacios del ambiente. Lo que sigue

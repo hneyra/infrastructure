@@ -67,8 +67,13 @@ fi
 # «Sin credencial» NO es «su `spec` no declara `imagePullSecrets`», y creerlo daba un falso
 # positivo sobre el monolito. La credencial de `ghcr.io` no vive en ningun pod: `index.ts` crea el
 # `Secret` `<amb>-registro-credenciales` y **parchea el `ServiceAccount` `default`** del espacio de
-# nombres, que es de donde la heredan todos sus pods —ninguno declara `serviceAccountName`—
-# (issue #257). Asi que un pod la tiene aunque su `spec` no diga nada.
+# nombres, que es de donde la heredan los pods que se crean despues del parche (issue #257). Asi
+# que un pod la tiene aunque su `spec` no diga nada.
+#
+# **Y desde #166 tampoco es «su `spec` SI la declara».** `yarn manifiestos` pone ahora el nombre
+# del `Secret` en TODAS las plantillas —el parche no alcanza a un pod creado antes que el—, asi que
+# contar el `spec` daria credencial a todos. Lo que la da de verdad, por las dos vias, es que el
+# `Secret` exista en el espacio del pod: por eso se mira solo el espacio.
 #
 # **A que espacios llega NO se escribe aqui: se pregunta.** Esta linea decia
 # `espacio == "kamayuk-<ambiente>"`, que era cierto mientras la credencial llegaba a un solo sitio
@@ -112,7 +117,7 @@ def especificaciones(m):
 for m in d["items"]:
     espacio = m.get("metadata", {}).get("namespace", "")
     for spec in especificaciones(m):
-        credencial = bool(spec.get("imagePullSecrets")) or espacio in con_credencial
+        credencial = espacio in con_credencial
         for c in list(spec.get("containers", [])) + list(spec.get("initContainers", [])):
             imagen = c.get("image", "")
             if not imagen.startswith("ghcr.io/"):
@@ -163,9 +168,10 @@ while IFS=' ' read -r referencia credencial; do
       if [ "$visibilidad" = "privada" ] && [ "$credencial" = "sin-credencial" ]; then
         echo "FALTA CREDENCIAL $referencia" >&2
         echo "          La imagen es privada y algun pod que la trae vive en un espacio de" >&2
-        echo "          nombres sin credencial de registro: ni su \`spec\` declara" >&2
-        echo "          \`imagePullSecrets\` ni su espacio esta entre los que \`index.ts\` parchea" >&2
-        echo "          (issue #257). Ese pod no puede bajarla y queda en ImagePullBackOff." >&2
+        echo "          nombres sin credencial de registro: su espacio no esta entre los que" >&2
+        echo "          reciben el Secret de \`index.ts\` (issues #257 y #166), y sin el ni el" >&2
+        echo "          parche ni el \`imagePullSecrets\` de su plantilla le sirven de nada." >&2
+        echo "          Ese pod no puede bajarla y queda en ImagePullBackOff." >&2
         echo "          Los que SI la llevan hoy: $(echo "$ESPACIOS" | tr '"'"'\n'"'"' ' ')" >&2
         echo "          Remedio: que ese espacio de nombres entre en el bucle de \`index.ts\` que" >&2
         echo "          crea el Secret dockerconfigjson y parchea su ServiceAccount, o publicar" >&2

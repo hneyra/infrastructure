@@ -198,6 +198,10 @@ la desengancha, si la entrada nace marcada, o si su descripción deja de avisar.
      `kubectl -n kamayuk-identidad-<amb> delete pod --all` y comprobar que los recreados llevan
      `spec.imagePullSecrets`. Los `Job` de implantación de los otros se recuperan solos en su
      siguiente reintento.
+     **Desde que se integró el arreglo de #166 cada plantilla de pod lleva ya el secreto en su
+     `spec`**, así que el orden deja de importar y este paso no debería hacer falta con un
+     `main` posterior. «No debería»: está medido en un k3s desechable y no todavía en una mudanza
+     real, así que el paso se queda hasta que la primera lo confirme.
 7. Comprobar que la corrida siguiente, **sin** marcarlo, sale verde. Si no, el estado no quedó
    limpio y hay que mirarlo antes de seguir — no volver a marcarlo por costumbre.
 8. **Lanzar el respaldo a mano, sin esperar al `CronJob`**, y leer su salida:
