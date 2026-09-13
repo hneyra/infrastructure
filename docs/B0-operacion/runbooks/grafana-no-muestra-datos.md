@@ -4,7 +4,7 @@
 |---|---|
 | Cuándo | El tablero **Kamayuk — Resumen operativo** carga, pero una fila o todas salen vacías |
 | Qué cubre | Distinguir el vacío que es un **hueco declarado** del que es una **avería** (§1); Prometheus sin raspar (§2); **Prometheus con una configuración vieja**, que es el que engaña (§3); Grafana con un tablero viejo (§4); y la red (§5). Llegar a Grafana está en [`abrir-grafana.md`](abrir-grafana.md) |
-| Estado del ensayo | **Diagnóstico ensayado contra el Prometheus y el Grafana reales de `stg`** (`vmd194233`, k3d, 2026-09-12), incluido el remedio de §3, que se aplicó. **No ensayados:** los remedios de §4 y §5, y nada contra `prod` — ver «Estado del ensayo» |
+| Estado del ensayo | **Remedido contra el `stg` nuevo** (`vmd205066`, k3s nativo, 2026-09-13): las doce consultas, los objetivos, las reglas y las huellas. **Ensayado antes contra el k3d de `vmd194233`** (2026-09-12), incluido el remedio de §3, que se aplicó. **No ensayados:** los remedios de §4 y §5, y nada contra `prod` — ver «Estado del ensayo» |
 
 ## Síntoma
 
@@ -34,8 +34,9 @@ pueden sonar (#113).
 ### 1. Qué fila está vacía, y si tiene que estarlo
 
 **Tres de las doce consultas del tablero están vacías a propósito.** Antes de buscar una avería,
-mirar esta tabla. Se midió en `stg` el 2026-09-12, ejecutando cada `expr` del tablero contra su
-Prometheus, y entonces eran **cuatro**: la cuarta era una avería que arregló #152 (ver su fila).
+mirar esta tabla. Se midió ejecutando cada `expr` del tablero contra el Prometheus de `stg`: el
+2026-09-13 en el `stg` nuevo, y salieron **exactamente esas tres**. El 2026-09-12, en el k3d viejo,
+eran **cuatro**: la cuarta era el disco (ver su fila).
 
 | Fila | Panel | Serie | `stg` | Por qué |
 |---|---|---|---|---|
@@ -43,7 +44,7 @@ Prometheus, y entonces eran **cuatro**: la cuarta era una avería que arregló #
 | JVM y Spring Boot | Peticiones HTTP por segundo | `http_server_requests_seconds_count{application="kamayuk"}` | **vacío** | El mismo |
 | PostgreSQL | El motor responde · Conexiones · Filas | `pg_up`, `pg_stat_activity_count`, `pg_stat_database_tup_*` | con datos | — |
 | El nodo | CPU en uso · Memoria en uso | `node_cpu_seconds_total`, `node_memory_*` | con datos | — |
-| El nodo | Disco en uso, raíz | `node_filesystem_*{mountpoint="/"}` | vacío el 2026-09-12; **con datos desde #152**, sin remedir aquí | **Si vuelve a salir vacío, es AVERÍA, no hueco.** Medido antes de #152: node-exporter sólo veía los montajes de su contenedor —`/etc/hostname`, `/etc/hosts`, `/etc/resolv.conf`, `/dev`, `/dev/shm`, `/var/run`—, ninguno `/`, y **`DiscoDelNodoAlto` no podía sonar** ([#147](https://github.com/hneyra/infrastructure/issues/147)). #152 monta el `/` del anfitrión de sólo lectura y le pasa `--path.rootfs=/host`. `SinMetricasDelNodo` es la alerta que avisa si se pierde otra vez |
+| El nodo | Disco en uso, raíz | `node_filesystem_*{mountpoint="/"}` | con datos: `/dev/sda1`, `ext4`, 192,9 GiB, **59,3 %** usado (2026-09-13) | **Si vuelve a salir vacío, es AVERÍA, no hueco**, y `SinMetricasDelNodo` lo avisa. Lo que la hizo funcionar es #152: monta el `/` del anfitrión de sólo lectura y le pasa `--path.rootfs=/host` a node-exporter. **Y lo que la rompía la segunda vez era el k3d** ([#147](https://github.com/hneyra/infrastructure/issues/147)): con #152 ya desplegado, en `vmd194233` seguía vacía, porque allí el «nodo» era un contenedor y su `/` era `overlay`, que node-exporter excluye por omisión. En k3s nativo ese `/` es el disco del VPS |
 | Pods | Reinicios · Pods no listos | `kube_pod_*` | con datos | — |
 | Pods | Versión desplegada y desde cuándo | `kube_pod_start_time{pod=~".*aplicacion.*"}` | **vacío** | **Hueco declarado.** Ningún pod se llama `aplicacion` desde que salió el monolito (`E`); los de los sistemas se llaman `kamayuk-<sistema>-web-*` |
 
@@ -65,7 +66,7 @@ curl -s 'http://127.0.0.1:9090/api/v1/targets?state=active' \
   | grep -oE '"scrapeUrl":"[^"]*"|"health":"[^"]*"' | paste - -
 ```
 
-Medido en `stg`, sano:
+Medido en el `stg` nuevo el 2026-09-13, sano (la misma lista que en el k3d viejo):
 
 ```
 "scrapeUrl":"http://kamayuk-stg-observabilidad-kube-state-metrics:8080/metrics"	"health":"up"
@@ -94,8 +95,8 @@ en `firing`, esta sección es la que toca.
 
 **Es el caso que engaña, y se midió en `stg` el mismo día que se escribió esto.** Desde #152 el
 despliegue ya no lo produce (ver «Por qué pasa»), pero el diagnóstico sigue valiendo para el caso
-que #152 no cubre. El despliegue
-había cambiado el objetivo de Traefik y añadido cinco reglas (#113). El `ConfigMap` estaba bien, el
+que #152 no cubre. Lo que se midió el 2026-09-12, en el k3d viejo: el despliegue había cambiado
+el objetivo de Traefik y añadido cinco reglas (#113). El `ConfigMap` estaba bien, el
 archivo dentro del pod estaba bien, y Prometheus seguía raspando el objetivo viejo y evaluando
 **10 reglas de 15**:
 
@@ -118,6 +119,9 @@ cambio de configuración desplegado cambia la plantilla, Kubernetes recrea el po
 arranca con la configuración nueva. **Lo que #152 no cubre:** un `ConfigMap` cambiado **a mano**
 —`kubectl edit`, deriva— no toca la plantilla, así que vuelve a dejar el archivo nuevo y el proceso
 viejo. Para eso siguen valiendo el diagnóstico y el remedio de abajo.
+
+**Remedido en el `stg` nuevo el 2026-09-13:** 17 reglas declaradas y **17 cargadas**, y el pod de
+Prometheus con su anotación (`suma-de-la-configuracion: e18605b7e6c1f602`).
 
 **Cómo se reconoce.** Las reglas que declara el `ConfigMap` contra las que Prometheus tiene
 cargadas:
@@ -172,7 +176,8 @@ kubectl -n kamayuk-<amb> get cm kamayuk-<amb>-observabilidad-grafana \
   -o jsonpath='{.data.resumen-operativo\.json}' | sha256sum
 ```
 
-Medido en `stg`: las dos `03074f17…a2531e9f`, iguales. Si difieren:
+Medido en el k3d viejo y otra vez en el `stg` nuevo (2026-09-13): las dos `03074f17…`, iguales.
+Si difieren:
 
 ```bash
 kubectl -n kamayuk-<amb> rollout restart deploy/kamayuk-<amb>-observabilidad-grafana
@@ -216,13 +221,16 @@ Las tres, contra el sistema real:
 
 ## Estado del ensayo
 
-**Ensayado contra `stg`** (`vmd194233`, k3d, 2026-09-12), desde la máquina de trabajo:
+**Remedido contra el `stg` nuevo** (`vmd205066`, k3s nativo, 2026-09-13), desde la máquina de trabajo:
 
-> **El 2026-09-13 `stg` mudó** a k3s nativo sobre `vmd205066` ([#145](https://github.com/hneyra/infrastructure/issues/145)),
-> así que lo de abajo se midió contra un nodo que ya no sirve a `stg`. El sello se deja tal
-> como se tomó: remedir es otro trabajo. Lo único que la mudanza cambia por sí sola es el
-> puerto remoto del túnel, que pasa a ser el **6443** en los dos ambientes.
+- las **doce** consultas del tablero: **tres vacías**, las tres de los huecos declarados de §1;
+- el disco del nodo: `/dev/sda1`, `ext4`, 192,9 GiB, 59,3 %; `SinMetricasDelNodo` en `inactive`;
+- los cinco objetivos de §2 en `up`;
+- §3: 17 reglas declaradas y 17 cargadas, con la anotación de #152 en el pod;
+- §4: las dos huellas del tablero, iguales;
+- el origen de datos sano, y la métrica del certificado de Traefik presente (`traefik_tls_certs_not_after`).
 
+**Ensayado antes contra el k3d de `vmd194233`** (2026-09-12), que ya no es `stg`:
 
 - las **doce** consultas del tablero, una a una, contra su Prometheus: la tabla de §1;
 - la lista de objetivos de §2, con sus cinco `up`;
@@ -239,11 +247,6 @@ Las tres, contra el sistema real:
 - **§5 con la red rota.** Habría que borrar una `NetworkPolicy` de `stg`. El diagnóstico se apoya
   en leer las dos políticas, no en haber visto el fallo.
 - **`prod`, entero.** En la máquina de trabajo no hay kubeconfig de `prod`.
-- **`stg` después de #152.** Se integró mientras este runbook esperaba revisión, y su `pulumi up
-  en stg` salió bien. Pero cuando se fue a remedir, el túnel al API de `stg` estaba cerrado y no se
-  pudo reabrir desde la sesión. Así que «Disco en uso, raíz» con datos y la recreación del pod por
-  la huella se afirman **por el código de #152, no por una medición de este runbook**. La primera
-  vez que se siga, anotar aquí lo que dio.
 
 ## Documentos relacionados
 
