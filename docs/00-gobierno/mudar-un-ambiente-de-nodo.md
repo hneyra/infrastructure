@@ -127,10 +127,18 @@ la desengancha, si la entrada nace marcada, o si su descripción deja de avisar.
    objetivo `traefik-metrics` de Prometheus nunca llega a existir.
    ```bash
    kubectl get helmchart -A                        # tiene que salir `traefik` en kube-system
-   kubectl -n kube-system get pods | grep -i traefik
+   kubectl get crd | grep -E 'ingressroutes|middlewares|tlsoptions'   # los tres que se usan
+   kubectl -n kube-system get svc traefik          # LoadBalancer con EXTERNAL-IP, 80 y 443
+   curl -s -o /dev/null -w '%{http_code}\n' http://<ip-del-nodo>:80/   # 404 = arriba y sin rutas
    sudo ls /var/lib/rancher/k3s/server/manifests/  # si queda `traefik.yaml.skip`, borrarlo
-   ss -ltn | grep -E ':(80|443) '
    ```
+   ⚠ **`ss -ltn` NO sirve para esto, y decirlo ahorra un susto.** Medido el 2026-09-13: con
+   Traefik arriba y sirviendo, `ss -ltn | grep -E ':(80|443) '` sale **vacío**. Los publica
+   `svclb-traefik` con `hostPort`, que el complemento *portmap* del CNI implementa con **DNAT de
+   iptables y no con un socket en el anfitrión**. Un operador que compruebe con `ss` concluye
+   que Traefik está roto cuando está bien. Lo que mide de verdad es un `curl` contra el puerto:
+   **404 es la respuesta buena** —Traefik contesta y todavía no hay ninguna ruta—; lo que dice
+   que no está es `connection refused`.
 4. **Los secretos del *environment*, y no son los mismos en los dos ambientes.** `prod` tiene
    **dos** —`prod` y `prod-preview`—; `stg` tiene **uno**. Son seis: `VPS_HOST`, `VPS_USER`,
    `SSH_PRIVATE_KEY`, `KUBECONFIG`, `BACKUP_ACCESS_KEY_ID` y `BACKUP_SECRET_ACCESS_KEY`.
