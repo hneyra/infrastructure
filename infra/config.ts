@@ -205,10 +205,12 @@ export interface ApplicationSettings {
   /**
    * Repositorio de las imágenes, **sin etiqueta**.
    *
-   * `ADR-0011` §5: la etiqueta de la imagen vive fuera del estado de Pulumi. Si entra
-   * aquí, cada liberación pasa a ser un `pulumi up` y cada reversión también, lo que
-   * acopla el ritmo de la aplicación al de la infraestructura. La etiqueta la pone el
-   * flujo de liberación (issue #148).
+   * `ADR-0011` §5, con su enmienda del 2026-09-14 (#172): la versión de la imagen vive en el
+   * stack, pero en **una línea por sistema** —`kamayuk:versionDe<Sistema>`—, y la etiqueta la
+   * compone `imagenDe()` con ella. Una etiqueta aquí sería una segunda versión, una sola para
+   * los cinco sistemas, escrita en otro sitio que el que se sube para liberar y se baja para
+   * revertir. Hasta #172 este bloque decía que la etiqueta «vive fuera del estado de Pulumi» y
+   * la pone «el flujo de liberación» con cada liberación sin `pulumi up`: no era así.
    */
   imageRepository: string;
   /**
@@ -854,13 +856,14 @@ export function checkInvariants(s: Invariants): string[] {
     );
   }
 
-  // ── ADR-0011 §5 — la versión de la imagen vive fuera del estado ────────────
+  // ── ADR-0011 §5 (enmienda de #172) — la versión vive en UNA línea por sistema ──
   if (s.application.imageRepository.includes(":")) {
     problems.push(
       `\`applicationImageRepository\` vale «${s.application.imageRepository}» y lleva etiqueta. ` +
-        "ADR-0011 §5: la etiqueta de la imagen la pone el flujo de liberación, no Pulumi. Con " +
-        "la versión en el estado, cada liberación es un `pulumi up` y cada reversión también, " +
-        "y se pierde la reversión que no toca la infraestructura.",
+        "ADR-0011 §5, enmendado en #172: la versión de cada sistema vive en su línea " +
+        "`kamayuk:versionDe<Sistema>`, y liberar o revertir es cambiar esa línea. Una etiqueta " +
+        "aquí sería una segunda versión, la misma para los cinco, en un sitio que nadie sube ni " +
+        "baja al liberar.",
     );
   }
 

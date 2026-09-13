@@ -8,6 +8,7 @@
 | Extiende | [ADR-0011](ADR-0011-infraestructura-como-codigo.md), que no se reemplaza: sus cuatro decisiones siguen vigentes |
 | Depende de | [ADR-0029](ADR-0029-cuatro-sistemas-separados.md) |
 | Abre | D-25 |
+| Enmendado | 2026-09-14 — §3: la versión vive en el stack ([#172](https://github.com/hneyra/infrastructure/issues/172)). Ver [la enmienda](#enmienda-del-2026-09-14--la-versión-vive-en-el-stack), al final |
 
 
 > Aceptado el 2026-09-04 por la direccion del proyecto, al contestar **D-22**: el producto lo opera un equipo central, no cada municipalidad. Ver [`D-22`](../../00-gobierno/D-22-quien-opera-cuatro-despliegues.md) en `infrastructure`.
@@ -81,6 +82,11 @@ Dos consecuencias que hay que ver juntas:
 stacks agrega coordinación de referencias cruzadas a cambio de nada; con cuatro sistemas sobre un
 solo nodo es aún más cierto. Siguen siendo `stg` y `prod`, del mismo `index.ts`.
 
+> **Superado el 2026-09-14** por la [enmienda del final](#enmienda-del-2026-09-14--la-versión-vive-en-el-stack)
+> (opción A de [#172](https://github.com/hneyra/infrastructure/issues/172)): el párrafo
+> siguiente —«la etiqueta de la imagen sigue fuera del estado de Pulumi»— no rige. Se deja tal
+> cual se decidió. Los otros dos párrafos de §3 siguen vigentes.
+
 Y **la frontera de ADR-0011 §5 no se toca**: la etiqueta de la imagen sigue fuera del estado de
 Pulumi. Es lo que hace que una liberación normal de `catastro` no toque `infrastructure`, y es
 exactamente lo que vuelve tolerable que la composición este centralizada. Si alguien mete la versión
@@ -143,6 +149,8 @@ clúster en vez de duplicarse.
   un nodo es peor.
 - **GitOps con Argo CD o Flux**, cada repo escribiendo manifiestos a un repositorio de despliegue.
   Encaja bien con la frontera de ADR-0011 §5 y resuelve el «descriptor que nadie compone» de raiz.
+  *[Nota del 2026-09-14: esa frontera se enmendó —la versión vive en el stack, ver la enmienda—,
+  así que GitOps tendría que convivir con ella en vez de encajar; su evaluación es #173 §3.]*
   Se descarta **por ahora** y no por siempre: es otra pieza que operar en un nodo que ya lleva
   PostgreSQL, Keycloak, Traefik y cuatro aplicaciones. Es la evolución natural el día que el trabajo
   programado del §Consecuencias no baste.
@@ -153,3 +161,36 @@ clúster en vez de duplicarse.
   tipado, que es la mitad del motivo por el que ADR-0011 eligió TypeScript: un nombre de propiedad
   mal escrito tiene que ser un error de compilación y no una diferencia que aparece a mitad de un
   `pulumi up`.
+
+## Enmienda del 2026-09-14 — la versión vive en el stack
+
+**Decide:** la opción A de [#172](https://github.com/hneyra/infrastructure/issues/172), la misma
+que enmienda [ADR-0011 §5](ADR-0011-infraestructura-como-codigo.md#enmienda-del-2026-09-14--la-versión-vive-en-el-stack),
+donde están la evidencia entera y lo que cuesta. Aquí sólo cambia lo que §3 heredaba de allí.
+
+**Lo que §3 afirmaba y no se cumplía.** «La etiqueta de la imagen sigue fuera del estado de
+Pulumi. Es lo que hace que una liberación normal de `catastro` no toque `infrastructure`.» Medido
+el 2026-09-13: la etiqueta de cada sistema la compone `imagenDe()` con
+`kamayuk:versionDe<Sistema>` de `infra/Pulumi.<ambiente>.yaml`, y un `pulumi up` con esa línea
+cambiada **cambia el binario que corre** —`caja@9c8e026` en `stg` por el puente de #164, corrida
+34768644141; `rentas@7085323` en `prod` por #177, corrida 34776934615—. El `ignoreChanges` que
+debía impedirlo no llegaba a ningún `Deployment`.
+
+**Lo que se decide:**
+
+- **La versión de cada sistema vive en el stack de `infrastructure`**, una línea por sistema y por
+  ambiente, y liberar o revertir un sistema es un commit a esa línea. En `stg` lo escribe el puente
+  cuando el hermano publica; en `prod`, un PR con la aprobación de ADR-0011 §6.
+- **Así que una liberación normal de `catastro` SÍ toca `infrastructure`**: un commit a
+  `Pulumi.<ambiente>.yaml`. Lo que la vuelve tolerable ya no es que la versión esté fuera, sino que
+  en `stg` ese commit lo escribe una máquina y en `prod` es una línea revisable con su `preview`.
+- **Lo que no cambia de §3**: dos stacks y no ocho, el mismo `index.ts`, y el flujo de CI.
+- **Tampoco cambia la prohibición (b) de §2** —el descriptor no declara la etiqueta—, pero sí su
+  motivo: ya no es «si entra en el descriptor entra en el estado de Pulumi», porque en el estado ya
+  está. Es que el descriptor es **uno para los dos ambientes** y sale de `main` del hermano, y la
+  versión tiene que poder ser **distinta por stack** —promover de `stg` a `prod` es exactamente
+  eso— y vivir **en un solo sitio**.
+
+**El riesgo de §Consecuencias, «el descriptor que nadie compone», cambia de forma.** La versión de
+la imagen ya no se mueve sola: el puente la clava en `stg`, pero **nadie la propone a `prod`**.
+Que eso se automatice —proponer sin aplicar— es de #173, que depende de esta decisión.

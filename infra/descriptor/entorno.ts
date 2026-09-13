@@ -4,7 +4,9 @@
  * Es lo unico que un sistema sabe del ambiente, y esta compuesto AQUI a proposito: las tres
  * funciones —`imagenDe`, `secretoDe`, `prioridadDe`— son lo que un descriptor **pide** en vez de
  * componer. La primera es la que sostiene todo lo demas: **la etiqueta de la imagen la pone este
- * archivo**, y por eso una liberacion normal no vuelve a pasar por Pulumi (ADR-0011 §5).
+ * archivo**, con la version que el stack declara para ese sistema, y por eso liberar o revertir
+ * es cambiar una linea de `Pulumi.<ambiente>.yaml` (ADR-0011 §5, enmienda de #172). Hasta #172
+ * aqui decia que asi «una liberacion normal no vuelve a pasar por Pulumi»: si pasa.
  *
  * Cada sistema tiene **su namespace**: `kamayuk-<sistema>-<ambiente>`. Uno por sistema y por
  * ambiente, que es lo que permite que las politicas de red de cada uno se escriban sin mirar a
@@ -61,8 +63,9 @@ export function entornoPara(
    * `git log` del repositorio que construyo la imagen no identifica nada, y ademas ninguna de las
    * ocho existia: medido contra el registro el 2026-09-05, `404 MANIFEST_UNKNOWN` en las ocho.
    *
-   * Sigue siendo `infrastructure` quien la pone, que es lo que ADR-0011 §5 protege: el descriptor
-   * de un sistema **no** compone su etiqueta, la pide. Lo que cambia es de donde sale el valor.
+   * Sigue siendo `infrastructure` quien la pone: el descriptor de un sistema **no** compone su
+   * etiqueta, la pide. Lo que cambia es de donde sale el valor. Y desde #172 esa linea es,
+   * literalmente, la version que corre (ADR-0011 §5, enmienda del 2026-09-14).
    */
   versionDe: (sistema: string) => string,
   operacion: { readonly responsable: string; readonly canal: string },

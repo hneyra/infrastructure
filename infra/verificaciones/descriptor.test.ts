@@ -109,7 +109,7 @@ describe("lo que un descriptor NO puede hacer", () => {
     expect(problemas[0]).toContain("ghcr.io/hneyra/kamayuk-catastro:v2.4.1");
     expect(problemas[0]).toContain("no sale de `entorno.imagenDe()`");
     // El motivo, no solo el hecho: es la prohibicion que sostiene a las otras cuatro.
-    expect(problemas[0]).toContain("cuello de botella");
+    expect(problemas[0]).toContain("distinta por stack");
   });
 
   it("(c) pedir privilegios sobre la base de otro sistema", () => {

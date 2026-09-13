@@ -8,6 +8,12 @@ Un ADR registra una decision con su contexto y sus consecuencias. **No se editan
 aceptados**: si una decision cambia, se escribe otro ADR que declare obsoleto al anterior. El
 historial de por que se hizo algo vale mas que la coherencia del documento.
 
+**La excepcion, cuando lo que cambia es UN apartado y lo demas sigue vigente: una enmienda.** Va
+al final del ADR, fechada y con su issue —«Enmienda del AAAA-MM-DD — …»—; el apartado superado
+se marca en su sitio y **no se borra**, y el estado del ADR no cambia. Un ADR nuevo que declarara
+obsoleto el entero dejaria sin casa las decisiones que no cambiaron. La primera fue la de
+ADR-0011 §5 y ADR-0031 §3, el 2026-09-14: la version vive en el stack (#172).
+
 ## Los de este repositorio
 
 | # | Decision | Estado |
@@ -17,12 +23,12 @@ historial de por que se hizo algo vale mas que la coherencia del documento.
 | [0004](ADR-0004-almacenamiento-de-datos.md) | PostgreSQL, con particionado por ejercicio | Aceptado |
 | [0005](ADR-0005-identidad-y-acceso.md) | OIDC para autenticar; el modelo de permisos del manual para autorizar | Aceptado |
 | [0008](ADR-0008-auditoria-heredada-del-manual.md) | Auditoría con observación obligatoria, como en el sistema original | Aceptado |
-| [0011](ADR-0011-infraestructura-como-codigo.md) | Pulumi en TypeScript con yarn, sobre un k3s de un solo nodo | Aceptado |
+| [0011](ADR-0011-infraestructura-como-codigo.md) | Pulumi en TypeScript con yarn, sobre un k3s de un solo nodo | Aceptado · §5 enmendado el 2026-09-14 ([#172](https://github.com/hneyra/infrastructure/issues/172)) |
 | [0012](ADR-0012-usuarios-y-grupos-declarativos.md) | Usuarios y grupos de Keycloak declarativos, sin clave en git | Aceptado |
 | [0028](ADR-0028-el-tenant-no-cruza-por-http.md) | El contexto de municipalidad no cruza por HTTP: token delegado, jamás una cabecera | Propuesto |
 | [0029](ADR-0029-cuatro-sistemas-separados.md) | Cuatro sistemas separados: `catastro`, `rentas`, `normativa` y `caja` | Propuesto |
 | [0030](ADR-0030-cuatro-interfaces-una-sesion.md) | Cuatro interfaces, una sesión, y las librerias comunes que impiden que sean cuatro productos | Propuesto |
-| [0031](ADR-0031-infraestructura-comun-y-propia.md) | La infraestructura: un repositorio común y una carpeta por sistema | Propuesto |
+| [0031](ADR-0031-infraestructura-comun-y-propia.md) | La infraestructura: un repositorio común y una carpeta por sistema | Propuesto · §3 enmendado el 2026-09-14 ([#172](https://github.com/hneyra/infrastructure/issues/172)) |
 | [0032](ADR-0032-el-esquema-nace-en-baseline.md) | El esquema de cada sistema nace en un baseline; la historia se queda en `sgtm` | Propuesto |
 | [0033](ADR-0033-cinco-sistemas-el-territorio-y-la-calle.md) | Cinco sistemas: `catastro` absorbe el territorio y `seguridad` se separa | Propuesto |
 | [0038](ADR-0038-el-corte-entre-el-producto-y-el-suelo.md) | El corte entre el producto y el suelo: `kamayuk-lib` y `infrastructure` | **Aceptado** |

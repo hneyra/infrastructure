@@ -50,8 +50,9 @@ import type { EspecificacionDePod, Manifiesto } from "./tipos";
  * `kubernetes:yaml/v2:ConfigGroup`, y nunca sobre su `Deployment` hijo, que salio sin
  * `imagePullSecrets`; el mismo `Deployment` con el campo puesto en `objs` si lo llevaba. Una
  * credencial puesta en esa transformacion habria dejado este archivo afirmando un arreglo que no
- * llega al cluster. Lo que eso significa para el `ignoreChanges` que vive alli es #172, y no se
- * toca aqui.
+ * llega al cluster. Lo que eso significaba para el `ignoreChanges` que vivia alli fue #172: era
+ * inerte, y se retiro al decidir que la version vive en el stack. Para el `patchForce` que sigue
+ * alli, es #186.
  *
  * Y va sobre la lista entera que `manifiestosDelAmbiente()` devuelve —la que `index.ts` pasa como
  * `objs`, la que emite `yarn manifiestos` y la que leen las guardas— para que las tres lecturas

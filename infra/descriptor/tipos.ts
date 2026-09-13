@@ -44,13 +44,16 @@ export interface EntornoDelDescriptor {
   /**
    * La referencia COMPLETA de una imagen, etiqueta incluida.
    *
-   * **La etiqueta la pone `infrastructure`, nunca el descriptor** (ADR-0011 §5, y
-   * prohibicion (b) de `auditoria.ts`). Es lo que sostiene que una liberacion normal no
-   * sea un `pulumi up`: el campo `image` lleva `ignoreChanges`, la liberacion mueve la
-   * etiqueta con `kubectl set image`, y la reversion tambien. Si un descriptor pudiera
-   * escribirla, cada liberacion de cualquiera de los cuatro sistemas volveria a pasar por
-   * este repositorio, y la composicion centralizada seria el cuello de botella que la
-   * separacion venia a quitar.
+   * **La etiqueta la pone `infrastructure`, nunca el descriptor** (ADR-0011 §5 con su
+   * enmienda de #172, y prohibicion (b) de `auditoria.ts`). La version de cada sistema vive en
+   * UNA linea por stack, `kamayuk:versionDe<Sistema>` de `Pulumi.<ambiente>.yaml`, y liberar o
+   * revertir es cambiar esa linea. El descriptor es uno para los dos ambientes y sale de `main`
+   * del hermano: si pudiera escribir la etiqueta, `stg` y `prod` correrian la misma version sin
+   * poder promover de uno a otro, y bajar la linea del stack no revertiria nada.
+   *
+   * Hasta #172 este bloque decia que asi «una liberacion normal no es un `pulumi up`» porque
+   * «el campo `image` lleva `ignoreChanges`» y la liberacion movia la etiqueta con `kubectl`.
+   * Medido el 2026-09-13, no era asi: subir la linea cambia el binario que corre.
    */
   imagenDe(componente: string): string;
   /** El nombre del `Secret` de una clave del inventario, ya resuelto para el ambiente. */
