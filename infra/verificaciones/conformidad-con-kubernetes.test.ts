@@ -61,14 +61,9 @@ describe("cada manifiesto es asignable a su tipo de @pulumi/kubernetes", () => {
     // Alertmanager, node-exporter, kube-state-metrics, Grafana— (#156). Eran NUEVE hasta
     // `E`: la aplicacion del monolito y su interfaz se fueron con el.
     expect(despliegues).toHaveLength(7);
-    // DOS Job: la reconciliacion del realm y el que crea las bases que faltan (#81). Eran
-    // tres hasta `E` —los dos de arranque del monolito—, y los de los cuatro sistemas viven
-    // en SU namespace, compuestos por su descriptor.
-    //
-    // El segundo nacio porque `05-crear-bases.sh` vive en `docker-entrypoint-initdb.d` y esa
-    // carpeta solo corre con el volumen vacio: la base `identidad` no llego nunca al motor de
-    // `stg`, creado seis dias antes de que el quinto sistema existiera.
-    expect(trabajos).toHaveLength(2);
+    // Un Job: la reconciliacion del realm. Eran tres —los dos de arranque del monolito—, y
+    // los de los cuatro sistemas viven en SU namespace, compuestos por su descriptor.
+    expect(trabajos).toHaveLength(1);
     // Un CronJob: el respaldo base (#155). Eran dos, con el lote de la aplicacion.
     expect(programados).toHaveLength(1);
   });
@@ -88,11 +83,10 @@ describe("cada manifiesto es asignable a su tipo de @pulumi/kubernetes", () => {
   it("NetworkPolicy: denegar-todo mas las excepciones nombradas (issue #157)", () => {
     const politicas: k8s.types.input.networking.v1.NetworkPolicy[] = de("NetworkPolicy");
 
-    // DIECIOCHO desde #81: la decimoctava es la salida del `Job` que crea las bases que
-    // faltan. Eran 24 hasta `E` —se fueron las siete que seleccionaban pods del monolito:
-    // ingreso y salida de la interfaz, ingreso y salida de la aplicacion, y la salida de
-    // `migracion`, `implantacion` y `lote`— y 17 desde entonces.
-    expect(politicas).toHaveLength(18);
+    // Diecisiete. Eran 24 hasta `E`: se fueron las siete que seleccionaban pods del
+    // monolito —ingreso y salida de la interfaz, ingreso y salida de la aplicacion, y la
+    // salida de `migracion`, `implantacion` y `lote`—.
+    expect(politicas).toHaveLength(17);
   });
 
   it("los recursos de Traefik llevan el grupo de la v3", () => {
