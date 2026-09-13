@@ -358,6 +358,7 @@ describe("C-19 · el perfil de recursos de un ambiente no alcanza al otro", () =
    * |---|---|---|
    * | con los cuatro consumidores (etapa 4) | 1540m / 5536Mi | 2360m / 9440Mi |
    * | y con las dos interfaces nuevas | **1640m / 5664Mi** | **2460m / 9568Mi** |
+   * | y con el `Job` que crea las bases (#81) | **1640m / 5664Mi** | **2470m / 9600Mi** |
    *
    * O sea **+100m / +128Mi en las dos**, que es exactamente dos veces 50m/64Mi y sale de los dos
    * descriptores, no de aqui. **Y ningun ambiente cambia de veredicto, medido contra el nodo que
@@ -371,7 +372,10 @@ describe("C-19 · el perfil de recursos de un ambiente no alcanza al otro", () =
   it("prod pide exactamente lo medido en `E`, mas el ingestor de #21, el quinto sistema, sus cuatro consumidores y las dos interfaces nuevas", () => {
     const demanda = demandaDelStack(manifiestosDe("prod"));
     expect(demanda.permanente).toEqual({ cpuEnMili: 1640, memoriaEnMi: 5664 });
-    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 2460, memoriaEnMi: 9568 });
+    // +10m / +32Mi sobre la fila anterior: el `Job` que crea las bases (#81), con el perfil
+    // `auxiliar`. Remedido con `yarn capacidad --ambiente prod`, que sigue diciendo «cabe»
+    // —2470m / 9600Mi contra 5 / 9907Mi—, con ~307Mi de margen.
+    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 2470, memoriaEnMi: 9600 });
   });
 
   /** Y `prod` declara el perfil dimensionado, que es la tabla base. */
