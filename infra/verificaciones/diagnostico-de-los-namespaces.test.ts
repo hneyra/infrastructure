@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { load } from "js-yaml";
@@ -179,5 +180,61 @@ describe("#40 · el diagnostico cubre los CINCO espacios de nombres", () => {
         "asi que ahi no corren: la corrida que se pasa quince minutos esperando termina sin una " +
         "linea sobre que pod la tenia parada. Remedio: `failure() || cancelled()`.",
     ).toEqual([]);
+  });
+});
+
+/**
+ * Cuando el selector no encuentra nada, el guion tiene que decir POR QUE — y no mandar a mirar
+ * lo que no es.
+ *
+ * Medido el 2026-09-13 en la corrida 34761890146, el primer `pulumi up` de `stg` sobre un cluster
+ * vacio: `bootstrap-secretos.sh` creo los seis espacios de nombres a las 14:12:35Z con
+ * `kubectl create namespace` —sin etiquetas—, Pulumi murio en el refresco, y a las 14:13:33Z el
+ * diagnostico dijo «o el ambiente no se ha creado nunca, o cambiaron las etiquetas». **Las dos
+ * falsas**: existian, y las etiquetas eran las de siempre; las pone `pulumi up` (14:24:14Z, en la
+ * corrida siguiente, segun los `managedFields`). Quien lo leyo concluyo que el despliegue seguia
+ * roto por otra causa.
+ */
+describe("un selector vacio dice por que, y manda a mirar donde es", () => {
+  function explicacion(ambiente: string, nombres: string[]): string {
+    return execFileSync("bash", [GUION, "--explicar-sin-espacios", ambiente], {
+      input: nombres.map((n) => `namespace/${n}`).join("\n") + "\n",
+      encoding: "utf8",
+    });
+  }
+
+  it("existen por nombre y sin etiquetas: los creo bootstrap-secretos y Pulumi no llego", () => {
+    const salida = explicacion("stg", ["default", "kamayuk-stg", "kamayuk-caja-stg", "kube-system"]);
+    expect(salida, "no nombra los que SI existen").toContain("kamayuk-stg kamayuk-caja-stg");
+    expect(
+      salida,
+      "no manda al paso de `pulumi up`. Es el caso de todo primer `up` fallido sobre un cluster " +
+        "vacio, y la explicacion vieja —«no se ha creado nunca»— mandaba a mirar lo que no era.",
+    ).toContain("pulumi up");
+    expect(salida).toContain("bootstrap-secretos.sh");
+    expect(salida).not.toContain("no se ha creado nunca");
+  });
+
+  it("no existe ninguno: entonces si, no se ha creado nunca", () => {
+    const salida = explicacion("stg", ["default", "kube-system", "kube-public"]);
+    expect(salida).toContain("no se ha creado nunca");
+    expect(salida).not.toContain("bootstrap-secretos.sh");
+  });
+
+  it("los de OTRO ambiente, y los que solo empiezan igual, no cuentan", () => {
+    // `entorno.ts` lo avisa para la auditoria: un prefijo dejaria pasar `kamayuk-stg-loquesea`.
+    // Aqui el dano seria decirle a `stg` que sus espacios existen porque existen los de `prod`.
+    const salida = explicacion("stg", ["kamayuk-prod", "kamayuk-caja-prod", "kamayuk-stg-loquesea"]);
+    expect(
+      salida,
+      "toma por espacios de `stg` nombres que no lo son. El patron tiene que ir anclado a los dos " +
+        "extremos: `^kamayuk(-<sistema>)?-stg$`.",
+    ).toContain("no se ha creado nunca");
+    expect(salida).not.toContain("bootstrap-secretos.sh");
+  });
+
+  it("en los dos casos sigue diciendo que NO es «todo bien»", () => {
+    expect(explicacion("stg", ["kamayuk-stg"])).toContain("NO es «todo bien»");
+    expect(explicacion("stg", [])).toContain("NO es «todo bien»");
   });
 });
