@@ -4,6 +4,7 @@ import {
   BASE_DE_IDENTIDAD,
   CLAVES,
   IMAGEN_DE_MAILPIT,
+  RUTA_DE_GRAFANA,
   type TablaDeRecursos,
   ROL_DE_IDENTIDAD,
   nombreDePrioridad,
@@ -117,6 +118,9 @@ export const CLIENTE_DEL_BACKOFFICE = "kamayuk-backoffice";
 
 /** Ruta bajo la que cuelga Keycloak. La comparte con `publicar-imagenes.yml`. */
 export const RUTA_DE_IDENTIDAD = "/keycloak";
+
+/** Donde el `Job` del realm monta la clave del cliente de operacion (ADR-0041). */
+export const DIRECTORIO_DE_OPERACION = "/operacion";
 
 /**
  * Puerto local del tunel por el que se abre la consola de administracion.
@@ -391,6 +395,186 @@ export function realmDelCiudadano(realm: string): string {
 }
 
 /**
+ * Como se llama el realm de OPERACION (ADR-0041), a partir del de funcionarios.
+ *
+ * Derivado y no configurable por el mismo motivo que {@link realmDelCiudadano}: tres realms del
+ * mismo Keycloak y de la misma instalacion, y un nombre que se pudiera fijar aparte es uno que
+ * un dia deja de corresponder con el emisor al que Grafana manda a sus usuarios (#149).
+ */
+export function realmDeOperacion(realm: string): string {
+  return `${realm}-operacion`;
+}
+
+/** El unico cliente del realm de operacion: con el entra quien opera la plataforma a Grafana. */
+export const CLIENTE_DE_GRAFANA = "kamayuk-grafana";
+
+/**
+ * Los roles de ese cliente. Grafana los traduce a `Viewer` y `Admin` (#149), y quien no traiga
+ * ninguno no entra: no hay rol por omision.
+ */
+export const ROLES_DE_OPERACION = ["lector", "administrador"] as const;
+export type RolDeOperacion = (typeof ROLES_DE_OPERACION)[number];
+
+/** El claim en el que viajan esos roles. */
+export const CLAIM_DE_ROLES = "roles";
+
+/** Los documentos del realm de operacion. */
+export interface DocumentosDelRealmDeOperacion {
+  /** Los ajustes del realm. Sin clientes y sin ambitos: se queda con los trece de fabrica (#72). */
+  realm: string;
+  /** El perfil de usuario: el de funcionarios SIN `municipalidad_id`. */
+  perfilDeUsuario: string;
+  /**
+   * La representacion del cliente de Grafana, para `kcadm create clients -f` o
+   * `kcadm update clients/<id> -f`. **No para `partialImport`**: ver el docblock de la funcion.
+   */
+  cliente: string;
+}
+
+/**
+ * El realm de quien OPERA la plataforma (ADR-0041, #148).
+ *
+ * ## Por que un realm y no un cliente mas en el de funcionarios
+ *
+ * Un token del realm `kamayuk` es de un funcionario de una municipalidad, y un rol de Grafana
+ * asignado ahi por error le abriria la observabilidad de TODA la instalacion. En un realm aparte
+ * eso no se puede ni escribir: ningun token de funcionario lo emite este emisor.
+ *
+ * ## Por que su cliente NO pasa por `partialImport`
+ *
+ * El de funcionarios y el del ciudadano aplican sus clientes con `partialImport` e
+ * `ifResourceExists: OVERWRITE`, y alli es correcto: sus clientes no tienen roles propios ni
+ * clave. Este tiene las dos cosas, y **`OVERWRITE` borra el cliente y lo crea de nuevo**. Medido
+ * contra un Keycloak 26.0.8 —la version exacta de `stg`— el 2026-09-13, reimportando el mismo
+ * documento:
+ *
+ * | Tras la segunda importacion | `OVERWRITE` | `SKIP` | `kcadm update clients/<id> -f` |
+ * |---|---|---|---|
+ * | id del cliente | **otro** | el mismo | el mismo |
+ * | roles del cliente | **ninguno** | intactos | intactos |
+ * | el rol asignado a la persona | **perdido** | intacto | intacto |
+ * | la clave fijada | **regenerada** | intacta | intacta |
+ * | una redireccion cambiada | aplicada | **no** | aplicada |
+ * | un mapeador borrado a mano | repuesto | **no** | **repuesto** |
+ *
+ * O sea que con `OVERWRITE` cada corrida del `Job` dejaria a todo operador sin rol, y Grafana,
+ * con el rol estricto de #149, sin nadie que pudiera entrar. `SKIP` no destruye nada pero tampoco
+ * converge. `kcadm create` la primera vez y `kcadm update -f` las siguientes hace las dos cosas,
+ * y es lo que hace `reconciliar-realm.sh operacion`.
+ */
+export function documentosDelRealmDeOperacion(args: {
+  domain: string;
+  realm: string;
+  smtp?: SmtpSettings;
+}): DocumentosDelRealmDeOperacion {
+  const funcionarios = JSON.parse(realmDeFuncionariosJson()) as RealmVersionado;
+  // Se heredan los AJUSTES del de funcionarios —`sslRequired`, vigencias, sin registro— y no sus
+  // clientes, ni sus ambitos, ni su perfil tal cual: nada de eso es de quien opera.
+  const { components = {}, ...ajustes } = funcionarios;
+  delete ajustes.clients;
+  delete ajustes.clientScopes;
+  const perfilDeFuncionarios =
+    components["org.keycloak.userprofile.UserProfileProvider"]?.[0]?.config?.[
+      "kc.user.profile.config"
+    ]?.[0];
+  if (perfilDeFuncionarios === undefined) {
+    throw new Error(
+      "El realm de funcionarios no trae el perfil de usuario declarativo, y el de operacion " +
+        "se deriva de el.",
+    );
+  }
+  const perfil = JSON.parse(perfilDeFuncionarios) as {
+    attributes: { name: string }[];
+    [clave: string]: unknown;
+  };
+  // Quien opera no pertenece a ninguna municipalidad. Dejar el atributo en el perfil no rompe
+  // nada, pero ofrece en la consola un campo que en este realm solo puede estar mal.
+  const perfilDeOperacion = {
+    ...perfil,
+    attributes: perfil.attributes.filter((a) => a.name !== "municipalidad_id"),
+  };
+
+  const nombre = realmDeOperacion(args.realm);
+  const origen = `https://${args.domain}`;
+  const cliente: ClienteDelRealm = {
+    clientId: CLIENTE_DE_GRAFANA,
+    name: "Grafana",
+    enabled: true,
+    protocol: "openid-connect",
+    publicClient: false,
+    standardFlowEnabled: true,
+    implicitFlowEnabled: false,
+    // Nunca: con esta concesion la clave de un operador se podria probar sin pasar por la
+    // pantalla de acceso, que es donde estan la proteccion contra fuerza bruta y el cambio de
+    // clave obligatorio.
+    directAccessGrantsEnabled: false,
+    serviceAccountsEnabled: false,
+    // EXACTA, sin comodin: es la unica vuelta que Grafana usa, y un `/*` dejaria volver a
+    // cualquier ruta del dominio con el codigo de autorizacion en la URL.
+    redirectUris: [`${origen}${RUTA_DE_GRAFANA}/login/generic_oauth`],
+    webOrigins: [origen],
+    attributes: {
+      "pkce.code.challenge.method": "S256",
+      "post.logout.redirect.uris": `${origen}${RUTA_DE_GRAFANA}/login`,
+    },
+    protocolMappers: [
+      {
+        name: CLAIM_DE_ROLES,
+        protocol: "openid-connect",
+        protocolMapper: "oidc-usermodel-client-role-mapper",
+        config: {
+          "usermodel.clientRoleMapping.clientId": CLIENTE_DE_GRAFANA,
+          "claim.name": CLAIM_DE_ROLES,
+          multivalued: "true",
+          "jsonType.label": "String",
+          // En los TRES: Grafana lee el ID token y userinfo, no el access token. Medido contra
+          // Keycloak 26.0.8: con esta configuracion `roles` sale en los tres.
+          "id.token.claim": "true",
+          "access.token.claim": "true",
+          "userinfo.token.claim": "true",
+        },
+      },
+    ],
+  };
+
+  const documentos = documentosDelRealm({
+    domain: args.domain,
+    realm: nombre,
+    clienteDeVerificacion: false,
+    ...(args.smtp === undefined ? {} : { smtp: args.smtp }),
+    fuente: JSON.stringify({
+      ...ajustes,
+      realm: nombre,
+      // No lo trae el de funcionarios, y aqui si: la pantalla de acceso de este realm es publica
+      // y lo que protege es la observabilidad de la instalacion entera (ADR-0041).
+      bruteForceProtected: true,
+      clients: [cliente],
+      components: {
+        "org.keycloak.userprofile.UserProfileProvider": [
+          { config: { "kc.user.profile.config": [JSON.stringify(perfilDeOperacion)] } },
+        ],
+      },
+    }),
+  });
+
+  // El derivador comun reescribe las redirecciones y los origenes; se toma de su salida para no
+  // tener dos formas de construirlos. Lo que NO se usa es su envoltorio de `partialImport`.
+  const derivados = (JSON.parse(documentos.clientes) as { clients: ClienteDelRealm[] }).clients;
+  if (derivados.length !== 1 || derivados[0]?.clientId !== CLIENTE_DE_GRAFANA) {
+    throw new Error(
+      `El realm de operacion tiene que tener exactamente un cliente, «${CLIENTE_DE_GRAFANA}», y ` +
+        `el derivador devolvio ${JSON.stringify(derivados.map((c) => c.clientId))}.`,
+    );
+  }
+
+  return {
+    realm: documentos.realm,
+    perfilDeUsuario: documentos.perfilDeUsuario,
+    cliente: JSON.stringify(derivados[0], null, 2),
+  };
+}
+
+/**
  * El mismo camino de una redireccion, servido desde el dominio del ambiente.
  *
  * `http://localhost:5174/portal/*` → `https://<dominio>/portal/*`. Lo que se
@@ -402,11 +586,15 @@ function enElDominio(uri: string, domain: string): string {
   return `https://${domain}${camino === "" ? "/*" : camino}`;
 }
 
-interface UsuarioVersionado {
+/** Una persona tal como la declara un archivo versionado: sin clave, nunca. */
+export interface PersonaDeclarada {
   cuenta: string;
   nombre: string;
   apellido: string;
   correo: string;
+}
+
+interface UsuarioVersionado extends PersonaDeclarada {
   administrador?: boolean;
 }
 interface ServicioVersionado {
@@ -533,6 +721,11 @@ export interface DocumentosDeIdentidades {
   grupo: string;
   /** Las cuentas que el Job comprueba al terminar. */
   cuentas: string[];
+  /**
+   * El usuario `administrador: true`, YA VALIDADO: el unico que hay y el mismo que la cuenta del
+   * stack. De el se deriva el primer operador del realm de operacion (#148).
+   */
+  administrador: PersonaDeclarada;
   /** Las cuentas de ciudadano, ya derivadas del documento. */
   enrolados: string[];
   /**
@@ -604,9 +797,10 @@ export function documentosDeIdentidades(args: {
         `y hay ${admins.length}.`,
     );
   }
-  if (admins[0]?.cuenta !== args.administrador) {
+  const [administrador] = admins;
+  if (administrador === undefined || administrador.cuenta !== args.administrador) {
     throw new Error(
-      `${args.ubigeo}.json: el usuario «administrador: true» es «${admins[0]?.cuenta}», pero la ` +
+      `${args.ubigeo}.json: el usuario «administrador: true» es «${administrador?.cuenta}», pero la ` +
         `implantacion da de alta a «${args.administrador}» (stack). Tienen que ser la misma ` +
         "cuenta: es lo unico que une la fila de `usuario` con la identidad del token (ADR-0005).",
     );
@@ -640,6 +834,14 @@ export function documentosDeIdentidades(args: {
     ciudadanos: enrolados.filas.length === 0 ? "" : `${enrolados.filas.join("\n")}\n`,
     grupo: m.grupo,
     cuentas: m.usuarios.map((u) => u.cuenta),
+    // El bucle de arriba ya valido sus cuatro campos. Se copia sin `administrador`: lo que viaja
+    // es la persona, no la marca del archivo del que salio.
+    administrador: {
+      cuenta: administrador.cuenta,
+      nombre: administrador.nombre,
+      apellido: administrador.apellido,
+      correo: administrador.correo,
+    },
     enrolados: enrolados.cuentas,
     // Las cuentas de servicio (#21). Puede venir VACIO —una municipalidad sin ningun backend
     // llamando a otro—, y entonces el guion se para diciendolo: «cero declaradas» no es «todo
@@ -681,6 +883,47 @@ export function documentosDeIdentidades(args: {
       })
       .map((linea) => `${linea}\n`)
       .join(""),
+  };
+}
+
+/** Los operadores del realm de operacion, listos para el `Job`. */
+export interface DocumentosDeOperadores {
+  /**
+   * Una fila por operador, campos con tabulador. Lo lee `reconciliar-identidades.sh operadores`.
+   *
+   *   OPERADOR <cuenta> <nombre> <apellido> <correo> <rol>
+   */
+  tsv: string;
+  /** Las cuentas que el `Job` comprueba al terminar. */
+  cuentas: string[];
+}
+
+/**
+ * Quien opera la plataforma (ADR-0041, #148). **Hoy es UNA persona, y no se declara: se deriva.**
+ *
+ * Es el `administrador` de la municipalidad implantada —el que {@link documentosDeIdentidades}
+ * ya exige unico y ya cruza con la cuenta del stack—, copiado al realm de operacion con la misma
+ * cuenta, nombre y correo y el rol `administrador`. Es la misma persona con un login propio: sus
+ * dos credenciales viven en dos realms y no se tocan.
+ *
+ * Se deriva para poder publicar Grafana (#149) sin pedir datos que el repositorio ya tiene. Los
+ * operadores DECLARATIVOS —mas cuentas, `lector`, y quitar el rol a quien deje de estar— son
+ * #150, y hasta entonces hay un hueco declarado: **esta etapa no retira ningun rol**, asi que si
+ * cambia la cuenta del stack la anterior conserva `administrador` en este realm.
+ */
+export function documentosDeOperadores(args: { administrador: PersonaDeclarada }): DocumentosDeOperadores {
+  const rol: RolDeOperacion = "administrador";
+  const { cuenta, nombre, apellido, correo } = args.administrador;
+  for (const [campo, valor] of Object.entries({ cuenta, nombre, apellido, correo })) {
+    // Ya lo valido `documentosDeIdentidades`; se repite porque esta funcion se exporta y un TSV
+    // con un tabulador de mas desplaza el rol a otra columna sin que el guion lo note.
+    if (!valor || valor.includes("\t") || valor.includes("\n")) {
+      throw new Error(`El operador derivado «${cuenta}» no tiene «${campo}» valido.`);
+    }
+  }
+  return {
+    tsv: `${["OPERADOR", cuenta, nombre, apellido, correo, rol].join("\t")}\n`,
+    cuentas: [cuenta],
   };
 }
 
@@ -851,6 +1094,14 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
     ubigeo,
     administrador,
   });
+  // El realm de quien OPERA la plataforma (ADR-0041, #148), y su primer operador, derivado del
+  // administrador que `identidades` acaba de validar.
+  const documentosDeOperacion = documentosDelRealmDeOperacion({
+    domain,
+    realm,
+    ...(smtp === undefined ? {} : { smtp }),
+  });
+  const operadores = documentosDeOperadores({ administrador: identidades.administrador });
 
   const configuracionDelRealm: ConfigMap = {
     apiVersion: "v1",
@@ -881,6 +1132,13 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
       // Y el enrolamiento del ciudadano (ADR-0020 §5, #415), en el mismo ConfigMap y con
       // el mismo guion: el realm es otro y la poblacion es otra, el procedimiento no.
       "ciudadanos.tsv": identidades.ciudadanos,
+      // El realm de operacion (ADR-0041). Sin ambitos propios —se queda con los de fabrica— y con
+      // su unico cliente aparte, porque no se aplica con `partialImport` (ver
+      // `documentosDelRealmDeOperacion`).
+      "realm-operacion.json": documentosDeOperacion.realm,
+      "perfil-de-usuario-operacion.json": documentosDeOperacion.perfilDeUsuario,
+      "cliente-operacion.json": documentosDeOperacion.cliente,
+      "operadores.tsv": operadores.tsv,
     },
   };
 
@@ -1054,7 +1312,12 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
             // dependen de nada del ciudadano (#21).
             " && /realm/reconciliar-identidades.sh servicios" +
             " && /realm/reconciliar-realm.sh ciudadano" +
-            " && /realm/reconciliar-identidades.sh ciudadanos",
+            " && /realm/reconciliar-identidades.sh ciudadanos" +
+            // Y el de operacion AL FINAL (ADR-0041), por el mismo orden de fallos que puso al
+            // ciudadano detras: si falla, la municipalidad sigue trabajando y el portal tambien;
+            // lo que no hay es Grafana con login, que tiene el tunel como camino de emergencia.
+            " && /realm/reconciliar-realm.sh operacion" +
+            " && /realm/reconciliar-identidades.sh operadores",
         ],
         env: [
           { name: "KC_SERVIDOR", value: `http://${nombre}:8080${RUTA_DE_IDENTIDAD}` },
@@ -1088,6 +1351,15 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
           {
             name: "KC_CLIENTES_CIUDADANO",
             value: documentosDelCiudadano.clientesComprobados.join(" "),
+          },
+          // El realm de operacion, su cliente, sus roles y DONDE esta la clave del cliente: el
+          // archivo que monta el volumen `operacion`, no el valor (ver `volumeMounts`).
+          { name: "KC_REALM_OPERACION", value: realmDeOperacion(realm) },
+          { name: "KC_CLIENTE_OPERACION", value: CLIENTE_DE_GRAFANA },
+          { name: "KC_ROLES_OPERACION", value: ROLES_DE_OPERACION.join(" ") },
+          {
+            name: "CLAVE_DEL_CLIENTE_DE_OPERACION",
+            value: `${DIRECTORIO_DE_OPERACION}/${CLAVES.clienteOidcDeGrafana}`,
           },
           // Lee `identidades.tsv` del propio ConfigMap (modo «directo»).
           { name: "KC_DIRECTORIO", value: "/realm" },
@@ -1123,6 +1395,8 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
           // pasadas por `env`: un `env` de un pod lo lee cualquiera que pueda describirlo, y
           // con una variable por cuenta el `Deployment` crece con cada municipalidad.
           { name: "servicios", mountPath: "/servicios", readOnly: true },
+          // La clave del cliente de Grafana (ADR-0041), montada por lo mismo que las de servicio.
+          { name: "operacion", mountPath: DIRECTORIO_DE_OPERACION, readOnly: true },
         ],
       },
     ],
@@ -1143,6 +1417,15 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
       {
         name: "servicios",
         secret: { secretName: secreto.serviciosDeIdentidad },
+      },
+      // Del `Secret` de Grafana, SOLO la clave del cliente: ese `Secret` guarda tambien la del
+      // administrador de Grafana, y este pod no tiene nada que hacer con ella.
+      {
+        name: "operacion",
+        secret: {
+          secretName: secreto.grafana,
+          items: [{ key: CLAVES.clienteOidcDeGrafana, path: CLAVES.clienteOidcDeGrafana }],
+        },
       },
     ],
   };

@@ -166,6 +166,26 @@ que la usa exista y no nazca suspendido. El runbook de la copia local, con como 
 ambiente desplegado, es
 [`docs/00-gobierno/identidad-4-la-ventana-de-la-copia-local.md`](../../docs/00-gobierno/identidad-4-la-ventana-de-la-copia-local.md).
 
+## Quien opera la plataforma: el realm de operación (sólo en el clúster)
+
+Un **tercer realm**, `<realm>-operacion`
+([ADR-0041](../../docs/30-arquitectura/adr/ADR-0041-grafana-detras-del-realm-de-operacion.md)),
+con un único cliente, `kamayuk-grafana`, y los roles `lector` y `administrador`. Es con lo que se
+entrará a Grafana cuando se publique (#149). No existe en el compose, y
+`reconciliar-identidades.sh operadores` falla diciéndolo si se lanza allí.
+
+**Hoy tiene un operador, y no se declara: se deriva.** Es el usuario `administrador: true` de
+`municipalidades/<ubigeo>.json`, el mismo que el stack valida como `kamayuk:administrador`,
+copiado con su cuenta, nombre y correo y el rol `administrador`. Su clave es otra, porque es otro
+realm: le llega el enlace por correo donde hay relay, o la clave inicial **temporal** de
+`clave-del-administrador` donde no lo hay (#77), exactamente como a los funcionarios. Más
+operadores, y quitar el rol a quien deje de estar, son #150.
+
+Su cliente **no se importa con `OVERWRITE`** como los de los otros dos realms: medido contra
+Keycloak 26.0.8, eso borra el cliente y con él sus roles, el rol de cada operador y su clave.
+`reconciliar-realm.sh operacion` lo crea la primera vez y lo actualiza (`kcadm update -f`) las
+siguientes, que conserva las tres cosas y repone un mapeador borrado a mano.
+
 ## El emisor es una identidad, no una dirección de red
 
 Es lo que más cuesta si se descubre por las malas. El navegador llega a Keycloak

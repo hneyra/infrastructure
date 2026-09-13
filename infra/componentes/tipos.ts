@@ -143,7 +143,12 @@ export interface Volumen {
    * el `ConfigMap` entero.
    */
   configMap?: { name: string; defaultMode?: number; items?: { key: string; path: string }[] };
-  secret?: { secretName: string; defaultMode?: number };
+  /**
+   * `items` aqui acota QUE claves del `Secret` llegan al pod. El `Job` del realm monta el de
+   * Grafana solo por la clave de su cliente (ADR-0041): sin `items` montaria tambien la del
+   * administrador de Grafana, que ese pod no necesita para nada.
+   */
+  secret?: { secretName: string; defaultMode?: number; items?: { key: string; path: string }[] };
   persistentVolumeClaim?: { claimName: string };
   emptyDir?: Record<string, never>;
   /** Solo `node-exporter` (issue #156): lee `/proc` y `/sys` del nodo, de solo lectura. */

@@ -133,11 +133,47 @@ describe("#77 · un ambiente sin relay entrega la clave inicial de su administra
     ).toContain("set-password");
 
     // Y que sea TEMPORAL: es la decision medida de este cambio, no un detalle.
+    //
+    // Hasta #148 la rama terminaba en un `continue` del bucle del paso 4; desde que la entrega
+    // es la funcion `entregarClaveInicial` —la usan tambien los operadores— termina en su
+    // `return 0`. Se recorta hasta ahi y no hasta un `continue`, que ahora caeria mucho mas abajo
+    // y dejaria esta comprobacion leyendo de mas.
     const usa = GUION.slice(GUION.indexOf("KC_CLAVE_INICIAL:-"));
+    expect(usa.indexOf("return 0"), "la rama sin correo ya no termina en `return 0`")
+      .toBeGreaterThan(-1);
     expect(
-      usa.slice(0, usa.indexOf("continue")),
+      usa.slice(0, usa.indexOf("return 0")),
       "la clave inicial se fija PERMANENTE. Tiene que ser `--temporary`: el valor lo lee un " +
         "operador del `Secret`, y sin el cambio forzado esa clave sobrevive al primer acceso.",
     ).toContain("--temporary");
+  });
+
+  it("los funcionarios y los operadores la reciben por la MISMA funcion (#148)", () => {
+    // Una copia de la entrega para los operadores seria la que un dia se queda PERMANENTE, o
+    // sin la rama sin relay, sin que esta guarda la vea: la de arriba solo mira la primera.
+    expect(
+      GUION.match(/^entregarClaveInicial\(\) \{$/gm),
+      "`reconciliar-identidades.sh` tiene que definir `entregarClaveInicial` exactamente una vez",
+    ).toHaveLength(1);
+    expect(
+      GUION.match(/KC_CLAVE_INICIAL:-/g),
+      "la clave inicial se lee en mas de un sitio: hay una segunda entrega que no mira nadie",
+    ).toHaveLength(1);
+
+    const operadores = GUION.slice(
+      GUION.indexOf('if [ "$CUAL" = operadores ]; then'),
+      GUION.indexOf("NUEVOS=\"\"\nwhile IFS=$'\\t' read -r tipo c1"),
+    );
+    expect(operadores, "no se encuentra el bloque del modo `operadores`").toContain("exit 0");
+    expect(
+      operadores,
+      "el modo `operadores` no entrega la clave inicial: en `prod`, sin relay, el operador " +
+        "derivado naceria SIN clave y sin enlace, y Grafana sin nadie que pueda entrar (#77)",
+    ).toContain('entregarClaveInicial "${par%%:*}" "${par#*:}"');
+
+    const paso4 = GUION.slice(GUION.indexOf("# --- 4: el enlace de clave"));
+    expect(paso4.slice(0, paso4.indexOf("done")), "los funcionarios ya no la reciben").toContain(
+      'entregarClaveInicial "${par%%:*}" "${par#*:}"',
+    );
   });
 });
