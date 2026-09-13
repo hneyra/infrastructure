@@ -159,7 +159,7 @@ config:
   # (ADR-0011 §5, `ignoreChanges`), pero **no es inerte**: el `Job` de migracion de ese sistema
   # lleva la version en el nombre, asi que un valor nuevo no modifica un Job — crea otro, y ese
   # Job aplica las migraciones de esa version.
-  kamayuk:versionDeRentas: 5ca7ed829541ad545b98d1253e795bdecf056975
+  kamayuk:versionDeRentas: 1800478ae7869224f98b5b0943160e7d47dfe76d
   # Sube con el estreno de su interfaz: el manifiesto pasa a pedir
   # `kamayuk-<sistema>-interfaz:<sha>`, y con el `sha` anterior esa etiqueta **no existe** —medido,
   # `yarn imagenes` contestaba `NO EXISTE`—. En `catastro` ademas la imagen se llamaba `-web`.
