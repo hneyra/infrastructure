@@ -170,6 +170,12 @@ export interface EspecificacionDePod {
    * solos. El kubelet aplica el `chown` recursivo al montar, una sola vez.
    */
   securityContext?: { fsGroup?: number };
+  /**
+   * La credencial del registro (#166). **No la escribe ningun componente ni ningun descriptor**:
+   * la pone `conCredencialDeRegistro` sobre el ambiente entero, despues de componer, y
+   * `los-pods-nacen-con-la-credencial.test.ts` exige que la lleve toda plantilla.
+   */
+  imagePullSecrets?: { name: string }[];
   initContainers?: Contenedor[];
   containers: Contenedor[];
   volumes?: Volumen[];

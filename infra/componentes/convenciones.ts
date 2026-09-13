@@ -201,6 +201,21 @@ export function secretoDeCredencialesDeRespaldo(environment: Environment): strin
   return resourceName(environment, "postgres-respaldo-credenciales");
 }
 
+/**
+ * El nombre del `Secret` de `kubernetes.io/dockerconfigjson` con la credencial de `ghcr.io`
+ * (issue #257), **el mismo en los seis espacios de nombres del ambiente**.
+ *
+ * Lo crea `index.ts` —su valor vive cifrado en el estado de Pulumi y no en un manifiesto— y,
+ * desde #166, lo nombra cada plantilla de pod en su `imagePullSecrets`
+ * (`credencial-de-registro.ts`). Son dos lectores del mismo nombre, y por eso sale de aqui y no
+ * de dos llamadas a `resourceName` escritas por separado: si se separaran, cada pod pediria un
+ * `Secret` que no existe y el kubelet bajaria la imagen **sin credencial**, que con un paquete
+ * privado es el mismo `ImagePullBackOff` que #166 midio.
+ */
+export function nombreDelSecretoDeRegistro(environment: Environment): string {
+  return resourceName(environment, "registro-credenciales");
+}
+
 /** Las claves del `Secret` de `secretoDeCredencialesDeRespaldo`. */
 export const CLAVES_DE_CREDENCIALES_DE_RESPALDO = {
   accessKeyId: "access-key-id",

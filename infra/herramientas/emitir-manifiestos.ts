@@ -2,6 +2,7 @@ import { auditarManifiestos, describirAuditoria } from "../auditoria";
 import { construirManifiestos } from "../componentes";
 import { componerOFallar } from "../descriptor";
 import { entornoPara, namespacesDelAmbiente } from "../descriptor/entorno";
+import { conCredencialDeRegistro } from "../componentes/credencial-de-registro";
 import { conEsperaAlMotor } from "../componentes/espera-al-motor";
 import { SISTEMAS } from "../descriptor/sistemas";
 import { secretos } from "../componentes/convenciones";
@@ -169,7 +170,16 @@ export function manifiestosDelAmbiente(invariantes: Invariants): Manifiesto[] {
   // Los cuatro sistemas (ADR-0031 §2). `componerOFallar` los audita con las MISMAS reglas que
   // la plataforma y lanza antes de emitir nada: un descriptor ajeno mal formado no puede entrar
   // por ser ajeno.
-  return [...plataforma, ...manifiestosDeLosSistemas(invariantes, plataforma)];
+  //
+  // Y la credencial del registro en CADA plantilla de pod, sobre la suma (#166). Va aqui, en la
+  // unica funcion que ven a la vez `index.ts`, `yarn manifiestos` y las guardas, y no en las
+  // `transformations` del `ConfigGroup`: se midio que esas no alcanzan a sus hijos, asi que alli
+  // habria sido un arreglo que ninguna lectura sin Pulumi puede ver y que no llega al cluster.
+  // El porque entero, con las dos mediciones, en `componentes/credencial-de-registro.ts`.
+  return conCredencialDeRegistro(
+    [...plataforma, ...manifiestosDeLosSistemas(invariantes, plataforma)],
+    invariantes.environment,
+  );
 }
 
 export function emitir(opciones: Opciones): string {

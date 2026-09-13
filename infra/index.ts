@@ -6,6 +6,7 @@ import { namespacesDelAmbiente } from "./descriptor/entorno";
 import { manifiestosDelAmbiente } from "./herramientas/emitir-manifiestos";
 import {
   CLAVES_DE_CREDENCIALES_DE_RESPALDO,
+  nombreDelSecretoDeRegistro,
   secretoDeCredencialesDeRespaldo,
   secretos,
 } from "./componentes/convenciones";
@@ -233,6 +234,12 @@ const recursos = new k8s.yaml.v2.ConfigGroup(
     // —k3s reinstala el chart con sus valores por omision y el `up` lo recrea— y `prod` volvera
     // a necesitarlo. La salida sin parpadeo, si algun dia se quiere, es `pulumi state delete`
     // del recurso viejo mas `pulumi import` del objeto bajo el URN nuevo.
+    //
+    // Y la credencial del registro NO va en esta transformacion, aunque parezca su sitio (#166):
+    // se midio con `@pulumi/kubernetes` 4.33.0 que `transformations` sobre este `ConfigGroup`
+    // —un componente remoto, cuyos hijos construye el proveedor y no este proceso— se invoca UNA
+    // vez, sobre el propio grupo, y nunca sobre sus hijos. Va en `manifiestosDelAmbiente()`, antes
+    // de llegar a `objs`. Lo que esa medida implica para el `ignoreChanges` de aqui abajo es #172.
     transformations: [
       (args) => {
         const props = conPatchForce(args.props as Record<string, unknown>);
@@ -286,10 +293,22 @@ new k8s.core.v1.Secret(
  * `401` de fondo, sin que nada en este repositorio lo explicara hasta ahora.
  *
  * Va como `Secret` de `kubernetes.io/dockerconfigjson` más un `ServiceAccountPatch`
- * sobre `default` —la que usan todos los `Deployment`/`Job` de arriba, ninguno declara
- * `serviceAccountName`— en vez de repetir `imagePullSecrets` en cada manifiesto. El
- * `ServiceAccountPatch` usa Server-Side Apply: no reclama la cuenta entera, que crea
- * Kubernetes al crear el `Namespace`, solo el campo que le falta.
+ * sobre `default`. El `ServiceAccountPatch` usa Server-Side Apply: no reclama la cuenta
+ * entera, que crea Kubernetes al crear el `Namespace`, solo el campo que le falta.
+ *
+ * **Aquí decía que el parche iba «en vez de repetir `imagePullSecrets` en cada
+ * manifiesto», y desde #166 van las dos cosas.** El parche solo alcanza a los pods que se
+ * admiten DESPUÉS de él —ver «El orden», abajo—, así que el nombre de este `Secret` viaja
+ * además dentro de cada plantilla de pod del ambiente: lo pone
+ * `conCredencialDeRegistro()` en `manifiestosDelAmbiente()`, con el nombre que da
+ * `nombreDelSecretoDeRegistro()`, el mismo que usa el `Secret` de abajo. Tampoco era cierto
+ * que «ninguno declara `serviceAccountName`»: `kube-state-metrics` lleva cuenta propia, que
+ * este parche no toca — hoy no importa porque su imagen es pública, y con la plantilla deja
+ * de importar del todo.
+ *
+ * El parche **se conserva**, y no por inercia: es lo que da la credencial a un pod que no
+ * sale de estos manifiestos —un `kubectl run` de diagnóstico, un `Job` creado a mano desde un
+ * `CronJob`— siempre que se cree después de él.
  *
  * ## En TODOS los espacios de nombres del ambiente, y no solo en el de la plataforma
  *
@@ -318,18 +337,36 @@ new k8s.core.v1.Secret(
  * visibilidad del paquete**, que es justo lo que la otra salida no da: publicar cierra
  * el caso de hoy y deja el siguiente paquete privado exactamente donde estaba.
  *
- * **El orden, y por qué no hace falta declararlo.** Los cinco espacios de nombres de sistema los
- * crea el `ConfigGroup` de arriba, y el `ServiceAccount` `default` lo crea Kubernetes al crear
- * cada `Namespace`; estos once recursos no declaran `dependsOn` hacia él por el mismo motivo que
- * el `Secret` de respaldo (issue #158): el `ConfigGroup` no se da por creado hasta que **todos**
- * sus `Deployment` quedan `Ready`, así que depender de él sería un círculo. Sin dependencia
- * declarada corren en paralelo y el proveedor reintenta con backoff — se observó tolerando bien
- * más de un minuto, y un `Namespace` lo crea el `ConfigGroup` en sus primeros segundos.
+ * **El orden, y por qué este bloque decía que no hacía falta declararlo — y era falso (#166).**
+ * Los cinco espacios de nombres de sistema los crea el `ConfigGroup` de arriba, y el
+ * `ServiceAccount` `default` lo crea Kubernetes al crear cada `Namespace`; estos doce recursos no
+ * declaran `dependsOn` hacia él por el mismo motivo que el `Secret` de respaldo (issue #158): el
+ * `ConfigGroup` no se da por creado hasta que **todos** sus `Deployment` quedan `Ready`, así que
+ * depender de él sería un círculo. Sin dependencia declarada corren en paralelo, y aquí se
+ * afirmaba que eso bastaba porque «el proveedor reintenta con backoff».
  *
- * Y no van como manifiestos a propósito: `yarn manifiestos` imprime, compara y guarda su
- * salida, así que un `Secret` con el token dentro sería publicarlo. Como recursos de
- * Pulumi el valor vive cifrado en el estado, igual que los otros dos `Secret` de este
- * archivo, y `yarn manifiestos` sale **idéntico byte a byte**.
+ * El reintento cubre UNA carrera —que el parche llegue antes que el `Namespace`— y no la otra:
+ * **que los pods lleguen antes que el parche**. Esa no se reintenta, porque el controlador de
+ * admisión de `ServiceAccount` copia `imagePullSecrets` de la cuenta al pod al admitirlo y nunca
+ * después. Medido en la reconstrucción de `stg` sobre `vmd205066` el 2026-09-13, con el clúster
+ * vacío: pods creados de 14:24:15Z a 14:25:00Z con `spec.imagePullSecrets` vacío, parche sobre
+ * `default` de `kamayuk-identidad-stg` a las 14:26:52Z, e `identidad` —el único paquete privado—
+ * en `ImagePullBackOff` con `failed to fetch anonymous token`, arrastrando a las implantaciones
+ * de `caja`, `catastro` y `normativa`. En un clúster que ya existía no se veía nunca: la cuenta
+ * llevaba el parche desde hacía semanas. Solo aparece al mudar de nodo o reconstruir.
+ *
+ * **Lo que lo cierra no es declarar el orden, es que deje de importar**: el nombre del `Secret`
+ * va dentro de cada plantilla de pod, y el kubelet lo vuelve a buscar en cada reintento de la
+ * descarga, así que un pod creado antes que su `Secret` arranca en cuanto el `Secret` existe.
+ * Medido en un k3s desechable con un registro local con autenticación: el pod con la plantilla
+ * corrió **11 s** después de crear el `Secret`; el que dependía del parche seguía sin imagen
+ * **5 min 35 s** después. Las dos mediciones, en `componentes/credencial-de-registro.ts`.
+ *
+ * Y el `Secret` y el parche no van como manifiestos a propósito: `yarn manifiestos` imprime,
+ * compara y guarda su salida, así que un `Secret` con el token dentro sería publicarlo. Como
+ * recursos de Pulumi el valor vive cifrado en el estado, igual que los otros dos `Secret` de
+ * este archivo. Lo que `yarn manifiestos` sí lleva desde #166 es el **nombre** del `Secret` en
+ * cada plantilla, que no abre nada.
  *
  * **`pulumi.com/patchForce`, y por qué es intencional (issue #257, primer `pulumi up`
  * real contra `stg`):** el `ServiceAccount` `default` de `stg` YA tenía
@@ -372,12 +409,14 @@ for (const espacio of namespacesDelAmbiente(env)) {
 
   // El `metadata.name` SÍ es el mismo en los seis: un `Secret` es de su espacio de nombres,
   // así que no colisiona, y que se llame igual en todos es lo que permite que
-  // `imagePullSecrets` se escriba una vez.
+  // `imagePullSecrets` se escriba una vez. Y sale de `nombreDelSecretoDeRegistro()`, la misma
+  // función con la que cada plantilla de pod lo nombra desde #166: si los dos nombres se
+  // separaran, los pods pedirían un `Secret` que no existe y bajarían la imagen sin credencial.
   const secretoDeRegistro = new k8s.core.v1.Secret(
     resourceName(env, `registro-credenciales${sufijo}`),
     {
       metadata: {
-        name: resourceName(env, "registro-credenciales"),
+        name: nombreDelSecretoDeRegistro(env),
         namespace: espacio,
         labels: commonLabels(env, "registro"),
       },
