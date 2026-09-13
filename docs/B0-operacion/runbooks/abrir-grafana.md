@@ -4,7 +4,7 @@
 |---|---|
 | Cuándo | Mirar el estado de la plataforma en sus tableros: el motor, el nodo, los pods |
 | Qué cubre | El acceso a Grafana por el túnel, la clave de su administrador y qué hacer cuando esa clave no abre. Un tablero que abre y **sale vacío** está en [`grafana-no-muestra-datos.md`](grafana-no-muestra-datos.md) |
-| Estado del ensayo | **Ensayado contra el Grafana real de `stg`** (`vmd194233`, k3d, 2026-09-12): el túnel, la clave del `Secret`, la salud, el origen de datos, el tablero y los tres modos de fallo del acceso. **No ensayado en `prod`**, y **no ejecutado** el remedio de «La clave del `Secret` ya no abre» — ver «Estado del ensayo» |
+| Estado del ensayo | **Remedido contra el Grafana del `stg` nuevo** (`vmd205066`, k3s nativo, 2026-09-13): el túnel, la clave del `Secret`, la salud, el origen de datos, el tablero y `/grafana` desde internet. Ensayado antes contra el k3d de `vmd194233` (2026-09-12), con los modos de fallo del acceso. **No ensayado en `prod`**, y **no ejecutado** el remedio de «La clave del `Secret` ya no abre» — ver «Estado del ensayo» |
 
 ## Síntoma
 
@@ -32,6 +32,15 @@ No es una falla: es consulta corriente.
    ```bash
    ssh -f -N -L 6444:localhost:6443 <usuario>@<vps-del-ambiente>
    ```
+
+   **Mejor `127.0.0.1` que `localhost` en el destino del túnel**: `-L 6444:127.0.0.1:6443`. En el VPS,
+   `localhost` puede resolver primero a `::1`, y si ahí escucha otra cosa el túnel llega a ella y no
+   al API. Pasó el 2026-09-13 con el VPS viejo de `stg`: ver «Si no sale bien».
+
+   **Y el puerto local tiene que estar libre de verdad.** Si en la máquina desde la que se trabaja
+   corre otro clúster —un k3s local ocupa el 6443 y el 6444—, un kubeconfig que apunte ahí habla con
+   **ese** clúster. Se elige otro puerto (se midió con el 6447) y el `server:` del kubeconfig se
+   cambia al mismo.
 
 2. **Grafana no está publicado.** Su `Service` es `ClusterIP` y ninguna `IngressRoute`
    lo nombra (`infra/componentes/Observabilidad.ts`), así que el túnel es el único camino.
@@ -110,8 +119,9 @@ Grafana y Prometheus, no de acceso: [`grafana-no-muestra-datos.md`](grafana-no-m
 curl -s -o /dev/null -w '%{http_code}\n' https://<dominio>/grafana
 ```
 
-Devuelve **404**. Medido el 2026-09-12 en los dos dominios. Si alguna vez devuelve Grafana,
-se publicó sin que nada de este repositorio lo diga, y es un incidente.
+Devuelve **404**. Medido el 2026-09-12 en los dos dominios, y el 2026-09-13 en el dominio nuevo de
+`stg` (`vmd205066.contaboserver.net`), ya con un certificado que verifica. Si alguna vez devuelve
+Grafana, se publicó sin que nada de este repositorio lo diga, y es un incidente.
 
 ## Si no sale bien
 
@@ -137,6 +147,33 @@ read tcp 127.0.0.1:51738->127.0.0.1:6446: read: connection reset by peer
 Para saber si detrás del puerto hay un API, sin credenciales:
 `curl -sk -o /dev/null -w '%{http_code}\n' https://127.0.0.1:<puerto>/version` da **401** cuando lo
 hay, y **`000`** en los dos casos de la tabla.
+
+### `unexpected eof while reading`, con el túnel vivo y el API arriba
+
+El túnel llega a **otra cosa que escucha en el mismo puerto del VPS**. Medido el 2026-09-13 contra el
+VPS viejo de `stg`: el túnel era `-L 6445:localhost:6445`, el API de k3d estaba en `0.0.0.0:6445`, y
+en `[::1]:6445` escuchaba un `ssh` lanzado en el propio VPS. `localhost` resolvió a `::1`, y ese `ssh`
+cortaba cada conexión:
+
+```
+* TLS connect error: error:0A000126:SSL routines::unexpected eof while reading
+```
+
+Se ve en el VPS con `sudo ss -ltnp | grep <puerto>`: aparecen dos dueños del mismo puerto. El remedio
+es poner **`127.0.0.1`** en el destino del túnel, no cerrar el otro proceso.
+
+### `x509: certificate signed by unknown authority`
+
+El kubeconfig llega a **un API, pero no al de este ambiente**. Medido el 2026-09-13 en la máquina de
+trabajo: el kubeconfig del `stg` nuevo decía `server: https://127.0.0.1:6443`, y ese puerto era el de
+un k3s local, con otra autoridad de certificación:
+
+```
+Unable to connect to the server: tls: failed to verify certificate: x509: certificate signed by unknown authority
+```
+
+No es un certificado caducado ni un problema de CI: es otro clúster. Remedio: túnel a un puerto local
+libre y ese mismo puerto en el `server:` del kubeconfig (paso 1 de «Precondiciones»).
 
 ### El navegador o `curl` no conectan con `127.0.0.1:3000`
 
@@ -191,15 +228,20 @@ No es un problema de acceso: [`grafana-no-muestra-datos.md`](grafana-no-muestra-
 
 ## Estado del ensayo
 
-**Ensayado contra el Grafana real de `stg`** (`vmd194233`, k3d, 2026-09-12), desde la máquina de
-trabajo y con `~/.kube/k3d-sgtm-stg-cluster.yaml` apuntando al túnel del 6445.
+**Remedido contra el `stg` nuevo** (`vmd205066`, k3s nativo, 2026-09-13), desde la máquina de trabajo,
+con el túnel `-L 6447:127.0.0.1:6443` y un kubeconfig apuntando al 6447:
 
-> **El 2026-09-13 `stg` mudó** a k3s nativo sobre `vmd205066` ([#145](https://github.com/hneyra/infrastructure/issues/145)),
-> así que este ensayo se midió contra un nodo que ya no sirve a `stg` y ese kubeconfig ya no
-> vale. Lo que la mudanza cambia de este runbook es **el puerto remoto** —corregido arriba—;
-> el resto no se ha vuelto a medir, y por eso el sello se deja tal como se tomó.
+- la clave del `Secret`: **200**. `admin`/`admin` y una clave falsa: **401** las dos;
+- `/api/health`: `"database":"ok"`, `11.3.0`;
+- el origen de datos: `Successfully queried the Prometheus API.`;
+- el tablero: `kamayuk-resumen-operativo`, en la carpeta «Kamayuk»;
+- `/grafana` y `/keycloak/admin/master/console/` desde internet: **404** los dos, con el certificado
+  real de Let's Encrypt (`ssl_verify_result=0`);
+- los dos modos de fallo nuevos de «Si no sale bien»: `unexpected eof` y `x509`.
 
-Lo medido:
+**Ensayado antes contra el k3d de `vmd194233`** (2026-09-12), que ya no es `stg`, con
+`~/.kube/k3d-sgtm-stg-cluster.yaml` apuntando al túnel del 6445. Lo medido allí, y que no depende del
+nodo:
 
 - el túnel y el `port-forward`, en cuatro puertos locales distintos;
 - la clave del `Secret`: **200**. `admin`/`admin` y una clave falsa: **401** las dos;
