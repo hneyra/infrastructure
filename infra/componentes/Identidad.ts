@@ -7,6 +7,7 @@ import {
   RUTA_DE_GRAFANA,
   type TablaDeRecursos,
   ROL_DE_IDENTIDAD,
+  huellaDelContenido,
   nombreDePrioridad,
   secretos,
   seguridadSinRoot,
@@ -717,6 +718,49 @@ export function huellaDeIdentidad(partes: readonly string[]): string {
   return acumulador.digest("hex").slice(0, 10);
 }
 
+/**
+ * El nombre del `ConfigMap` del realm: `kamayuk-<amb>-realm-<huella de su contenido>` (#84).
+ *
+ * ## El defecto, medido en `stg` el 2026-09-11
+ *
+ * Con el nombre fijo, un cambio de `data` es un **reemplazo** —el proveedor no lleva
+ * `enableConfigMapMutable` (`index.ts`)—, y un reemplazo con `metadata.name` explicito **tiene que
+ * borrar antes de crear**: dos objetos no pueden llamarse igual. El tope de 15 minutos de
+ * `aplicar-stg` corto la corrida entre las dos mitades, y el ambiente se quedo con el `Job` y sin
+ * su `ConfigMap`: el pod 27 minutos en `ContainerCreating`, `kubectl get jobs` diciendo `Running`,
+ * y la causa solo en los eventos del pod —«configmap "kamayuk-stg-realm" not found»—. El `up`
+ * siguiente se quedaba esperando a un `Job` que no podia arrancar sin lo que el mismo borro.
+ *
+ * ## Por que la huella en el nombre lo cierra
+ *
+ * Un contenido nuevo es **otro objeto**: el `data` ya no puede cambiar sin que cambie el nombre,
+ * asi que el reemplazo desaparece y no queda nada que se borre antes de crear. Pulumi crea el
+ * nuevo, el `Job` nuevo lo monta, y el viejo —que el programa ya no declara— lo borra el motor
+ * en `performPostSteps`, que solo corre cuando el programa TERMINO y ningun paso fallo (una
+ * espera agotada o un `Ctrl-C` cancelan antes). Cortada en cualquier punto, la corrida deja el
+ * `ConfigMap` viejo en su sitio, que es lo correcto para un despliegue a medias.
+ *
+ * ## Por que no la MISMA huella que el `Job`
+ *
+ * La del `Job` cuenta tambien su pod (`huellaDeIdentidad` sobre `plantillaDeReconciliacion`), y su
+ * pod nombra este `ConfigMap`: con la misma huella, el nombre dependeria de si mismo. Esta cuenta
+ * **solo el contenido**, y la del `Job` la arrastra sola —contenido nuevo, nombre nuevo, pod
+ * nuevo, huella nueva—. Al reves no: corregir el pod crea un `Job` nuevo sobre el MISMO
+ * `ConfigMap`, que no cambio y no tiene por que moverse.
+ *
+ * Cuenta el `data` **entero**, y no una lista de claves escrita al lado: una lista se queda corta,
+ * que es lo que le paso a la huella del `Job` hasta #63. Exportada para que
+ * `el-realm-no-se-queda-sin-configmap.test.ts` ejerza sus propiedades sin componer un ambiente;
+ * lo que recompone desde los manifiestos lo recompone con su PROPIA copia de la huella, a
+ * proposito, para no aceptar lo que esta funcion devuelva.
+ */
+export function nombreDelConfigMapDelRealm(
+  environment: Environment,
+  datos: Readonly<Record<string, string>>,
+): string {
+  return `${resourceName(environment, "realm")}-${huellaDelContenido(datos)}`;
+}
+
 /** El TSV de identidades y lo que el Job comprueba, derivado del archivo versionado. */
 export interface DocumentosDeIdentidades {
   /**
@@ -1145,43 +1189,51 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
     cuentasDePrueba: cuentasDeOperacionDePrueba,
   });
 
+  // El contenido va aparte porque de el sale el NOMBRE del `ConfigMap` (#84): con el nombre fijo,
+  // cambiarlo borraba el objeto antes de crear el nuevo, y una corrida cortada en medio dejaba el
+  // `Job` sin nada que montar. Ver `nombreDelConfigMapDelRealm`.
+  const datosDelRealm: Record<string, string> = {
+    "realm.json": documentos.realm,
+    "perfil-de-usuario.json": documentos.perfilDeUsuario,
+    "clientes.json": documentos.clientes,
+    // Los tres del ciudadano, en el mismo ConfigMap y con el mismo guion: el
+    // realm es otro, el procedimiento de aplicarlo no (ADR-0020).
+    "realm-ciudadano.json": documentosDelCiudadano.realm,
+    "perfil-de-usuario-ciudadano.json": documentosDelCiudadano.perfilDeUsuario,
+    "clientes-ciudadano.json": documentosDelCiudadano.clientes,
+    // Los ambitos de los dos realms, uno por documento y sus mapeadores aparte. El
+    // prefijo separa los dos realms —`ambito--` y `ambito-ciudadano--`— porque el guion
+    // los recorre con un glob y no sabe leer JSON: la imagen de Keycloak no trae `jq`.
+    ...documentosDeAmbitos("ambito--", documentos.ambitos),
+    ...documentosDeAmbitos("ambito-ciudadano--", documentosDelCiudadano.ambitos),
+    "reconciliar-realm.sh": reconciliarRealmSh(),
+    // El alta declarativa de usuarios (ADR-0012): el mismo guion que el compose y el
+    // TSV que `documentosDeIdentidades` deriva del archivo versionado.
+    "reconciliar-identidades.sh": reconciliarIdentidadesSh(),
+    "identidades.tsv": identidades.tsv,
+    // Las cuentas de servicio, derivadas aqui por lo mismo que las personas: la
+    // imagen de Keycloak no trae python ni jq, y el `Job` corre dentro de ella (#21).
+    "servicios.tsv": identidades.servicios,
+    // Y el enrolamiento del ciudadano (ADR-0020 §5, #415), en el mismo ConfigMap y con
+    // el mismo guion: el realm es otro y la poblacion es otra, el procedimiento no.
+    "ciudadanos.tsv": identidades.ciudadanos,
+    // El realm de operacion (ADR-0041). Sin ambitos propios —se queda con los de fabrica— y con
+    // su unico cliente aparte, porque no se aplica con `partialImport` (ver
+    // `documentosDelRealmDeOperacion`).
+    "realm-operacion.json": documentosDeOperacion.realm,
+    "perfil-de-usuario-operacion.json": documentosDeOperacion.perfilDeUsuario,
+    "cliente-operacion.json": documentosDeOperacion.cliente,
+    "operadores.tsv": operadores.tsv,
+  };
   const configuracionDelRealm: ConfigMap = {
     apiVersion: "v1",
     kind: "ConfigMap",
-    metadata: { name: resourceName(environment, "realm"), namespace, labels: etiquetas },
-    data: {
-      "realm.json": documentos.realm,
-      "perfil-de-usuario.json": documentos.perfilDeUsuario,
-      "clientes.json": documentos.clientes,
-      // Los tres del ciudadano, en el mismo ConfigMap y con el mismo guion: el
-      // realm es otro, el procedimiento de aplicarlo no (ADR-0020).
-      "realm-ciudadano.json": documentosDelCiudadano.realm,
-      "perfil-de-usuario-ciudadano.json": documentosDelCiudadano.perfilDeUsuario,
-      "clientes-ciudadano.json": documentosDelCiudadano.clientes,
-      // Los ambitos de los dos realms, uno por documento y sus mapeadores aparte. El
-      // prefijo separa los dos realms —`ambito--` y `ambito-ciudadano--`— porque el guion
-      // los recorre con un glob y no sabe leer JSON: la imagen de Keycloak no trae `jq`.
-      ...documentosDeAmbitos("ambito--", documentos.ambitos),
-      ...documentosDeAmbitos("ambito-ciudadano--", documentosDelCiudadano.ambitos),
-      "reconciliar-realm.sh": reconciliarRealmSh(),
-      // El alta declarativa de usuarios (ADR-0012): el mismo guion que el compose y el
-      // TSV que `documentosDeIdentidades` deriva del archivo versionado.
-      "reconciliar-identidades.sh": reconciliarIdentidadesSh(),
-      "identidades.tsv": identidades.tsv,
-      // Las cuentas de servicio, derivadas aqui por lo mismo que las personas: la
-      // imagen de Keycloak no trae python ni jq, y el `Job` corre dentro de ella (#21).
-      "servicios.tsv": identidades.servicios,
-      // Y el enrolamiento del ciudadano (ADR-0020 §5, #415), en el mismo ConfigMap y con
-      // el mismo guion: el realm es otro y la poblacion es otra, el procedimiento no.
-      "ciudadanos.tsv": identidades.ciudadanos,
-      // El realm de operacion (ADR-0041). Sin ambitos propios —se queda con los de fabrica— y con
-      // su unico cliente aparte, porque no se aplica con `partialImport` (ver
-      // `documentosDelRealmDeOperacion`).
-      "realm-operacion.json": documentosDeOperacion.realm,
-      "perfil-de-usuario-operacion.json": documentosDeOperacion.perfilDeUsuario,
-      "cliente-operacion.json": documentosDeOperacion.cliente,
-      "operadores.tsv": operadores.tsv,
+    metadata: {
+      name: nombreDelConfigMapDelRealm(environment, datosDelRealm),
+      namespace,
+      labels: etiquetas,
     },
+    data: datosDelRealm,
   };
 
   const identidad: Deployment = {
@@ -1452,6 +1504,9 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
     volumes: [
       {
         name: "realm",
+        // El nombre CON huella, tomado del objeto y nunca reescrito (#84): un `resourceName(…,
+        // "realm")` literal aqui montaria un `ConfigMap` que ya no existe, y el pod se quedaria en
+        // `ContainerCreating` con la causa solo en sus eventos — el mismo estado mudo de antes.
         configMap: { name: configuracionDelRealm.metadata.name, defaultMode: 493 },
       },
       // El `Secret` con una clave por cliente de servicio. Vive en el namespace de la

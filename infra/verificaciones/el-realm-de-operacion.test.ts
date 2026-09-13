@@ -44,9 +44,10 @@ import { invariantesDe } from "./stacks";
 function delAmbiente(ambiente: Environment): { datos: Record<string, string>; job: Job } {
   const ms = construirManifiestos(invariantesDe(ambiente));
   const nombre = resourceName(ambiente, "realm");
-  const cm = ms.find((m) => m.kind === "ConfigMap" && m.metadata.name === nombre);
+  // Los dos llevan huella en el nombre, el `ConfigMap` desde #84: los separa el `kind`.
+  const cm = ms.find((m) => m.kind === "ConfigMap" && m.metadata.name.startsWith(`${nombre}-`));
   const job = ms.find((m) => m.kind === "Job" && m.metadata.name.startsWith(`${nombre}-`));
-  expect(cm, `el ambiente no compone el ConfigMap «${nombre}»`).toBeDefined();
+  expect(cm, `el ambiente no compone el ConfigMap «${nombre}-<huella>»`).toBeDefined();
   expect(job, `el ambiente no compone el Job «${nombre}-<huella>»`).toBeDefined();
   return { datos: (cm as ConfigMap).data, job: job as Job };
 }
