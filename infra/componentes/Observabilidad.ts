@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import { commonLabels, resourceName, type Environment } from "../config";
 import {
   CLAVES,
+  huellaDelContenido,
   type TablaDeRecursos,
   nombreDePrioridad,
   secretos,
@@ -172,33 +172,6 @@ function configuracionDePrometheus(environment: Environment): string {
   ].join("\n");
 }
 
-/**
- * La huella del contenido de un `ConfigMap`, para anotarla en el pod que lo consume (#146).
- *
- * **Kubernetes actualiza el archivo dentro del pod; el proceso no se entera.** Prometheus relee
- * su configuracion al arrancar o con `POST /-/reload`, y en el despliegue no lo llama nadie:
- * medido en `stg` el 2026-09-12, el `ConfigMap` tenia **15** reglas y el proceso seguia
- * evaluando **10**, raspando ademas el objetivo viejo de Traefik. El arreglo de #113 estaba
- * desplegado y sin efecto, y **las cinco reglas que no se evaluaban eran justo las que existen
- * para que un vigilante ciego no pase inadvertido**.
- *
- * Se anota la huella en el pod —y no se llama a `reload`— porque hay un caso que `reload` NO
- * puede arreglar: **Grafana monta sus tres archivos con `subPath`, y un `ConfigMap` montado asi
- * no recibe actualizaciones NUNCA** (documentacion de Kubernetes). Ahi lo unico que sirve es
- * recrear el pod. Una sola forma para los tres vale mas que dos que hay que recordar cual va
- * donde.
- *
- * Lo que cuesta: un cambio de configuracion recrea el pod. Para Prometheus eso es una ventana de
- * segundos sin raspar —sus datos viven en su volumen, no en el pod—, y es lo que ya pasaba cada
- * vez que alguien cambiaba la imagen.
- */
-function sumaDeLaConfiguracion(data: Record<string, string>): string {
-  const huella = createHash("sha256");
-  for (const clave of Object.keys(data).sort()) {
-    huella.update(clave).update("\u0000").update(data[clave] ?? "").update("\u0000");
-  }
-  return huella.digest("hex").slice(0, 16);
-}
 
 
 function manifiestosDePrometheus(args: ArgsComunes): Manifiesto[] {
@@ -244,7 +217,7 @@ function manifiestosDePrometheus(args: ArgsComunes): Manifiesto[] {
           labels: { ...etiquetas, app: nombre },
           // Recrea el pod cuando su configuracion cambia (#146): sin esto el archivo se
           // actualiza dentro del pod y el proceso sigue con el viejo.
-          annotations: { "kamayuk.gob.pe/suma-de-la-configuracion": sumaDeLaConfiguracion(configuracion.data) },
+          annotations: { "kamayuk.gob.pe/suma-de-la-configuracion": huellaDelContenido(configuracion.data) },
         },
         spec: {
           priorityClassName: prioridad,
@@ -383,7 +356,7 @@ function manifiestosDeAlertmanager(
           labels: { ...etiquetas, app: nombre },
           // Recrea el pod cuando su configuracion cambia (#146): sin esto el archivo se
           // actualiza dentro del pod y el proceso sigue con el viejo.
-          annotations: { "kamayuk.gob.pe/suma-de-la-configuracion": sumaDeLaConfiguracion(configuracion.data) },
+          annotations: { "kamayuk.gob.pe/suma-de-la-configuracion": huellaDelContenido(configuracion.data) },
         },
         spec: {
           priorityClassName: prioridad,
@@ -720,7 +693,7 @@ function manifiestosDeGrafana(
           labels: { ...etiquetas, app: nombre },
           // Recrea el pod cuando su configuracion cambia (#146): sin esto el archivo se
           // actualiza dentro del pod y el proceso sigue con el viejo.
-          annotations: { "kamayuk.gob.pe/suma-de-la-configuracion": sumaDeLaConfiguracion(configuracion.data) },
+          annotations: { "kamayuk.gob.pe/suma-de-la-configuracion": huellaDelContenido(configuracion.data) },
         },
         spec: {
           priorityClassName: prioridad,

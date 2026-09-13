@@ -61,9 +61,14 @@ describe("cada manifiesto es asignable a su tipo de @pulumi/kubernetes", () => {
     // Alertmanager, node-exporter, kube-state-metrics, Grafana— (#156). Eran NUEVE hasta
     // `E`: la aplicacion del monolito y su interfaz se fueron con el.
     expect(despliegues).toHaveLength(7);
-    // Un Job: la reconciliacion del realm. Eran tres —los dos de arranque del monolito—, y
-    // los de los cuatro sistemas viven en SU namespace, compuestos por su descriptor.
-    expect(trabajos).toHaveLength(1);
+    // DOS Job: la reconciliacion del realm y el que crea las bases que faltan (#81). Eran
+    // tres hasta `E` —los dos de arranque del monolito—, y los de los cuatro sistemas viven
+    // en SU namespace, compuestos por su descriptor.
+    //
+    // El segundo nacio porque `05-crear-bases.sh` vive en `docker-entrypoint-initdb.d` y esa
+    // carpeta solo corre con el volumen vacio: la base `identidad` no llego nunca al motor de
+    // `stg`, creado seis dias antes de que el quinto sistema existiera.
+    expect(trabajos).toHaveLength(2);
     // Un CronJob: el respaldo base (#155). Eran dos, con el lote de la aplicacion.
     expect(programados).toHaveLength(1);
   });

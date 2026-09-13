@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   commonLabels,
   namespaceName,
@@ -943,4 +944,23 @@ export function variablesWalg(args: {
       valueFrom: { secretKeyRef: { name: args.secretoDeRespaldo, key: CLAVES.cifradoDeRespaldo } },
     },
   ];
+}
+
+/**
+ * La huella del contenido de un `ConfigMap`. Dos usos, y los dos derivan de lo mismo: **un
+ * archivo que cambia en el `ConfigMap` no cambia nada en el proceso que lo consume.**
+ *
+ * - En la observabilidad se anota en el pod, para que un cambio de configuracion lo recree
+ *   (#146): Kubernetes actualiza el archivo dentro del contenedor y Prometheus sigue con el
+ *   viejo — medido en `stg`, 15 reglas en el disco y 10 en el proceso.
+ * - En el motor va en el NOMBRE del `Job` que crea las bases (#81): un sistema nuevo anade su
+ *   `crear-roles.sql`, la huella cambia, y eso es lo que hace nacer un `Job` que corra. Sin
+ *   cambio no hay `Job` nuevo, asi que no se repite trabajo en cada despliegue.
+ */
+export function huellaDelContenido(data: Record<string, string>): string {
+  const huella = createHash("sha256");
+  for (const clave of Object.keys(data).sort()) {
+    huella.update(clave).update("\u0000").update(data[clave] ?? "").update("\u0000");
+  }
+  return huella.digest("hex").slice(0, 16);
 }
