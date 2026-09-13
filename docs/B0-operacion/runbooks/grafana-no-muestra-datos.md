@@ -218,6 +218,12 @@ Las tres, contra el sistema real:
 
 **Ensayado contra `stg`** (`vmd194233`, k3d, 2026-09-12), desde la máquina de trabajo:
 
+> **El 2026-09-13 `stg` mudó** a k3s nativo sobre `vmd205066` ([#145](https://github.com/hneyra/infrastructure/issues/145)),
+> así que lo de abajo se midió contra un nodo que ya no sirve a `stg`. El sello se deja tal
+> como se tomó: remedir es otro trabajo. Lo único que la mudanza cambia por sí sola es el
+> puerto remoto del túnel, que pasa a ser el **6443** en los dos ambientes.
+
+
 - las **doce** consultas del tablero, una a una, contra su Prometheus: la tabla de §1;
 - la lista de objetivos de §2, con sus cinco `up`;
 - **§3 entero: el defecto y su remedio.** El despliegue de #113 llegó al `ConfigMap` a las

@@ -13,19 +13,24 @@ No es una falla: es consulta corriente.
 ## Precondiciones
 
 1. **Acceso `kubectl` al ambiente**, con permiso para leer `Secret` y abrir `port-forward`.
-   Desde fuera del nodo va por el túnel SSH al API, y **el puerto remoto no es el mismo en
-   los dos ambientes**:
-
-   | Ambiente | Dónde escucha el API en el VPS | Cómo lo abre CI |
-   |---|---|---|
-   | `stg` | **6445** — corre en k3d, no en el k3s del anfitrión | `ssh -f -N -L 6443:localhost:6445` (`.github/workflows/infra.yml`) |
-   | `prod` | **6443** | `ssh -f -N -L 6443:localhost:6443` |
-
-   El puerto **local** es libre, pero tiene que coincidir con el `server:` del kubeconfig
-   que uses. Por ejemplo, con un kubeconfig que diga `server: https://0.0.0.0:6445`:
+   Desde fuera del nodo va por el túnel SSH al API. **Los dos ambientes corren k3s nativo
+   sobre el host, así que el puerto remoto es el 6443 en los dos**, y así lo abre CI
+   (`.github/workflows/infra.yml`):
 
    ```bash
-   ssh -f -N -L 6445:localhost:6445 <usuario>@<vps-de-stg>
+   ssh -f -N -L 6443:localhost:6443 <usuario>@<vps-del-ambiente>
+   ```
+
+   Hasta la mudanza de `stg` del 2026-09-13 ([#145](https://github.com/hneyra/infrastructure/issues/145))
+   esta tabla tenía dos filas: `stg` corría en k3d —Kubernetes dentro de un contenedor— y su
+   API quedaba publicada en el **6445**. Si te encuentras un kubeconfig viejo apuntando ahí,
+   es de antes de la mudanza.
+
+   El puerto **local** es libre, pero tiene que coincidir con el `server:` del kubeconfig
+   que uses. Por ejemplo, con un kubeconfig que diga `server: https://localhost:6444`:
+
+   ```bash
+   ssh -f -N -L 6444:localhost:6443 <usuario>@<vps-del-ambiente>
    ```
 
 2. **Grafana no está publicado.** Su `Service` es `ClusterIP` y ninguna `IngressRoute`
@@ -118,7 +123,7 @@ engaña:**
 | Causa | Cómo se reconoce | Remedio |
 |---|---|---|
 | No hay túnel | **`dial tcp 0.0.0.0:<puerto>: connect: connection refused`** | abrirlo, paso 1 de «Precondiciones» |
-| Hay túnel, pero al puerto remoto equivocado | **`read: connection reset by peer`**, con el `ssh` vivo en `ps` | corregir el puerto remoto: 6445 en `stg`, 6443 en `prod` |
+| Hay túnel, pero al puerto remoto equivocado | **`read: connection reset by peer`**, con el `ssh` vivo en `ps` | corregir el puerto remoto: **6443 en los dos ambientes** |
 
 El segundo caso se midió en la máquina de trabajo: un `ssh -f -N -L 6446:localhost:6446`
 contra el VPS de `prod`, vivo durante horas, detrás del cual no hay nada. `ssh` acepta la
@@ -187,7 +192,14 @@ No es un problema de acceso: [`grafana-no-muestra-datos.md`](grafana-no-muestra-
 ## Estado del ensayo
 
 **Ensayado contra el Grafana real de `stg`** (`vmd194233`, k3d, 2026-09-12), desde la máquina de
-trabajo y con `~/.kube/k3d-sgtm-stg-cluster.yaml` apuntando al túnel del 6445:
+trabajo y con `~/.kube/k3d-sgtm-stg-cluster.yaml` apuntando al túnel del 6445.
+
+> **El 2026-09-13 `stg` mudó** a k3s nativo sobre `vmd205066` ([#145](https://github.com/hneyra/infrastructure/issues/145)),
+> así que este ensayo se midió contra un nodo que ya no sirve a `stg` y ese kubeconfig ya no
+> vale. Lo que la mudanza cambia de este runbook es **el puerto remoto** —corregido arriba—;
+> el resto no se ha vuelto a medir, y por eso el sello se deja tal como se tomó.
+
+Lo medido:
 
 - el túnel y el `port-forward`, en cuatro puertos locales distintos;
 - la clave del `Secret`: **200**. `admin`/`admin` y una clave falsa: **401** las dos;
