@@ -233,3 +233,33 @@ groups:
           resumen: "Faltan las metricas de Traefik: CertificadoPorExpirar esta ciega"
           descripcion: "Sin `traefik_tls_certs_not_after` nadie avisa de un certificado que no se renueva, y el primero en enterarse seria el navegador de un contribuyente (RNF-074). 30m porque un `helm upgrade` del ingreso recrea el pod y la serie tarda en volver."
           runbook: "docs/B0-operacion/runbooks/mantenimiento-del-vps.md"
+
+      # --- Un reinicio deja de ser silencioso (#99) ------------------------------
+      #
+      # El runbook `keycloak-no-responde.md` lo escribio y nadie lo atendio: «ninguna [alerta]
+      # mira `restartCount` ni `OOMKilled`. Las dos que podrian haber cazado el episodio de #99
+      # no lo hicieron». Medido el 2026-09-13: el pod de Keycloak llevaba **3 reinicios**, el
+      # ultimo `OOMKilled` a las 17:22:36Z del dia anterior, y ninguna alerta se entero.
+      #
+      # `PodEnCrashLoopBackOff` no cubre esto: un pod que muere y vuelve a arrancar BIEN nunca
+      # entra en CrashLoopBackOff, asi que el kernel puede estar matandolo una vez por dia sin
+      # que nada lo diga. Y `PodNoListo` tampoco: para cuando se mira, ya esta listo otra vez.
+      - alert: ContenedorMuertoPorMemoria
+        expr: kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
+        for: 0m
+        labels:
+          severidad: critica
+        annotations:
+          resumen: "El kernel mato un contenedor por falta de memoria"
+          descripcion: "{{ $labels.namespace }}/{{ $labels.pod }}, contenedor {{ $labels.container }}: OOMKilled. Su limite no le basta, y el sintoma no lo dice — exit 137 se lee como cualquier otra cosa. Antes de mover el numero, medir con `kubectl top` lo que consume en regimen (#99)."
+          runbook: "docs/B0-operacion/runbooks/keycloak-no-responde.md"
+      - alert: ContenedorQueSeReinicia
+        expr: increase(kube_pod_container_status_restarts_total[1h]) >= 2
+        for: 0m
+        labels:
+          severidad: advertencia
+
+        annotations:
+          resumen: "Un contenedor se reinicio dos o mas veces en una hora"
+          descripcion: "{{ $labels.namespace }}/{{ $labels.pod }}, contenedor {{ $labels.container }}. Un pod que muere y vuelve a arrancar BIEN no entra nunca en CrashLoopBackOff, asi que sin esta regla el kernel puede estar matandolo a diario en silencio."
+          runbook: "docs/B0-operacion/runbooks/mantenimiento-del-vps.md"

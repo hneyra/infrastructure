@@ -323,9 +323,27 @@ const RECURSOS = {
     requests: { cpu: "50m", memory: "64Mi" },
     limits: { cpu: "200m", memory: "128Mi" },
   },
+  /**
+   * Keycloak. El techo sube de **1Gi a 1536Mi** el 2026-09-13, y el numero sale de una medida
+   * y no de una corazonada (#99).
+   *
+   * `kubectl top` sobre `prod`: **600Mi en regimen**, que son ya el **59 %** del techo de 1Gi
+   * — y lo que sobraba tenia que cubrir el pico de ARRANQUE de una JVM que hace su fase de
+   * *build*. No aguanto: el pod lleva **3 reinicios**, y el ultimo esta fechado y nombrado —
+   * `OOMKilled`, exit 137, 2026-09-12T17:22:36Z. De los otros dos no se puede decir la causa:
+   * Kubernetes solo conserva el ultimo `lastState.terminated`.
+   *
+   * **Subir el techo no compite por el presupuesto del nodo**, y eso tambien esta medido:
+   * `capacidad.ts` suma `requests` y no `limits` —el mismo razonamiento ya escrito para
+   * `reconciliacionDeIdentidades`—, asi que `requests` se queda en 512Mi y el pico declarado
+   * no se mueve. El nodo real iba al **36 %** (3 582Mi de ~9 907Mi) cuando se midio.
+   *
+   * Lo que esto NO arregla es que el OOM fuera silencioso: eso lo cierran las dos alertas
+   * nuevas de `alertas.yml`.
+   */
   identidad: {
     requests: { cpu: "250m", memory: "512Mi" },
-    limits: { cpu: "1", memory: "1Gi" },
+    limits: { cpu: "1", memory: "1536Mi" },
   },
   /** Los contenedores de espera y los guiones de `psql`: minusculos, pero declarados. */
   auxiliar: {
