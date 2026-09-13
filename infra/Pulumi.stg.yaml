@@ -47,8 +47,12 @@ config:
   #
   # Volver a medirlo es leer ese paso, o:
   #   kubectl get node -o jsonpath='{.items[0].status.allocatable.cpu}{"/"}{.items[0].status.allocatable.memory}'
-  kamayuk:nodeAllocatableCpu: "6"
-  kamayuk:nodeAllocatableMemory: 12247552Ki
+  # Medidas el 2026-09-13 en `vmd205066`, DESPUES de `reservar-recursos-del-nodo.sh`:
+  # capacidad 6 / 12242268Ki, y la reserva se lleva 1 CPU y exactamente 2 GiB. Hasta ese dia
+  # decian 6 / 12247552Ki, que era el k3d de `vmd194233`: un contenedor sin reserva ve la
+  # maquina entera, asi que declaraba como asignable memoria que el kubelet nunca reparte.
+  kamayuk:nodeAllocatableCpu: "5"
+  kamayuk:nodeAllocatableMemory: 10145116Ki
   #
   # LA BRECHA DE #1 SE RETIRA (C-19). Este nodo NO daba para el monolito y los cuatro
   # sistemas juntos —C-16 lo midio: faltaban 3 232Mi—, y la direccion decidio que `stg` es un
@@ -85,7 +89,7 @@ config:
   #
   # Lo que queda declarado en este archivo son las CUATRO versiones de abajo, una por sistema y
   # cada una un `sha` de SU repositorio.
-  kamayuk:domain: sv-RFoVCw2ifaqy3G9NZ1eT.cloud.elastika.pe
+  kamayuk:domain: vmd205066.contaboserver.net
   # A QUIEN se le avisa cuando algo de operacion necesita una persona, y DONDE (C-7 §4).
   # El primero que lo consume es `caja`: ADR-0026 §4 exige que un pago que no se pudo imputar
   # avise a una persona CON NOMBRE, porque es dinero cobrado sin registrar. Su aplicacion NO
@@ -109,7 +113,7 @@ config:
   # que llegue a un buzón real. En prod está prohibido un buzón así (INF-03 §4).
   kamayuk:keycloakSmtpHost: kamayuk-stg-correo
   kamayuk:keycloakSmtpPort: "1025"
-  kamayuk:keycloakSmtpFrom: no-responder@sv-RFoVCw2ifaqy3G9NZ1eT.cloud.elastika.pe
+  kamayuk:keycloakSmtpFrom: no-responder@vmd205066.contaboserver.net
   kamayuk:keycloakSmtpStartTls: "false"
   kamayuk:keycloakSmtpAuth: "false"
   kamayuk:applicationImageRepository: ghcr.io/hneyra
@@ -175,6 +179,16 @@ config:
   # segmentos en la linea `00000001` —una linea que NINGUN respaldo de ese bucket tiene—. O sea
   # que ahi tambien archiva un cluster para el que no hay ni un respaldo base. El bucket viejo
   # se deja INTACTO. El motivo largo esta en `Pulumi.prod.yaml`.
+  #
+  # LA MUDANZA A `vmd205066` DEL 2026-09-13 (#145) NO LO CAMBIA, Y ES UNA DECISION MEDIDA.
+  # Por la regla de arriba tocaria un contenedor nuevo: el cluster es otro —k3d en `vmd194233`
+  # antes, k3s nativo aqui ahora—. Se reusa porque este contenedor se declaro el 2026-09-12 con
+  # el despliegue de #112 y **se comprobo vacio** antes de la mudanza: sin catalogo dentro no
+  # hay nada que un cluster nuevo pueda pisar, que es lo unico que la regla protege.
+  # Lo que la haria falsa: que tuviera un `basebackups_005/` de `vmd194233`. Entonces el
+  # cluster nuevo archivaria WAL sobre el catalogo de aquel, `backup-push` saldria 0, la tabla
+  # `respaldo` diria EXITOSO, y no habria con que restaurar — sin un solo error por el camino.
+  # Se comprueba con `aws s3 ls s3://kamayuk-stg-backups/ --recursive | head`.
   kamayuk:backupEndpoint: https://s3.us-east-1.amazonaws.com
   kamayuk:backupRegion: us-east-1
   kamayuk:backupBucket: kamayuk-stg-backups

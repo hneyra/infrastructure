@@ -8,11 +8,11 @@
 # que después de probar hay que `--limpiar` (o `pulumi config rm`) antes de cualquier
 # commit. `stacks.test.ts` lo detecta si se olvida.
 #
-# Requiere un túnel SSH ya abierto al VPS del ambiente, con el puerto remoto correcto
-# (prod: 6443, k3s nativo. stg: 6445, corre en k3d):
+# Requiere un túnel SSH ya abierto al VPS del ambiente. Los dos corren k3s nativo, así
+# que el puerto remoto es el 6443 en los dos (hasta la mudanza de `stg` del 2026-09-13
+# era el 6445, porque `stg` corría en k3d):
 #
-#   ssh -f -N -L <puerto>:localhost:6443 <usuario>@<host-de-prod>
-#   ssh -f -N -L <puerto>:localhost:6445 <usuario>@<host-de-stg>
+#   ssh -f -N -L <puerto>:localhost:6443 <usuario>@<host-del-ambiente>
 #
 #   uso: probar-localmente.sh --ambiente stg|prod [--puerto 6443] [--limpiar]
 
