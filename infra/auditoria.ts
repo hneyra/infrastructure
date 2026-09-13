@@ -125,7 +125,119 @@ export function auditarManifiestos(
   }
 
   problemas.push(...auditarPrioridades(manifiestos));
+  problemas.push(...auditarGrafanaPublicada(manifiestos));
 
+  return problemas;
+}
+
+/**
+ * Lo que una ruta a Grafana exige de Grafana (ADR-0041, #149), con el daño de faltar cada linea.
+ *
+ * Cada motivo es una medida, no una suposicion: Grafana 11.3.0 contra Keycloak 26.0.8, rompiendo
+ * la linea y recorriendo el login con `curl` (2026-09-13).
+ */
+const LO_QUE_EXIGE_GRAFANA_PUBLICADO: readonly { variable: string; valor: string; porque: string }[] = [
+  {
+    variable: "GF_AUTH_GENERIC_OAUTH_ENABLED",
+    valor: "true",
+    porque: "sin OIDC, lo unico que queda para entrar es una clave",
+  },
+  {
+    variable: "GF_AUTH_DISABLE_LOGIN_FORM",
+    valor: "true",
+    porque:
+      "con el formulario encendido, `POST /grafana/login` con la clave de `admin` da 200 (medido): " +
+      "la clave del administrador local abre Grafana desde internet",
+  },
+  {
+    variable: "GF_AUTH_BASIC_ENABLED",
+    valor: "false",
+    porque: "con *basic auth* la misma clave vale en cada peticion al API, sin pasar por ninguna pantalla",
+  },
+  {
+    variable: "GF_AUTH_ANONYMOUS_ENABLED",
+    valor: "false",
+    porque: "con acceso anonimo, la ruta publica ES el acceso",
+  },
+  {
+    variable: "GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_STRICT",
+    valor: "true",
+    porque:
+      "sin rol estricto, una cuenta del realm SIN rol entra como `Viewer` (medido): el rol deja " +
+      "de decidir quien entra",
+  },
+];
+
+/**
+ * **Grafana solo se publica detras de Keycloak** (ADR-0041, #149).
+ *
+ * Hasta #149 la regla era mas simple —ninguna ruta a Grafana— y la sostenia una prueba. Desde que
+ * se publica, lo que impide volver a aquel riesgo es esto, y va en la auditoria y no en una prueba
+ * por lo mismo que la exclusion de `/keycloak/admin`: **lanza antes de crear nada**, asi que un
+ * `pulumi up` con la ruta puesta y el acceso aflojado no llega al cluster.
+ *
+ * Se reconoce a Grafana por su IMAGEN y se sigue su `Service` por el selector, no por el nombre:
+ * renombrar el `Deployment` no puede sacarlo de la regla.
+ */
+function auditarGrafanaPublicada(manifiestos: Manifiesto[]): string[] {
+  const problemas: string[] = [];
+  const generico = manifiestos as unknown as {
+    kind: string;
+    metadata: { name: string };
+    spec?: {
+      selector?: Record<string, string> | { matchLabels?: Record<string, string> };
+      template?: {
+        metadata?: { labels?: Record<string, string> };
+        spec?: { containers?: { image: string; env?: { name: string; value?: string }[] }[] };
+      };
+      routes?: { match: string; services: { name: string }[] }[];
+    };
+  }[];
+
+  for (const despliegue of generico) {
+    if (despliegue.kind !== "Deployment") continue;
+    const contenedor = despliegue.spec?.template?.spec?.containers?.find((c) =>
+      c.image.startsWith("grafana/grafana"),
+    );
+    const app = despliegue.spec?.template?.metadata?.labels?.app;
+    if (contenedor === undefined || app === undefined) continue;
+
+    const servicios = new Set(
+      generico
+        .filter(
+          (m) =>
+            m.kind === "Service" && (m.spec?.selector as Record<string, string> | undefined)?.app === app,
+        )
+        .map((m) => m.metadata.name),
+    );
+    const rutas = generico.filter(
+      (m) =>
+        m.kind === "IngressRoute" &&
+        (m.spec?.routes ?? []).some((r) => r.services.some((s) => servicios.has(s.name))),
+    );
+    if (rutas.length === 0) continue;
+
+    const variables = new Map((contenedor.env ?? []).map((v) => [v.name, v.value]));
+    const quien = `IngressRoute/${rutas.map((r) => r.metadata.name).join(", ")} publica Grafana (Deployment/${despliegue.metadata.name})`;
+    for (const { variable, valor, porque } of LO_QUE_EXIGE_GRAFANA_PUBLICADO) {
+      const tiene = variables.get(variable);
+      if (tiene !== valor) {
+        problemas.push(
+          `${quien} y ${variable} es «${tiene ?? "(sin declarar)"}», no «${valor}»: ${porque}. ` +
+            "Grafana se publica solo detras del realm de operacion (ADR-0041).",
+        );
+      }
+    }
+    const token = variables.get("GF_AUTH_GENERIC_OAUTH_TOKEN_URL") ?? "";
+    if (!/^http:\/\/[a-z0-9-]+:8080\/keycloak\//.test(token)) {
+      problemas.push(
+        `${quien} y GF_AUTH_GENERIC_OAUTH_TOKEN_URL es «${token || "(sin declarar)"}», que no es ` +
+          "la URL INTERNA de identidad. El intercambio del codigo lo hace el pod de Grafana, y " +
+          "desde un pod la IP publica del nodo no se alcanza (#141): el login moriria en " +
+          "`auth.oauth.token.exchange` despues de que la persona ya puso su clave (medido).",
+      );
+    }
+  }
   return problemas;
 }
 

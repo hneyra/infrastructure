@@ -89,6 +89,9 @@ export function construirManifiestos(s: Invariants): Manifiesto[] {
       // (ADR-0012). Hasta `E` los implantaba ademas el `Job` del monolito, que ya no esta.
       ubigeo: s.implantacion.ubigeo,
       administrador: s.implantacion.administrador,
+      // Las dos cuentas con que se demuestra el login de Grafana sin navegador (#149): donde se
+      // siembran usuarios de prueba, y en ningun otro sitio.
+      cuentasDeOperacionDePrueba: s.identity.seedTestUsers,
     }),
     ...manifiestosDeIngreso({
       environment,
@@ -102,6 +105,9 @@ export function construirManifiestos(s: Invariants): Manifiesto[] {
       namespace,
       recursos,
       alertWebhookUrl: s.observability.alertWebhookUrl,
+      // Grafana se publica en `/grafana` con login del realm de operacion (ADR-0041, #149).
+      domain: s.ingress.domain,
+      realm: s.identity.realm,
     }),
     // Al final, a proposito (issue #157): `denegar-todo` selecciona TODOS los
     // pods de arriba por igual, y aplicarla despues no cambia nada —Kubernetes

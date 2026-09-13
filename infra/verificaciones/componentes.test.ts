@@ -695,6 +695,7 @@ describe("#151 · identidad", () => {
         smtp: SMTP_DE_PRUEBA,
         ubigeo: invariantesDe(AMBIENTE).implantacion.ubigeo,
         administrador: invariantesDe(AMBIENTE).implantacion.administrador,
+        cuentasDeOperacionDePrueba: invariantesDe(AMBIENTE).identity.seedTestUsers,
       }),
       "Job",
       "realm",
@@ -726,6 +727,7 @@ describe("#151 · identidad", () => {
         smtp: SMTP_DE_PRUEBA,
         ubigeo: invariantesDe(AMBIENTE).implantacion.ubigeo,
         administrador: invariantesDe(AMBIENTE).implantacion.administrador,
+        cuentasDeOperacionDePrueba: invariantesDe(AMBIENTE).identity.seedTestUsers,
       }),
       "Job",
       "realm",
@@ -840,6 +842,7 @@ describe("ADR-0012 · alta declarativa de usuarios", () => {
         // reconciliar otra municipalidad es otro TSV, y por tanto otro Job.
         ubigeo: "200101",
         administrador: "jperez",
+        cuentasDeOperacionDePrueba: inv.identity.seedTestUsers,
       }),
       "Job",
       "realm",
@@ -1175,6 +1178,7 @@ describe("#415 · enrolamiento del ciudadano", () => {
       // El repositorio versiona un ciudadano enrolado en 200101 (marcha blanca).
       ubigeo: "200101",
       administrador: "jperez",
+      cuentasDeOperacionDePrueba: inv.identity.seedTestUsers,
     });
     const cm = buscar(conEnrolado, "ConfigMap", "realm") as { data: Record<string, string> };
     const job = buscar(conEnrolado, "Job", "realm");
@@ -1523,10 +1527,11 @@ describe("#153 · el ingreso", () => {
 
   it("toda ruta va por HTTPS, con certificado emitido", () => {
     const rutas = ms.filter((m) => m.kind === "IngressRoute");
-    // **Una desde `E`**, y eran tres: la interfaz del monolito en `/`, su API en `/api/v1` y
-    // la identidad. Las dos primeras se fueron con el; ninguno de los cuatro sistemas publica
-    // todavia por el ingreso. La cifra va escrita para que publicar la primera sea deliberado.
-    expect(rutas.length).toBe(1);
+    // **Dos desde #149**: la identidad y Grafana. Eran tres hasta `E` —la interfaz del monolito
+    // en `/`, su API en `/api/v1` y la identidad—, una desde `E`, y Grafana es la segunda
+    // (ADR-0041). Las rutas de los sistemas viven en sus namespaces. La cifra va escrita para
+    // que publicar la siguiente sea deliberado.
+    expect(rutas.length).toBe(2);
     for (const r of rutas) {
       const spec = (r as { spec: { entryPoints: string[]; tls?: { certResolver: string } } }).spec;
       expect(spec.entryPoints).toEqual(["websecure"]);
@@ -1822,6 +1827,8 @@ function manifiestosDeObservabilidadDePrueba(alertWebhookUrl: string | undefined
   return manifiestosDeObservabilidad({
     environment: AMBIENTE,
     namespace: namespaceName(AMBIENTE),
+    domain: invariantesDe(AMBIENTE).ingress.domain,
+    realm: invariantesDe(AMBIENTE).identity.realm,
     recursos: recursosDe(invariantesDe(AMBIENTE).recursos.perfil),
     alertWebhookUrl,
   });
@@ -2026,23 +2033,27 @@ describe("#156 · observabilidad", () => {
     ).toBe(false);
   });
 
-  it("Grafana no esta en ninguna IngressRoute: se administra por el tunel SSH", () => {
-    const rutas = ms.filter((m): m is Manifiesto & { spec: { routes: { match: string }[] } } =>
-      m.kind === "IngressRoute",
-    );
+  it("Grafana se publica en UNA ruta, /grafana, y la auditoria la da por buena (#149)", () => {
+    // Hasta #149 esta prueba afirmaba lo contrario —«Grafana no esta en ninguna IngressRoute: se
+    // administra por el tunel SSH»—, y era correcto: publicarlo era publicar la clave del
+    // administrador. ADR-0041 lo publica detras del realm de operacion, y lo que impide volver a
+    // aquel riesgo ya no es la ausencia de ruta sino `auditarGrafanaPublicada`: ver
+    // `grafana-publicada.test.ts`, que la rompe linea a linea.
     const nombreDeGrafana = buscar(ms, "Service", "observabilidad-grafana").metadata.name;
-    for (const ruta of rutas) {
-      for (const r of ruta.spec.routes) {
-        expect(r.match).not.toContain("grafana");
-      }
-    }
-    // Y el Service en si no aparece como backend de ninguna ruta.
-    const backends = rutas.flatMap((r) =>
-      (r as unknown as { spec: { routes: { services: { name: string }[] }[] } }).spec.routes.flatMap(
-        (ru) => ru.services.map((s) => s.name),
-      ),
+    const aGrafana = ms.filter(
+      (m) =>
+        m.kind === "IngressRoute" &&
+        (m as unknown as { spec: { routes: { services: { name: string }[] }[] } }).spec.routes.some(
+          (r) => r.services.some((s) => s.name === nombreDeGrafana),
+        ),
+    ) as unknown as { spec: { routes: { match: string; services: { name: string; port: number }[] }[] } }[];
+    expect(aGrafana).toHaveLength(1);
+    const ruta = aGrafana[0]?.spec.routes[0];
+    expect(ruta?.match).toBe(
+      `Host(\`${invariantesDe(AMBIENTE).ingress.domain}\`) && PathPrefix(\`/grafana\`)`,
     );
-    expect(backends).not.toContain(nombreDeGrafana);
+    expect(ruta?.services).toEqual([{ name: nombreDeGrafana, port: 3000 }]);
+    expect(auditar(ms).filter((p) => p.toLowerCase().includes("grafana"))).toEqual([]);
   });
 
   it("responde que version corre y desde cuando, desde el tablero", () => {

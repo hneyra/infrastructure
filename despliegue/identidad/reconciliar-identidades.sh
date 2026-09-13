@@ -748,7 +748,16 @@ entregarClaveInicial() {
 # Va aparte del bucle de las personas por lo mismo que `servicios`: su TSV tiene otra forma,
 # su realm otro cliente, y lo que se comprueba es un ROL y no un atributo.
 #
-#   OPERADOR <cuenta> <nombre> <apellido> <correo> <rol>
+#   OPERADOR           <cuenta> <nombre> <apellido> <correo> <rol>
+#   OPERADOR_DE_PRUEBA <cuenta> <nombre> <apellido> <correo> <rol, o «-»> <clave>
+#
+# Las de PRUEBA (#149) solo existen en `stg`: son las dos con que `verificar-login-de-grafana.sh`
+# recorre el login sin navegador. Se diferencian en tres cosas, y las tres son a proposito:
+#   - su clave es PERMANENTE y sale del inventario (`<clave>` es el nombre del archivo montado
+#     en `$CLAVES_DE_OPERACION`), y se vuelve a fijar en cada corrida para seguir al `Secret`;
+#   - nacen sin `UPDATE_PASSWORD`, porque un guion no puede cambiar la clave en la pantalla;
+#   - la de rol «-» se queda SIN ningun rol, y se le quita el que tenga: es la que demuestra que
+#     quien no trae rol no entra, y con un rol puesto a mano dejaria de demostrarlo en verde.
 if [ "$CUAL" = operadores ]; then
     : "${KC_CLIENTE_OPERACION:?falta KC_CLIENTE_OPERACION}"
 
@@ -764,32 +773,66 @@ if [ "$CUAL" = operadores ]; then
 
     DECLARADOS=0
     NUEVOS=""
-    while IFS=$'\t' read -r tipo cuenta nombre apellido correo rol; do
+    while IFS=$'\t' read -r tipo cuenta nombre apellido correo rol clave; do
         [ -n "${tipo:-}" ] || continue
-        if [ "$tipo" != OPERADOR ]; then
-            echo "FALLO: linea de tipo desconocido «$tipo» en $ARCHIVO_TSV." >&2
-            exit 1
-        fi
+        case "$tipo" in
+            OPERADOR | OPERADOR_DE_PRUEBA) ;;
+            *)
+                echo "FALLO: linea de tipo desconocido «$tipo» en $ARCHIVO_TSV." >&2
+                exit 1
+                ;;
+        esac
         DECLARADOS=$((DECLARADOS + 1))
         uid=$(buscar_usuario "$cuenta")
         if [ -z "$uid" ]; then
-            kc create users -r "$REALM" \
-                -s "username=$cuenta" -s enabled=true -s emailVerified=true \
-                -s "email=$correo" -s "firstName=$nombre" -s "lastName=$apellido" \
-                -s 'requiredActions=["UPDATE_PASSWORD"]' >/dev/null
+            if [ "$tipo" = OPERADOR ]; then
+                kc create users -r "$REALM" \
+                    -s "username=$cuenta" -s enabled=true -s emailVerified=true \
+                    -s "email=$correo" -s "firstName=$nombre" -s "lastName=$apellido" \
+                    -s 'requiredActions=["UPDATE_PASSWORD"]' >/dev/null
+            else
+                kc create users -r "$REALM" \
+                    -s "username=$cuenta" -s enabled=true -s emailVerified=true \
+                    -s "email=$correo" -s "firstName=$nombre" -s "lastName=$apellido" >/dev/null
+            fi
             uid=$(buscar_usuario "$cuenta")
             [ -n "$uid" ] || { echo "FALLO: «$cuenta» no aparece despues de crearlo." >&2; exit 1; }
-            NUEVOS="$NUEVOS $cuenta:$uid"
-            echo "Operador «$cuenta» creado, con UPDATE_PASSWORD pendiente."
+            if [ "$tipo" = OPERADOR ]; then
+                NUEVOS="$NUEVOS $cuenta:$uid"
+                echo "Operador «$cuenta» creado, con UPDATE_PASSWORD pendiente."
+            else
+                echo "Cuenta de prueba «$cuenta» creada."
+            fi
         else
             # Lo DECLARADO, y nada mas: ni la clave ni lo pendiente de quien ya entro.
             kc update "users/$uid" -r "$REALM" \
                 -s "email=$correo" -s "firstName=$nombre" -s "lastName=$apellido" >/dev/null
-            echo "Operador «$cuenta» ya existia; nombre y correo al dia. Clave intacta."
+            echo "«$cuenta» ya existia; nombre y correo al dia."
         fi
-        # Idempotente: asignar un rol que ya tiene no cambia nada.
-        kc add-roles -r "$REALM" --uusername "$cuenta" \
-            --cclientid "$KC_CLIENTE_OPERACION" --rolename "$rol" >/dev/null
+        if [ "$tipo" = OPERADOR_DE_PRUEBA ]; then
+            archivo="${CLAVES_DE_OPERACION:-/operacion}/$clave"
+            if [ ! -s "$archivo" ]; then
+                echo "FALLO: no esta la clave de la cuenta de prueba «$cuenta» en «$archivo»." >&2
+                echo "Sin ella la cuenta existe y nadie sabe con que entra: la verificacion del" >&2
+                echo "login de Grafana no tendria con que recorrerlo." >&2
+                exit 1
+            fi
+            # PERMANENTE, y en cada corrida: si se rota en el `Secret`, la cuenta la sigue.
+            kc set-password -r "$REALM" --username "$cuenta" --new-password "$(<"$archivo")" >/dev/null
+        fi
+        if [ "$rol" = - ]; then
+            : "${KC_ROLES_OPERACION:?falta KC_ROLES_OPERACION}"
+            # Se le quita cualquiera que tenga. Uno que no tiene da error y no importa: la
+            # comprobacion de abajo es la que dice si quedo sin ninguno.
+            for sobra in $KC_ROLES_OPERACION; do
+                kc remove-roles -r "$REALM" --uusername "$cuenta" \
+                    --cclientid "$KC_CLIENTE_OPERACION" --rolename "$sobra" >/dev/null 2>&1 || true
+            done
+        else
+            # Idempotente: asignar un rol que ya tiene no cambia nada.
+            kc add-roles -r "$REALM" --uusername "$cuenta" \
+                --cclientid "$KC_CLIENTE_OPERACION" --rolename "$rol" >/dev/null
+        fi
     done < "$TSV"
 
     # Cero no es «todo bien», es que no se ha comprobado nada (C-15/C-16).
@@ -805,8 +848,11 @@ if [ "$CUAL" = operadores ]; then
 
     # --- La comprobacion: crear no es haber creado -------------------------------
     errores=0
-    while IFS=$'\t' read -r tipo cuenta nombre apellido correo rol; do
-        [ "${tipo:-}" = OPERADOR ] || continue
+    while IFS=$'\t' read -r tipo cuenta nombre apellido correo rol clave; do
+        case "${tipo:-}" in
+            OPERADOR | OPERADOR_DE_PRUEBA) ;;
+            *) continue ;;
+        esac
         uid=$(buscar_usuario "$cuenta")
         if [ -z "$uid" ]; then
             echo "FALLO: el operador «$cuenta» no existe despues de reconciliar." >&2
@@ -822,8 +868,15 @@ if [ "$CUAL" = operadores ]; then
         # estar dentro de otro nombre.
         roles=$(kc get-roles -r "$REALM" --uusername "$cuenta" --cclientid "$KC_CLIENTE_OPERACION" \
             --fields name --format csv --noquotes 2>/dev/null) || roles=""
-        if [[ $'\n'"${roles//$'\r'/}"$'\n' != *$'\n'"$rol"$'\n'* ]]; then
-            echo "FALLO: el operador «$cuenta» no tiene el rol «$rol» de «$KC_CLIENTE_OPERACION»." >&2
+        roles=${roles//$'\r'/}
+        if [ "$rol" = - ]; then
+            if [ -n "${roles//[[:space:]]/}" ]; then
+                echo "FALLO: la cuenta de prueba «$cuenta» tiene rol en «$KC_CLIENTE_OPERACION» y no" >&2
+                echo "  debe tener ninguno: es la que demuestra que sin rol no se entra (#149)." >&2
+                errores=1
+            fi
+        elif [[ $'\n'"$roles"$'\n' != *$'\n'"$rol"$'\n'* ]]; then
+            echo "FALLO: «$cuenta» no tiene el rol «$rol» de «$KC_CLIENTE_OPERACION»." >&2
             echo "  Sin el, Grafana —con el rol estricto de #149— no le deja entrar." >&2
             errores=1
         fi

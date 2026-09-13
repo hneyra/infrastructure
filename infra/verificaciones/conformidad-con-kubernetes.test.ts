@@ -83,10 +83,11 @@ describe("cada manifiesto es asignable a su tipo de @pulumi/kubernetes", () => {
   it("NetworkPolicy: denegar-todo mas las excepciones nombradas (issue #157)", () => {
     const politicas: k8s.types.input.networking.v1.NetworkPolicy[] = de("NetworkPolicy");
 
-    // Diecisiete. Eran 24 hasta `E`: se fueron las siete que seleccionaban pods del
+    // Dieciocho desde #149: `permitir-ingreso-grafana`, la de Traefik hacia Grafana publicado
+    // (ADR-0041). Eran 17 desde `E`, y 24 antes: se fueron las siete que seleccionaban pods del
     // monolito —ingreso y salida de la interfaz, ingreso y salida de la aplicacion, y la
     // salida de `migracion`, `implantacion` y `lote`—.
-    expect(politicas).toHaveLength(17);
+    expect(politicas).toHaveLength(18);
   });
 
   it("los recursos de Traefik llevan el grupo de la v3", () => {
