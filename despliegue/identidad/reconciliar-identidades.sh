@@ -90,6 +90,13 @@
 #                             realm desde `clave-del-administrador`
 set -euo pipefail
 
+# El compose de la plataforma NO se llama como Compose espera (#74). `docker compose` busca
+# `compose.yaml` y `docker-compose.yml`, y el de la plataforma es `plataforma.compose.yaml`,
+# asi que sin esto las llamadas de abajo —que son `docker compose exec` SIN `-f`— mueren con
+# «no configuration file provided: not found», medido desde el propio directorio que este
+# guion supone. Se declara como valor POR OMISION, no fijo: quien ya lo tenga puesto manda.
+: "${COMPOSE_FILE:=plataforma.compose.yaml}"
+
 AQUI="$(cd "$(dirname "$0")" && pwd)"
 
 # --- Que poblacion se reconcilia ----------------------------------------------
