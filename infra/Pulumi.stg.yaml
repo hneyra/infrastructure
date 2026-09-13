@@ -159,13 +159,13 @@ config:
   # (ADR-0011 §5, `ignoreChanges`), pero **no es inerte**: el `Job` de migracion de ese sistema
   # lleva la version en el nombre, asi que un valor nuevo no modifica un Job — crea otro, y ese
   # Job aplica las migraciones de esa version.
-  kamayuk:versionDeRentas: fefe839c1b827dab604ae9ab693ad606f9d394b4
+  kamayuk:versionDeRentas: 1800478ae7869224f98b5b0943160e7d47dfe76d
   # Sube con el estreno de su interfaz: el manifiesto pasa a pedir
   # `kamayuk-<sistema>-interfaz:<sha>`, y con el `sha` anterior esa etiqueta **no existe** —medido,
   # `yarn imagenes` contestaba `NO EXISTE`—. En `catastro` ademas la imagen se llamaba `-web`.
-  kamayuk:versionDeCatastro: c9dbf161ba5d47f3cade1427bb888d6ca1df7586
-  kamayuk:versionDeNormativa: e9ed033017762560139e6c4b5465501f1c4636b4
-  kamayuk:versionDeCaja: 9c8e026d29c10c64f239c356475a0470207aaafb
+  kamayuk:versionDeCatastro: 22e6d2ea350daec307248fb8b528d12752af754f
+  kamayuk:versionDeNormativa: c01fe9a18e60f583f1afa84d24c2ec698c0946a9
+  kamayuk:versionDeCaja: 452a53f16eef044d3a7c79b2b8509ca4798841e4
   # El quinto (ADR-0039). Es el `sha` de `main` de `hneyra/identidad` —su etapa 1 se integro
   # como `89eca30`—, medido con `git -C ../identidad rev-parse origin/main` y no tecleado:
   # cuarenta caracteres hexadecimales inventados pasan la comprobacion de forma, y lo que

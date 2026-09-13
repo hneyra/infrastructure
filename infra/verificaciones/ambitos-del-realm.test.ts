@@ -25,11 +25,12 @@ import { invariantesDe } from "./stacks";
 const PREFIJOS = ["ambito--", "ambito-ciudadano--"] as const;
 
 function configuracionDelRealm(ambiente: Environment): Record<string, string> {
+  // Con la huella de su contenido en el nombre desde #84: `kamayuk-<amb>-realm-<huella>`.
   const nombre = resourceName(ambiente, "realm");
   const encontrado = construirManifiestos(invariantesDe(ambiente)).find(
-    (m) => m.kind === "ConfigMap" && m.metadata.name === nombre,
+    (m) => m.kind === "ConfigMap" && m.metadata.name.startsWith(`${nombre}-`),
   );
-  expect(encontrado, `el ambiente no compone el ConfigMap «${nombre}»`).toBeDefined();
+  expect(encontrado, `el ambiente no compone el ConfigMap «${nombre}-<huella>»`).toBeDefined();
   return (encontrado as { data: Record<string, string> }).data;
 }
 
