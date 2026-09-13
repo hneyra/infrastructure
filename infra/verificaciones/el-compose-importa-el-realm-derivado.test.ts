@@ -208,8 +208,12 @@ describe("#72 · el compose importa el realm DERIVADO, sin `clientScopes`", () =
    * `displayName`, el relay y el ORIGEN de las redirecciones—.
    */
   it("(b) y en lo que importa dice lo mismo que el `ConfigMap` del `Job` de «stg»", () => {
+    // Por prefijo y no por nombre exacto: desde #84 el nombre lleva la huella del contenido
+    // (`nombreDelConfigMapDelRealm`), igual que lo buscan `ambitos-del-realm.test.ts` y
+    // `el-realm-de-operacion.test.ts`. Con el nombre fijo esta prueba salio roja al fundirse con #84.
     const configMap = construirManifiestos(invariantesDe("stg")).find(
-      (m) => m.kind === "ConfigMap" && m.metadata.name === resourceName("stg", "realm"),
+      (m) =>
+        m.kind === "ConfigMap" && m.metadata.name.startsWith(`${resourceName("stg", "realm")}-`),
     ) as { data: Record<string, string> } | undefined;
     expect(configMap, "stg no compone el ConfigMap del realm").toBeDefined();
     const cluster = configMap?.data ?? {};
