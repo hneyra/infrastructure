@@ -40,6 +40,8 @@ function manifiestos(): Manifiesto[] {
   return manifiestosDeObservabilidad({
     environment: AMBIENTE,
     namespace: namespaceName(AMBIENTE),
+    domain: invariantesDe(AMBIENTE).ingress.domain,
+    realm: invariantesDe(AMBIENTE).identity.realm,
     recursos: recursosDe(invariantesDe(AMBIENTE).recursos.perfil),
     alertWebhookUrl: undefined,
   });

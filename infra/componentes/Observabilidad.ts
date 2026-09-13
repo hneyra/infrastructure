@@ -1,7 +1,12 @@
 import { commonLabels, resourceName, type Environment } from "../config";
+import { CLAIM_DE_ROLES, CLIENTE_DE_GRAFANA, ROLES_DE_OPERACION, realmDeOperacion } from "./Identidad";
 import {
   CLAVES,
+  RUTA_DE_GRAFANA,
+  emisorPublico,
   huellaDelContenido,
+  tokenInterno,
+  userinfoInterno,
   type TablaDeRecursos,
   nombreDePrioridad,
   secretos,
@@ -89,10 +94,14 @@ export interface ObservabilidadArgs {
   recursos: TablaDeRecursos;
   /** A donde Alertmanager envia (`backupAlertWebhookUrl`-style). Ver `config.ts`. */
   alertWebhookUrl?: string;
+  /** El nombre publico del ambiente: de el cuelgan `/grafana` y el emisor (#149). */
+  domain: string;
+  /** El realm de funcionarios; el de operacion se deriva de el (ADR-0041). */
+  realm: string;
 }
 
 export function manifiestosDeObservabilidad(args: ObservabilidadArgs): Manifiesto[] {
-  const { environment, namespace, alertWebhookUrl, recursos } = args;
+  const { environment, namespace, alertWebhookUrl, recursos, domain, realm } = args;
   const etiquetas = commonLabels(environment, "observabilidad");
   const prioridad = nombreDePrioridad(environment, "lote");
   const secreto = secretos(environment);
@@ -109,7 +118,7 @@ export function manifiestosDeObservabilidad(args: ObservabilidadArgs): Manifiest
     }),
     ...manifiestosDeNodeExporter({ environment, namespace, etiquetas, prioridad, recursos }),
     ...manifiestosDeKubeStateMetrics({ environment, namespace, etiquetas, prioridad, recursos }),
-    ...manifiestosDeGrafana({ environment, namespace, etiquetas, prioridad, recursos, secreto }),
+    ...manifiestosDeGrafana({ environment, namespace, etiquetas, prioridad, recursos, secreto, domain, realm }),
   ];
 }
 
@@ -656,10 +665,95 @@ const PROVEEDOR_DE_TABLEROS = [
   "",
 ].join("\n");
 
+/**
+ * Quien entra a Grafana, y con que (ADR-0041, #149): **Keycloak, y nada mas**.
+ *
+ * Medido el 2026-09-13 contra Grafana 11.3.0 y Keycloak 26.0.8 —las versiones de los dos
+ * ambientes—, con un login completo por `curl`, sin navegador:
+ *
+ * | Cuenta del realm de operacion | Con esta configuracion |
+ * |---|---|
+ * | con rol `lector` | entra, `Viewer`, sin ser administrador del servidor |
+ * | con rol `administrador` | entra, `Admin`, sin ser administrador del servidor |
+ * | **sin rol** | **no obtiene sesion**: `oauth.role_attribute_strict_violation` |
+ *
+ * Y cada linea de abajo que protege algo se rompio a proposito para ver que lo protege:
+ *
+ * - sin `ROLE_ATTRIBUTE_STRICT`, **la cuenta sin rol entra como `Viewer`**;
+ * - con el formulario encendido, **`POST /grafana/login` con la clave de `admin` da 200**: la clave
+ *   del administrador local abriria Grafana desde internet. Apagado da 400,
+ *   `auth.client.notConfigured`, y el *basic auth* apagado da 401;
+ * - con el intercambio del codigo inalcanzable —lo que haria una politica de red que faltara— el
+ *   login falla en `auth.oauth.token.exchange`.
+ *
+ * `auditoria.ts` exige estas mismas lineas a toda ruta que publique Grafana.
+ */
+function accesoDeGrafana(args: {
+  environment: Environment;
+  domain: string;
+  realm: string;
+  secreto: ReturnType<typeof secretos>;
+}): { name: string; value?: string; valueFrom?: { secretKeyRef: { name: string; key: string } } }[] {
+  const { environment, domain, realm, secreto } = args;
+  const operacion = realmDeOperacion(realm);
+  const publica = `https://${domain}${RUTA_DE_GRAFANA}`;
+  const emisor = emisorPublico(domain, operacion);
+  const [lector, administrador] = ROLES_DE_OPERACION;
+  return [
+    // La subruta. `/api/health` sigue contestando en la raiz con `serve_from_sub_path` (medido),
+    // asi que las sondas no cambian.
+    { name: "GF_SERVER_ROOT_URL", value: `${publica}/` },
+    { name: "GF_SERVER_SERVE_FROM_SUB_PATH", value: "true" },
+    // Ninguna clave por internet. El `admin` local sigue existiendo —Grafana lo necesita para su
+    // base— y solo se usa con `grafana cli` dentro del pod.
+    { name: "GF_AUTH_DISABLE_LOGIN_FORM", value: "true" },
+    { name: "GF_AUTH_BASIC_ENABLED", value: "false" },
+    { name: "GF_AUTH_OAUTH_AUTO_LOGIN", value: "true" },
+    // OIDC contra el realm de operacion.
+    { name: "GF_AUTH_GENERIC_OAUTH_ENABLED", value: "true" },
+    { name: "GF_AUTH_GENERIC_OAUTH_NAME", value: "Kamayuk" },
+    { name: "GF_AUTH_GENERIC_OAUTH_CLIENT_ID", value: CLIENTE_DE_GRAFANA },
+    {
+      name: "GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET",
+      valueFrom: { secretKeyRef: { name: secreto.grafana, key: CLAVES.clienteOidcDeGrafana } },
+    },
+    { name: "GF_AUTH_GENERIC_OAUTH_SCOPES", value: "openid profile email" },
+    { name: "GF_AUTH_GENERIC_OAUTH_USE_PKCE", value: "true" },
+    // La autorizacion la visita el NAVEGADOR: publica. El intercambio del codigo y `userinfo` los
+    // hace Grafana desde su pod: internas, porque desde un pod la IP publica del nodo no se
+    // alcanza (#141) y la politica de salida nombra el pod de identidad, no internet.
+    { name: "GF_AUTH_GENERIC_OAUTH_AUTH_URL", value: `${emisor}/protocol/openid-connect/auth` },
+    { name: "GF_AUTH_GENERIC_OAUTH_TOKEN_URL", value: tokenInterno(environment, operacion) },
+    { name: "GF_AUTH_GENERIC_OAUTH_API_URL", value: userinfoInterno(environment, operacion) },
+    { name: "GF_AUTH_GENERIC_OAUTH_LOGIN_ATTRIBUTE_PATH", value: "preferred_username" },
+    { name: "GF_AUTH_GENERIC_OAUTH_EMAIL_ATTRIBUTE_PATH", value: "email" },
+    {
+      name: "GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH",
+      value:
+        `contains(${CLAIM_DE_ROLES}[*], '${administrador}') && 'Admin' || ` +
+        `contains(${CLAIM_DE_ROLES}[*], '${lector}') && 'Viewer'`,
+    },
+    // SIN rol, fuera. Sin esta linea Grafana le da `Viewer` a cualquiera que el realm deje entrar.
+    { name: "GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_STRICT", value: "true" },
+    { name: "GF_AUTH_GENERIC_OAUTH_ALLOW_ASSIGN_GRAFANA_ADMIN", value: "false" },
+    {
+      name: "GF_AUTH_SIGNOUT_REDIRECT_URL",
+      value:
+        `${emisor}/protocol/openid-connect/logout?client_id=${CLIENTE_DE_GRAFANA}` +
+        `&post_logout_redirect_uri=${encodeURIComponent(`${publica}/login`)}`,
+    },
+    // La sesion, acotada. Por omision son 7 dias de inactividad: quitarle el rol a alguien (#150)
+    // tardaria una semana en morder.
+    { name: "GF_AUTH_LOGIN_MAXIMUM_INACTIVE_LIFETIME_DURATION", value: "1h" },
+    { name: "GF_AUTH_LOGIN_MAXIMUM_LIFETIME_DURATION", value: "12h" },
+    { name: "GF_SECURITY_COOKIE_SECURE", value: "true" },
+  ];
+}
+
 function manifiestosDeGrafana(
-  args: ArgsComunes & { secreto: ReturnType<typeof secretos> },
+  args: ArgsComunes & { secreto: ReturnType<typeof secretos>; domain: string; realm: string },
 ): Manifiesto[] {
-  const { environment, namespace, etiquetas, prioridad, recursos, secreto } = args;
+  const { environment, namespace, etiquetas, prioridad, recursos, secreto, domain, realm } = args;
   const nombre = servicioDeGrafana(environment);
 
   const configuracion: ConfigMap = {
@@ -714,11 +808,11 @@ function manifiestosDeGrafana(
                   name: "GF_SECURITY_ADMIN_PASSWORD",
                   valueFrom: { secretKeyRef: { name: secreto.grafana, key: CLAVES.grafana } },
                 },
-                // Sin registro publico ni acceso anonimo: quien entra, entra con
-                // la cuenta de administrador por el tunel SSH (ver el docstring
-                // del `Service`, mas abajo), igual que la consola de Keycloak.
+                // Sin registro por formulario ni acceso anonimo. `ALLOW_SIGN_UP=false` no impide
+                // el alta por OIDC (medido): quien trae un rol del realm de operacion entra.
                 { name: "GF_USERS_ALLOW_SIGN_UP", value: "false" },
                 { name: "GF_AUTH_ANONYMOUS_ENABLED", value: "false" },
+                ...accesoDeGrafana({ environment, domain, realm, secreto }),
               ],
               ports: [{ name: "http", containerPort: 3000 }],
               // La imagen ya corre como `grafana` de fabrica (issue #157).
@@ -756,15 +850,13 @@ function manifiestosDeGrafana(
   };
 
   /**
-   * `ClusterIP`, y sin `IngressRoute` a proposito —igual que la consola de
-   * administracion de Keycloak (issue #153)—. Quien necesite mirar un tablero entra
-   * por el tunel SSH que ya usa CI (`INF-01` §1.4): `kubectl port-forward` contra
-   * este `Service`. Publicarlo agregaria una segunda superficie de acceso con clave,
-   * y el tunel ya existe.
+   * `ClusterIP`. Desde #149 lo publica la `IngressRoute` `<amb>-grafana` de `Ingreso.ts`, en
+   * `https://<dominio>/grafana`, **y solo porque el acceso de arriba no tiene ninguna clave**: hasta
+   * ADR-0041 no habia ruta, a proposito, porque publicarlo era publicar la clave del administrador.
+   * `auditoria.ts` exige OIDC a toda ruta que llegue a este `Service`.
    *
-   * El procedimiento —el puerto remoto, que no es el mismo en `stg` que en `prod`, la
-   * clave y los modos de fallo del acceso— esta en el runbook `abrir-grafana.md`, y un
-   * tablero que abre vacio, en `grafana-no-muestra-datos.md`.
+   * Como se entra, y el camino de emergencia cuando Keycloak no responde, esta en el runbook
+   * `abrir-grafana.md`; un tablero que abre vacio, en `grafana-no-muestra-datos.md`.
    */
   const servicio: Service = {
     apiVersion: "v1",

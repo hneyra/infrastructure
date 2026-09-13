@@ -7,6 +7,7 @@ import {
   RUTA_DE_GRAFANA,
   type TablaDeRecursos,
   ROL_DE_IDENTIDAD,
+  huellaDelContenido,
   nombreDePrioridad,
   secretos,
   seguridadSinRoot,
@@ -108,7 +109,29 @@ export interface IdentidadArgs {
   ubigeo: string;
   /** Cuenta del primer administrador. Tiene que ser la del archivo versionado. */
   administrador: string;
+  /**
+   * Sembrar en el realm de operacion las dos cuentas con que `verificar-login-de-grafana.sh`
+   * demuestra el login sin navegador (#149). Solo `stg`, por lo mismo que el cliente de
+   * verificacion: dos cuentas con clave permanente son una puerta que `prod` no necesita.
+   */
+  cuentasDeOperacionDePrueba: boolean;
 }
+
+/**
+ * Las cuentas de prueba del realm de operacion (#149), con la clave del inventario que las abre.
+ *
+ * Son DOS y no una porque el login de Grafana tiene que demostrar las dos mitades: que quien trae
+ * rol entra, y que **quien no lo trae no entra**. Medido contra Grafana 11.3.0: sin
+ * `ROLE_ATTRIBUTE_STRICT`, la cuenta sin rol entra como `Viewer`, y solo una cuenta sin rol lo ve.
+ */
+export const CUENTAS_DE_OPERACION_DE_PRUEBA: readonly {
+  cuenta: string;
+  rol: RolDeOperacion | undefined;
+  clave: string;
+}[] = [
+  { cuenta: "operador-de-prueba-lector", rol: "lector", clave: CLAVES.operadorDePruebaLector },
+  { cuenta: "operador-de-prueba-sin-rol", rol: undefined, clave: CLAVES.operadorDePruebaSinRol },
+];
 
 /** El cliente que existe solo para que CI consiga un token sin navegador. */
 export const CLIENTE_DE_VERIFICACION = "kamayuk-verificacion";
@@ -800,6 +823,49 @@ export function huellaDeIdentidad(partes: readonly string[]): string {
   return acumulador.digest("hex").slice(0, 10);
 }
 
+/**
+ * El nombre del `ConfigMap` del realm: `kamayuk-<amb>-realm-<huella de su contenido>` (#84).
+ *
+ * ## El defecto, medido en `stg` el 2026-09-11
+ *
+ * Con el nombre fijo, un cambio de `data` es un **reemplazo** —el proveedor no lleva
+ * `enableConfigMapMutable` (`index.ts`)—, y un reemplazo con `metadata.name` explicito **tiene que
+ * borrar antes de crear**: dos objetos no pueden llamarse igual. El tope de 15 minutos de
+ * `aplicar-stg` corto la corrida entre las dos mitades, y el ambiente se quedo con el `Job` y sin
+ * su `ConfigMap`: el pod 27 minutos en `ContainerCreating`, `kubectl get jobs` diciendo `Running`,
+ * y la causa solo en los eventos del pod —«configmap "kamayuk-stg-realm" not found»—. El `up`
+ * siguiente se quedaba esperando a un `Job` que no podia arrancar sin lo que el mismo borro.
+ *
+ * ## Por que la huella en el nombre lo cierra
+ *
+ * Un contenido nuevo es **otro objeto**: el `data` ya no puede cambiar sin que cambie el nombre,
+ * asi que el reemplazo desaparece y no queda nada que se borre antes de crear. Pulumi crea el
+ * nuevo, el `Job` nuevo lo monta, y el viejo —que el programa ya no declara— lo borra el motor
+ * en `performPostSteps`, que solo corre cuando el programa TERMINO y ningun paso fallo (una
+ * espera agotada o un `Ctrl-C` cancelan antes). Cortada en cualquier punto, la corrida deja el
+ * `ConfigMap` viejo en su sitio, que es lo correcto para un despliegue a medias.
+ *
+ * ## Por que no la MISMA huella que el `Job`
+ *
+ * La del `Job` cuenta tambien su pod (`huellaDeIdentidad` sobre `plantillaDeReconciliacion`), y su
+ * pod nombra este `ConfigMap`: con la misma huella, el nombre dependeria de si mismo. Esta cuenta
+ * **solo el contenido**, y la del `Job` la arrastra sola —contenido nuevo, nombre nuevo, pod
+ * nuevo, huella nueva—. Al reves no: corregir el pod crea un `Job` nuevo sobre el MISMO
+ * `ConfigMap`, que no cambio y no tiene por que moverse.
+ *
+ * Cuenta el `data` **entero**, y no una lista de claves escrita al lado: una lista se queda corta,
+ * que es lo que le paso a la huella del `Job` hasta #63. Exportada para que
+ * `el-realm-no-se-queda-sin-configmap.test.ts` ejerza sus propiedades sin componer un ambiente;
+ * lo que recompone desde los manifiestos lo recompone con su PROPIA copia de la huella, a
+ * proposito, para no aceptar lo que esta funcion devuelva.
+ */
+export function nombreDelConfigMapDelRealm(
+  environment: Environment,
+  datos: Readonly<Record<string, string>>,
+): string {
+  return `${resourceName(environment, "realm")}-${huellaDelContenido(datos)}`;
+}
+
 /** El TSV de identidades y lo que el Job comprueba, derivado del archivo versionado. */
 export interface DocumentosDeIdentidades {
   /**
@@ -996,7 +1062,12 @@ export interface DocumentosDeOperadores {
   /**
    * Una fila por operador, campos con tabulador. Lo lee `reconciliar-identidades.sh operadores`.
    *
-   *   OPERADOR <cuenta> <nombre> <apellido> <correo> <rol>
+   *   OPERADOR           <cuenta> <nombre> <apellido> <correo> <rol>
+   *   OPERADOR_DE_PRUEBA <cuenta> <nombre> <apellido> <correo> <rol, o «-» si no tiene> <clave>
+   *
+   * `<clave>` es el NOMBRE de la clave del inventario, el archivo que el `Job` monta; nunca el
+   * valor. Y el «-»: `read` con tabulador como separador junta dos tabuladores seguidos, asi que un
+   * campo vacio desplazaria la clave a la columna del rol.
    */
   tsv: string;
   /** Las cuentas que el `Job` comprueba al terminar. */
@@ -1016,7 +1087,11 @@ export interface DocumentosDeOperadores {
  * #150, y hasta entonces hay un hueco declarado: **esta etapa no retira ningun rol**, asi que si
  * cambia la cuenta del stack la anterior conserva `administrador` en este realm.
  */
-export function documentosDeOperadores(args: { administrador: PersonaDeclarada }): DocumentosDeOperadores {
+export function documentosDeOperadores(args: {
+  administrador: PersonaDeclarada;
+  /** Las dos cuentas de prueba de `stg` (#149). Ver {@link CUENTAS_DE_OPERACION_DE_PRUEBA}. */
+  cuentasDePrueba?: boolean;
+}): DocumentosDeOperadores {
   const rol: RolDeOperacion = "administrador";
   const { cuenta, nombre, apellido, correo } = args.administrador;
   for (const [campo, valor] of Object.entries({ cuenta, nombre, apellido, correo })) {
@@ -1026,9 +1101,16 @@ export function documentosDeOperadores(args: { administrador: PersonaDeclarada }
       throw new Error(`El operador derivado «${cuenta}» no tiene «${campo}» valido.`);
     }
   }
+  const deprueba = (args.cuentasDePrueba ?? false)
+    ? CUENTAS_DE_OPERACION_DE_PRUEBA.map((c) =>
+        ["OPERADOR_DE_PRUEBA", c.cuenta, "Operador", "De prueba", `${c.cuenta}@example.pe`, c.rol ?? "-", c.clave].join(
+          "\t",
+        ),
+      )
+    : [];
   return {
-    tsv: `${["OPERADOR", cuenta, nombre, apellido, correo, rol].join("\t")}\n`,
-    cuentas: [cuenta],
+    tsv: `${[["OPERADOR", cuenta, nombre, apellido, correo, rol].join("\t"), ...deprueba].join("\n")}\n`,
+    cuentas: [cuenta, ...((args.cuentasDePrueba ?? false) ? CUENTAS_DE_OPERACION_DE_PRUEBA.map((c) => c.cuenta) : [])],
   };
 }
 
@@ -1166,6 +1248,7 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
     ubigeo,
     administrador,
     recursos,
+    cuentasDeOperacionDePrueba,
   } = args;
   const nombre = servicioDeIdentidad(environment);
   const nombreDelCorreo = resourceName(environment, "correo");
@@ -1206,45 +1289,56 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
     realm,
     ...(smtp === undefined ? {} : { smtp }),
   });
-  const operadores = documentosDeOperadores({ administrador: identidades.administrador });
+  const operadores = documentosDeOperadores({
+    administrador: identidades.administrador,
+    cuentasDePrueba: cuentasDeOperacionDePrueba,
+  });
 
+  // El contenido va aparte porque de el sale el NOMBRE del `ConfigMap` (#84): con el nombre fijo,
+  // cambiarlo borraba el objeto antes de crear el nuevo, y una corrida cortada en medio dejaba el
+  // `Job` sin nada que montar. Ver `nombreDelConfigMapDelRealm`.
+  const datosDelRealm: Record<string, string> = {
+    "realm.json": documentos.realm,
+    "perfil-de-usuario.json": documentos.perfilDeUsuario,
+    "clientes.json": documentos.clientes,
+    // Los tres del ciudadano, en el mismo ConfigMap y con el mismo guion: el
+    // realm es otro, el procedimiento de aplicarlo no (ADR-0020).
+    "realm-ciudadano.json": documentosDelCiudadano.realm,
+    "perfil-de-usuario-ciudadano.json": documentosDelCiudadano.perfilDeUsuario,
+    "clientes-ciudadano.json": documentosDelCiudadano.clientes,
+    // Los ambitos de los dos realms, uno por documento y sus mapeadores aparte. El
+    // prefijo separa los dos realms —`ambito--` y `ambito-ciudadano--`— porque el guion
+    // los recorre con un glob y no sabe leer JSON: la imagen de Keycloak no trae `jq`.
+    ...documentosDeAmbitos("ambito--", documentos.ambitos),
+    ...documentosDeAmbitos("ambito-ciudadano--", documentosDelCiudadano.ambitos),
+    "reconciliar-realm.sh": reconciliarRealmSh(),
+    // El alta declarativa de usuarios (ADR-0012): el mismo guion que el compose y el
+    // TSV que `documentosDeIdentidades` deriva del archivo versionado.
+    "reconciliar-identidades.sh": reconciliarIdentidadesSh(),
+    "identidades.tsv": identidades.tsv,
+    // Las cuentas de servicio, derivadas aqui por lo mismo que las personas: la
+    // imagen de Keycloak no trae python ni jq, y el `Job` corre dentro de ella (#21).
+    "servicios.tsv": identidades.servicios,
+    // Y el enrolamiento del ciudadano (ADR-0020 §5, #415), en el mismo ConfigMap y con
+    // el mismo guion: el realm es otro y la poblacion es otra, el procedimiento no.
+    "ciudadanos.tsv": identidades.ciudadanos,
+    // El realm de operacion (ADR-0041). Sin ambitos propios —se queda con los de fabrica— y con
+    // su unico cliente aparte, porque no se aplica con `partialImport` (ver
+    // `documentosDelRealmDeOperacion`).
+    "realm-operacion.json": documentosDeOperacion.realm,
+    "perfil-de-usuario-operacion.json": documentosDeOperacion.perfilDeUsuario,
+    "cliente-operacion.json": documentosDeOperacion.cliente,
+    "operadores.tsv": operadores.tsv,
+  };
   const configuracionDelRealm: ConfigMap = {
     apiVersion: "v1",
     kind: "ConfigMap",
-    metadata: { name: resourceName(environment, "realm"), namespace, labels: etiquetas },
-    data: {
-      "realm.json": documentos.realm,
-      "perfil-de-usuario.json": documentos.perfilDeUsuario,
-      "clientes.json": documentos.clientes,
-      // Los tres del ciudadano, en el mismo ConfigMap y con el mismo guion: el
-      // realm es otro, el procedimiento de aplicarlo no (ADR-0020).
-      "realm-ciudadano.json": documentosDelCiudadano.realm,
-      "perfil-de-usuario-ciudadano.json": documentosDelCiudadano.perfilDeUsuario,
-      "clientes-ciudadano.json": documentosDelCiudadano.clientes,
-      // Los ambitos de los dos realms, uno por documento y sus mapeadores aparte. El
-      // prefijo separa los dos realms —`ambito--` y `ambito-ciudadano--`— porque el guion
-      // los recorre con un glob y no sabe leer JSON: la imagen de Keycloak no trae `jq`.
-      ...documentosDeAmbitos("ambito--", documentos.ambitos),
-      ...documentosDeAmbitos("ambito-ciudadano--", documentosDelCiudadano.ambitos),
-      "reconciliar-realm.sh": reconciliarRealmSh(),
-      // El alta declarativa de usuarios (ADR-0012): el mismo guion que el compose y el
-      // TSV que `documentosDeIdentidades` deriva del archivo versionado.
-      "reconciliar-identidades.sh": reconciliarIdentidadesSh(),
-      "identidades.tsv": identidades.tsv,
-      // Las cuentas de servicio, derivadas aqui por lo mismo que las personas: la
-      // imagen de Keycloak no trae python ni jq, y el `Job` corre dentro de ella (#21).
-      "servicios.tsv": identidades.servicios,
-      // Y el enrolamiento del ciudadano (ADR-0020 §5, #415), en el mismo ConfigMap y con
-      // el mismo guion: el realm es otro y la poblacion es otra, el procedimiento no.
-      "ciudadanos.tsv": identidades.ciudadanos,
-      // El realm de operacion (ADR-0041). Sin ambitos propios —se queda con los de fabrica— y con
-      // su unico cliente aparte, porque no se aplica con `partialImport` (ver
-      // `documentosDelRealmDeOperacion`).
-      "realm-operacion.json": documentosDeOperacion.realm,
-      "perfil-de-usuario-operacion.json": documentosDeOperacion.perfilDeUsuario,
-      "cliente-operacion.json": documentosDeOperacion.cliente,
-      "operadores.tsv": operadores.tsv,
+    metadata: {
+      name: nombreDelConfigMapDelRealm(environment, datosDelRealm),
+      namespace,
+      labels: etiquetas,
     },
+    data: datosDelRealm,
   };
 
   const identidad: Deployment = {
@@ -1466,6 +1560,8 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
             name: "CLAVE_DEL_CLIENTE_DE_OPERACION",
             value: `${DIRECTORIO_DE_OPERACION}/${CLAVES.clienteOidcDeGrafana}`,
           },
+          // Donde estan las claves de las cuentas de prueba, cuando las hay (#149).
+          { name: "CLAVES_DE_OPERACION", value: DIRECTORIO_DE_OPERACION },
           // Lee `identidades.tsv` del propio ConfigMap (modo «directo»).
           { name: "KC_DIRECTORIO", value: "/realm" },
           // Sin relay (Opción B): el guion crea al usuario y OMITE el enlace de
@@ -1513,6 +1609,9 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
     volumes: [
       {
         name: "realm",
+        // El nombre CON huella, tomado del objeto y nunca reescrito (#84): un `resourceName(…,
+        // "realm")` literal aqui montaria un `ConfigMap` que ya no existe, y el pod se quedaria en
+        // `ContainerCreating` con la causa solo en sus eventos — el mismo estado mudo de antes.
         configMap: { name: configuracionDelRealm.metadata.name, defaultMode: 493 },
       },
       // El `Secret` con una clave por cliente de servicio. Vive en el namespace de la
@@ -1523,13 +1622,17 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
         name: "servicios",
         secret: { secretName: secreto.serviciosDeIdentidad },
       },
-      // Del `Secret` de Grafana, SOLO la clave del cliente: ese `Secret` guarda tambien la del
-      // administrador de Grafana, y este pod no tiene nada que hacer con ella.
+      // Del `Secret` de Grafana, SOLO la clave del cliente —y en `stg` las de las dos cuentas de
+      // prueba (#149)—: ese `Secret` guarda tambien la del administrador de Grafana, y este pod no
+      // tiene nada que hacer con ella.
       {
         name: "operacion",
         secret: {
           secretName: secreto.grafana,
-          items: [{ key: CLAVES.clienteOidcDeGrafana, path: CLAVES.clienteOidcDeGrafana }],
+          items: [
+            CLAVES.clienteOidcDeGrafana,
+            ...(cuentasDeOperacionDePrueba ? CUENTAS_DE_OPERACION_DE_PRUEBA.map((c) => c.clave) : []),
+          ].map((clave) => ({ key: clave, path: clave })),
         },
       },
     ],

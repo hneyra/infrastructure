@@ -18,7 +18,8 @@ pueden sonar (#113).
 
 ## Precondiciones
 
-1. Grafana abierto, o al menos el túnel al API: [`abrir-grafana.md`](abrir-grafana.md).
+1. Grafana abierto en `https://<dominio>/grafana`, y el túnel al API para `kubectl`: los dos en
+   [`abrir-grafana.md`](abrir-grafana.md).
 2. Un segundo `port-forward`, esta vez a Prometheus:
 
    ```bash
@@ -193,10 +194,14 @@ Si **todos** los paneles están vacíos, incluidos los que la tabla de §1 da co
 que Prometheus raspa, el problema está entre los dos:
 
 ```bash
-curl -s -u admin http://127.0.0.1:3000/api/datasources/uid/prometheus/health
+kubectl -n kamayuk-<amb> exec deploy/kamayuk-<amb>-observabilidad-grafana -- \
+  wget -q -O- -T 5 http://kamayuk-<amb>-observabilidad-prometheus:9090/-/ready
 ```
 
-Sano es `"status":"OK"`. Si no lo es, las dos políticas que tienen que casar:
+Sano es **`Prometheus Server is Ready.`** (medido en el `stg` nuevo). Se prueba desde el pod de
+Grafana y no por su API, porque desde #149 el API de Grafana no acepta la clave de `admin`
+([`abrir-grafana.md`](abrir-grafana.md)). Si en vez de eso dice `can't connect to remote host`, las
+dos políticas que tienen que casar:
 
 ```bash
 kubectl -n kamayuk-<amb> get networkpolicy permitir-ingreso-prometheus permitir-salida-grafana \
@@ -228,7 +233,8 @@ Las tres, contra el sistema real:
 - los cinco objetivos de §2 en `up`;
 - §3: 17 reglas declaradas y 17 cargadas, con la anotación de #152 en el pod;
 - §4: las dos huellas del tablero, iguales;
-- el origen de datos sano, y la métrica del certificado de Traefik presente (`traefik_tls_certs_not_after`).
+- el origen de datos sano, y la métrica del certificado de Traefik presente (`traefik_tls_certs_not_after`);
+- §5 desde el pod de Grafana: `Prometheus Server is Ready.`.
 
 **Ensayado antes contra el k3d de `vmd194233`** (2026-09-12), que ya no es `stg`:
 

@@ -154,10 +154,20 @@ function permitirIngresoPublico(environment: Environment, namespace: string): Ne
             // descargar el JWKS y **todo token seria invalido por un motivo que no se parece a su
             // causa** (la misma trampa que anota `application.yaml`).
             DE_LOS_SISTEMAS,
+            // Y Grafana (#149), que intercambia el codigo de autorizacion y pide `userinfo` por
+            // la red interna. Sin esta punta el login muere en `auth.oauth.token.exchange`
+            // (medido contra Grafana 11.3.0), despues de que la persona ya puso su clave.
+            deApp(servicioDeGrafana(environment)),
           ],
           ports: [puerto(8080)],
         },
       ],
+    }),
+    // Grafana publicado en `/grafana` (ADR-0041): Traefik, desde `kube-system`, al 3000.
+    politica(namespace, "permitir-ingreso-grafana", {
+      podSelector: { matchLabels: { app: servicioDeGrafana(environment) } },
+      policyTypes: ["Ingress"],
+      ingress: [{ from: desdeTraefik, ports: [puerto(3000)] }],
     }),
   ];
 }
@@ -376,15 +386,17 @@ function politicasDeObservabilidad(environment: Environment, namespace: string):
       policyTypes: ["Egress"],
       egress: [{ to: [{ ipBlock: { cidr: "0.0.0.0/0" } }], ports: [puerto(6443)] }],
     }),
-    // Grafana no tiene politica de ingreso: nadie del clúster la consume —ni
-    // Traefik, que no la publica (`Observabilidad.ts`)—, y el tunel SSH con que
-    // se administra no pasa por la red del pod de la forma que un `NetworkPolicy`
-    // filtra. Que las dos puntas de este flujo tienen que casar, y como se leen del
-    // cluster cuando no casan, esta en el runbook `grafana-no-muestra-datos.md`.
+    // La entrada a Grafana, desde Traefik, esta con las rutas publicas
+    // (`permitirIngresoPublico`). Aqui, su salida: a Prometheus, que es su origen de datos, y a
+    // identidad, para el login (#149). Que las dos puntas de cada flujo tienen que casar, y como
+    // se leen del cluster cuando no casan, esta en el runbook `grafana-no-muestra-datos.md`.
     politica(namespace, "permitir-salida-grafana", {
       podSelector: { matchLabels: { app: servicioDeGrafana(environment) } },
       policyTypes: ["Egress"],
-      egress: [{ to: [deApp(prometheus)], ports: [puerto(9090)] }],
+      egress: [
+        { to: [deApp(prometheus)], ports: [puerto(9090)] },
+        { to: [deApp(servicioDeIdentidad(environment))], ports: [puerto(8080)] },
+      ],
     }),
   ];
 }

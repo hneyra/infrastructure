@@ -180,6 +180,12 @@ export const CLAVES = {
    * el token (#149)— estan en el namespace de la plataforma.
    */
   clienteOidcDeGrafana: "clave-cliente-oidc",
+  /**
+   * Claves PERMANENTES de las dos cuentas de prueba del realm de operacion (#149), solo en `stg`:
+   * con ellas `verificar-login-de-grafana.sh` recorre el login sin navegador.
+   */
+  operadorDePruebaLector: "clave-operador-de-prueba-lector",
+  operadorDePruebaSinRol: "clave-operador-de-prueba-sin-rol",
   /** Clave de `rol_carga_parametros` (issue #387). */
   carga: "clave-carga",
   /** Clave de `rol_ingestor_catastro` (P5C, C-7 §6). */
@@ -796,6 +802,16 @@ export function tokenInterno(environment: Environment, realm: string): string {
   return `http://${servicio}:8080/keycloak/realms/${realm}/protocol/openid-connect/token`;
 }
 
+/**
+ * `userinfo`, por la red interna, por lo mismo que {@link tokenInterno}. Lo pide Grafana (#149)
+ * con el token que acaba de recibir. Medido contra Keycloak 26.0.8: `userinfo` acepta un token
+ * aunque se le llame por otro nombre de host que el del emisor.
+ */
+export function userinfoInterno(environment: Environment, realm: string): string {
+  const servicio = servicioDeIdentidad(environment);
+  return `http://${servicio}:8080/keycloak/realms/${realm}/protocol/openid-connect/userinfo`;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // wal-g: version fijada, y el binario que la descarga (issue #155)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -981,15 +997,19 @@ export function variablesWalg(args: {
 }
 
 /**
- * La huella del contenido de un `ConfigMap`. Dos usos, y los dos derivan de lo mismo: **un
- * archivo que cambia en el `ConfigMap` no cambia nada en el proceso que lo consume.**
+ * La huella del contenido de un `ConfigMap`. Dos usos hoy:
  *
  * - En la observabilidad se anota en el pod, para que un cambio de configuracion lo recree
- *   (#146): Kubernetes actualiza el archivo dentro del contenedor y Prometheus sigue con el
- *   viejo — medido en `stg`, 15 reglas en el disco y 10 en el proceso.
- * - En el motor va en el NOMBRE del `Job` que crea las bases (#81): un sistema nuevo anade su
- *   `crear-roles.sql`, la huella cambia, y eso es lo que hace nacer un `Job` que corra. Sin
- *   cambio no hay `Job` nuevo, asi que no se repite trabajo en cada despliegue.
+ *   (#146): **un archivo que cambia en el `ConfigMap` no cambia nada en el proceso que lo
+ *   consume** — Kubernetes actualiza el archivo dentro del contenedor y Prometheus sigue con el
+ *   viejo, medido en `stg`: 15 reglas en el disco y 10 en el proceso.
+ * - En identidad va en el NOMBRE del `ConfigMap` del realm (#84), para que un contenido nuevo
+ *   sea un objeto nuevo y no un reemplazo: con el nombre fijo el reemplazo borra antes de crear,
+ *   y una corrida cortada en medio dejo a `stg` con el `Job` y sin su `ConfigMap`
+ *   (`nombreDelConfigMapDelRealm`, en `Identidad.ts`).
+ *
+ * **Eran «dos» con otro segundo uso, y ese ya no existe**: el `Job` del motor que creaba las bases
+ * con esta huella en el nombre (#81) se revirtio en #161 porque bloqueaba todos los despliegues.
  */
 export function huellaDelContenido(data: Record<string, string>): string {
   const huella = createHash("sha256");
