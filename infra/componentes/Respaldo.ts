@@ -281,7 +281,7 @@ export function manifiestosDeRespaldo(args: RespaldoArgs): Manifiesto[] {
     '    fallar "este catalogo tiene respaldos de OTRO cluster (el de aqui es $mio):$ajenos. Un' +
       ' catalogo compartido no da error, da silencio: «delete retain» calcula su ventana sobre el' +
       ' respaldo ajeno mas antiguo y se lleva el WAL de este cluster. NO se borra nada. Remedio:' +
-      ' un bucket por cluster, «kamayuk:backupBucket» en Pulumi.<ambiente>.yaml (#112)."',
+      ' un catalogo por cluster —un bucket, o un prefijo dentro de uno: «kamayuk:backupBucket: <bucket>/<prefijo>»— en Pulumi.<ambiente>.yaml (#112)."',
     "fi",
     "",
     "# 5. Solo ahora se poda. Su resultado se sigue descartando -un `delete` que falla no",

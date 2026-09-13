@@ -166,6 +166,15 @@ la desengancha, si la entrada nace marcada, o si su descripción deja de avisar.
      clave se retiró porque no la leía nadie
      ([el ensayo cruzado no existe](el-ensayo-cruzado-no-existe.md)).
    - **El contenedor viejo no se toca.** Se queda donde está, con su clave de cifrado.
+   - **Un prefijo vale igual que un contenedor**: `kamayuk:backupBucket: <bucket>/<prefijo>` da
+     `WALG_S3_PREFIX=s3://<bucket>/<prefijo>`, un catálogo aparte para wal-g, sin tocar AWS. Que
+     el prefijo nombre el **nodo**, porque el catálogo es del clúster.
+   - ⚠ **«Vacío» no se comprueba listando a ojo.** Medido en `stg` el 2026-09-13: el contenedor
+     se reusó porque «se comprobó vacío», y tenía dos respaldos base del k3d anterior. El clúster
+     nuevo archivó WAL encima dos horas, hasta que el primer respaldo base lo paró: «*este
+     catalogo tiene respaldos de OTRO cluster*». Ese respaldo —el paso 8— es la única
+     comprobación que compara `SystemIdentifier`, así que **la mudanza no está hecha hasta que
+     sale verde**.
 6. **Lanzar `Infraestructura` a mano** (`workflow_dispatch`) con
    **`soltar_recursos_inalcanzables` marcado**. Es la corrida de la mudanza, y la única que debe
    llevarlo.

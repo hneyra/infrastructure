@@ -200,16 +200,27 @@ config:
   # que ahi tambien archiva un cluster para el que no hay ni un respaldo base. El bucket viejo
   # se deja INTACTO. El motivo largo esta en `Pulumi.prod.yaml`.
   #
-  # LA MUDANZA A `vmd205066` DEL 2026-09-13 (#145) NO LO CAMBIA, Y ES UNA DECISION MEDIDA.
-  # Por la regla de arriba tocaria un contenedor nuevo: el cluster es otro —k3d en `vmd194233`
-  # antes, k3s nativo aqui ahora—. Se reusa porque este contenedor se declaro el 2026-09-12 con
-  # el despliegue de #112 y **se comprobo vacio** antes de la mudanza: sin catalogo dentro no
-  # hay nada que un cluster nuevo pueda pisar, que es lo unico que la regla protege.
-  # Lo que la haria falsa: que tuviera un `basebackups_005/` de `vmd194233`. Entonces el
-  # cluster nuevo archivaria WAL sobre el catalogo de aquel, `backup-push` saldria 0, la tabla
-  # `respaldo` diria EXITOSO, y no habria con que restaurar — sin un solo error por el camino.
-  # Se comprueba con `aws s3 ls s3://kamayuk-stg-backups/ --recursive | head`.
+  # LA MUDANZA A `vmd205066` DEL 2026-09-13 (#145), Y UNA AFIRMACION QUE RESULTO FALSA.
+  #
+  # Se decidio reusar este contenedor porque «se comprobo vacio» antes de mudar. NO lo estaba.
+  # Medido a las 16:10:28Z, en el primer respaldo base del cluster nuevo: la guarda de #112
+  # (paso 4 de `Respaldo.ts`) lo paro con «este catalogo tiene respaldos de OTRO cluster (el de
+  # aqui es 7685026057579798564): base_000000010000000000000092(7682149545806807075)
+  # base_0000000200000000000000A0(7682149545806807075)» — los dos del k3d de `vmd194233`. Y el
+  # cluster nuevo llevaba archivando WAL en ese catalogo desde las 14:25Z: el defecto de #112,
+  # reproducido. Esta vez sin silencio, porque la guarda existe; y sin borrar nada, porque para
+  # antes de podar.
+  #
+  # Remedio: un catalogo propio sin crear contenedor, con un PREFIJO. `WALG_S3_PREFIX` y el
+  # `DESTINO` del respaldo son `s3://<esta clave>` (`convenciones.ts`, `Respaldo.ts`) y
+  # `contra-cluster.sh` lo lee del `Deployment`, asi que `<bucket>/<prefijo>` es un catalogo
+  # aparte para wal-g. El prefijo nombra el NODO porque el catalogo es del cluster: la proxima
+  # mudanza, prefijo nuevo. Lo del k3d se queda en la raiz, intacto.
+  #
+  # Lo que esto ensena, y queda en `mudar-un-ambiente-de-nodo.md`: «vacio» no se comprueba
+  # listando a ojo; lo comprueba el primer respaldo base, que es lo unico que compara
+  # `SystemIdentifier`. Por eso ese respaldo va ANTES de dar la mudanza por buena.
   kamayuk:backupEndpoint: https://s3.us-east-1.amazonaws.com
   kamayuk:backupRegion: us-east-1
-  kamayuk:backupBucket: kamayuk-stg-backups
+  kamayuk:backupBucket: kamayuk-stg-backups/vmd205066
   kamayuk:walArchiveTimeoutSeconds: "300"
