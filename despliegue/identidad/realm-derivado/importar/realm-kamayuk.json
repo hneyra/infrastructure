@@ -27,11 +27,13 @@
       "serviceAccountsEnabled": false,
       "redirectUris": [
         "http://localhost:5173/*",
+        "http://localhost:5181/*",
         "http://localhost:8081/*",
         "https://vmd205066.contaboserver.net/*"
       ],
       "webOrigins": [
         "http://localhost:5173",
+        "http://localhost:5181",
         "http://localhost:8081",
         "https://vmd205066.contaboserver.net"
       ],
