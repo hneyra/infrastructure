@@ -64,7 +64,9 @@
 # de un `ssh -L 6443:localhost:6443` abierto antes de cada `preview` o `up`. Es la misma
 # cicatriz de `../iaac`: con la IP del VPS en el kubeconfig en vez de `localhost`, el
 # proveedor sale por fuera del túnel — y `config.ts`, ya en `main`, se pone rojo antes de
-# que ese kubeconfig llegue a usarse.
+# que ese kubeconfig llegue a usarse. Y desde #162 **cada túnel se comprueba al abrirse**
+# (`.github/comprobar-el-tunel.sh`): `ssh -f -N` sale con 0 aunque al otro lado no conteste
+# nadie, y ese verde se pagaba después como «cluster unreachable».
 #
 # **Todos se omiten con un aviso, no con un rojo, mientras el VPS y sus secretos no
 # existan.** Ninguno de los cuatro secretos —`PULUMI_ACCESS_TOKEN`, `SSH_PRIVATE_KEY`,
@@ -911,6 +913,13 @@ jobs:
           # del VPS, y esta línea era la única diferencia entre los dos ambientes.
           ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=~/.ssh/known_hosts \
               -i ~/.ssh/despliegue -f -N -L 6443:localhost:6443 "$VPS_USER@$VPS_HOST"
+          # Y AHORA SE PREGUNTA SI SIRVE (#162). `ssh -f -N` sale con 0 en cuanto se manda al
+          # fondo, y el reenvío `-L` es perezoso: no toca el puerto del VPS hasta que alguien usa
+          # el local. Sin esta línea el paso salía VERDE con nada escuchando al otro lado, y el
+          # rojo aparecía después como «cluster unreachable», que manda a mirar el clúster. Los
+          # puertos van escritos otra vez, y no es redundancia: `el-tunel-comprueba-que-sirve`
+          # exige que sean LOS DEL `-L` de arriba, en este trabajo y en los otros cuatro.
+          infrastructure/.github/comprobar-el-tunel.sh --local 6443 --remoto 6443
 
       # Los tres bootstrap secrets de infraestructura (ADR-0011 §3) se inyectan aquí,
       # frescos en cada corrida, y nunca tocan el checkout: `stacks.test.ts` exige que
@@ -1030,6 +1039,8 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/despliegue
           ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=~/.ssh/known_hosts \
               -i ~/.ssh/despliegue -f -N -L 6443:localhost:6443 "$VPS_USER@$VPS_HOST"
+          # Que el túnel sirva, no que `ssh` arrancara (#162). El porqué, en `previsualizar-stg`.
+          infrastructure/.github/comprobar-el-tunel.sh --local 6443 --remoto 6443
 
       - name: Configurar los secretos de infraestructura del stack (ADR-0011 §3)
         if: steps.token.outputs.hay == 'si'
@@ -1162,6 +1173,8 @@ jobs:
           # (issue #157), no de este issue.
           ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=~/.ssh/known_hosts \
               -i ~/.ssh/despliegue -f -N -L 6443:localhost:6443 "$VPS_USER@$VPS_HOST"
+          # Que el túnel sirva, no que `ssh` arrancara (#162). El porqué, en `previsualizar-stg`.
+          infrastructure/.github/comprobar-el-tunel.sh --local 6443 --remoto 6443
 
       # `bootstrap-secretos.sh` habla con el API por `kubectl` suelto, no por el
       # proveedor de Pulumi: sin esto, `kubectl` no encuentra ningun kubeconfig y cae al
@@ -1429,6 +1442,8 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/despliegue
           ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=~/.ssh/known_hosts \
               -i ~/.ssh/despliegue -f -N -L 6443:localhost:6443 "$VPS_USER@$VPS_HOST"
+          # Que el túnel sirva, no que `ssh` arrancara (#162). El porqué, en `previsualizar-stg`.
+          infrastructure/.github/comprobar-el-tunel.sh --local 6443 --remoto 6443
 
       # Ver el mismo paso en aplicar-stg: sin esto, kubectl no tiene kubeconfig y
       # bootstrap-secretos.sh falla contra localhost:8080.
@@ -1719,6 +1734,8 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/despliegue
           ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=~/.ssh/known_hosts \
               -i ~/.ssh/despliegue -f -N -L 6443:localhost:6443 "$VPS_USER@$VPS_HOST"
+          # Que el túnel sirva, no que `ssh` arrancara (#162). El porqué, en `previsualizar-stg`.
+          infrastructure/.github/comprobar-el-tunel.sh --local 6443 --remoto 6443
 
       # `verificar-el-ambiente.sh` habla con el API por `kubectl` suelto, no por el
       # proveedor de Pulumi: sin esto, `kubectl` no encuentra ningun kubeconfig y cae al
