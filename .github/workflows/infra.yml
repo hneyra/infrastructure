@@ -42,6 +42,8 @@
 #      sí exige `aplicar-prod`). Desde que `infra/componentes/` tiene recursos, el plan
 #      se calcula comparando con lo que hay en el nodo, y para eso hay que poder llegar
 #      a él.
+#   2b. `stg-en-main` — en cada PR, el último `pulumi up en stg` de `main`, preguntado al API
+#      (#79): rojo si terminó rojo, y un aviso —nunca un verde mudo— si no se pudo saber.
 #   3. `aplicar-stg` — genera los secretos que falten contra el clúster real
 #      (`bootstrap-secretos.sh`, INF-06) y solo entonces `pulumi up` de `stg`,
 #      automático al integrar a `main`.
@@ -820,6 +822,56 @@ jobs:
       # politica de PostgreSQL, la MISMA conexion pasa a conectar.
       - name: verificar-red.sh
         run: infrastructure/infra/red/verificar-red.sh
+
+  # ── ¿ESTA ROJO `stg` EN `main`? UN PR TIENE QUE PODER VERLO (#79) ─────────────────────────
+  #
+  # `aplicar-stg` corre con `push` y `workflow_dispatch`, nunca en un PR, asi que ninguna de las
+  # comprobaciones de un PR ejerce el despliegue. Medido dos veces: el PR #75 salio verde en sus
+  # 12 comprobaciones con `aplicar-stg` quince horas rojo, y el 2026-09-13 se integraron OCHO
+  # cambios seguidos —`d166b97` a `c0db443`— con `pulumi up en stg` en `failure`. Este trabajo
+  # le pregunta al API por el ultimo `pulumi up en stg` de `main` que llego a correr; con el,
+  # siete de esas ocho integraciones habrian visto el rojo (la primera no: fue la que lo causo).
+  #
+  # Tres respuestas, y la tercera es la que importa no confundir:
+  #
+  #   - `success` → verde.
+  #   - `failure`, `timed_out` o `cancelled` (el tope de 15 min cierra como CANCELLED) → ROJO,
+  #     con la URL de la corrida.
+  #   - NO SE SABE —el API no contesta, el token no alcanza, no hay ninguno terminado, o salio
+  #     `success` sin llegar a aplicar— → verde CON `::warning::` y el resumen diciendo que no es
+  #     «esta bien». No rojo, a proposito: un rojo por algo que nadie en el PR puede arreglar
+  #     —un API de GitHub caido, el token de una bifurcacion— bloquea PR que no tienen nada que ver
+  #     y ensena a relanzar hasta el verde. Es el criterio de las credenciales del cluster, arriba.
+  #
+  # Si este PR es el que ARREGLA `stg`, su rojo es el esperado, y el guion lo dice.
+  #
+  # `actions: read` es el alcance que pide leer corridas y trabajos. Los `permissions` de un
+  # trabajo SUSTITUYEN a los del flujo, asi que `contents: read` se repite para el checkout.
+  #
+  # Los dos nombres dicen «despliegue» y no la herramienta, a proposito: `clones-de-los-hermanos`
+  # lee todo el texto de un trabajo, y la palabra del CLI en un nombre le haria creer que este
+  # trabajo ejecuta Pulumi y necesita los cinco clones. No ejecuta nada de eso: solo pregunta.
+  stg-en-main:
+    name: El último despliegue de stg en main no está rojo
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      # Solo `.github`: el guion no necesita ni `infra/` ni los hermanos.
+      - uses: actions/checkout@v4
+        with:
+          path: infrastructure
+          sparse-checkout: .github
+
+      - name: ¿Está rojo el último despliegue de stg en main? (#79)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORIO: ${{ github.repository }}
+        run: infrastructure/.github/el-despliegue-de-stg-en-main.sh
 
   # stg y prod son dos VPS con IP distinta, así que un solo túnel no puede llegar a los
   # dos. Antes esto era un solo job reutilizando un túnel para ambos `preview` — bastaba
