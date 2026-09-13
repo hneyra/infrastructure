@@ -202,6 +202,13 @@ la desengancha, si la entrada nace marcada, o si su descripción deja de avisar.
      disco del nodo** y el primer síntoma es el disco llenándose, horas después.
 9. Mover el DNS y esperar el certificado. ACME resuelve el desafío HTTP-01 por el 80, así que el
    nombre tiene que apuntar al nodo nuevo antes.
+   - **Si se sirve `TRAEFIK DEFAULT CERT` o uno `(STAGING)`, no esperar a que se arregle solo.**
+     El primero es que aún no hay ruta ni certificado. El segundo, si el ambiente pasó de la CA
+     de pruebas a la real, **no se va**: Traefik guarda el certificado en `/data/acme.json`
+     —volumen persistente— y lo sigue sirviendo hasta que toque renovarlo, meses después.
+     Medido en `stg` el 2026-09-13; el remedio está junto a `kamayuk:acmeStaging` en
+     `Pulumi.stg.yaml`. Se comprueba con `curl` **sin** `-k`: `ssl_verify=0`.
+
 10. **Apagar el nodo viejo**, que es lo que convierte a los huérfanos en nada. Mientras siga
    encendido hay dos clústeres sirviendo el mismo producto, y solo uno está gestionado.
 

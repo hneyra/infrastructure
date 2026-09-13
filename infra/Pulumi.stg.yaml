@@ -113,6 +113,15 @@ config:
   # el dominio padre compartido no lo impide. Para ensayar un cambio del ingreso sin gastarlo,
   # el modo de pruebas sigue existiendo: `acmeStaging: "true"` aqui, y NUNCA en `prod` (RNF-074).
   kamayuk:acmeStaging: "false"
+  #
+  # ⚠ CAMBIAR ESTA CLAVE NO CAMBIA EL CERTIFICADO QUE SE SIRVE. Medido el 2026-09-13 al pasar de
+  # `true` a `false`: Traefik arranco con la CA nueva y reseteo la cuenta —«Account URI does not
+  # match the current CAServer. The account will be reset»— pero SIGUIO SIRVIENDO el certificado
+  # `(STAGING)` guardado en `/data/acme.json`, que vive en un volumen persistente y era valido
+  # hasta el 12 de diciembre: no lo habria renovado en dos meses. Hay que retirarlo a mano:
+  #   kubectl -n kube-system exec deploy/traefik -c traefik -- rm /data/acme.json
+  #   kubectl -n kube-system rollout restart deploy/traefik
+  # y comprobar el emisor con `openssl s_client`. Aquel dia el real se emitio en 10 s.
   kamayuk:postgresImage: postgis/postgis:16-3.4-alpine
   kamayuk:postgresStorageSize: 20Gi
   kamayuk:keycloakImage: quay.io/keycloak/keycloak:26.0
