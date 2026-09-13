@@ -239,6 +239,21 @@ Que la fila **exista** lo comprueba `docs/00-gobierno/verificar-fila-del-registr
 que cierre un issue y toque código de producción. Lo que la fila **diga** —que la mutación sea
 real y las cifras cuadren— no lo puede leer una máquina: eso lo lee la revisión.
 
+**Y el cuerpo del PR cierra su issue con `Closes #N`, en inglés y en el cuerpo —nunca en el
+título—.** No es una excepción al idioma de la casa: es que **GitHub sólo auto-cierra con
+`close(s|d)`, `fix(es|ed)` y `resolve(s|d)`**, y «Cierra #N» —que la guarda acepta, y va a seguir
+aceptando— **no cierra nada**. Pasó en `rentas`#129: PR mezclado, CI verde, fila escrita e issue
+abierto hasta la auditoría. Desde [#165](https://github.com/hneyra/infrastructure/issues/165)
+eso sale **rojo** también aquí, en `Registro`, nombrando el issue que se quedaría abierto. Si de
+verdad no quieres auto-cierre, no lo declares: «Ref» o «Parte de» no disparan nada.
+
+**Y ese guion no es sólo de este repositorio**: es el mismo archivo en los seis, byte a byte salvo
+el bloque de `RUTAS_DE_CODIGO` —su comentario y la lista—, y lo vigila
+`infra/verificaciones/las-seis-copias-de-la-guarda-del-registro.test.ts` en `infrastructure`
+([#165](https://github.com/hneyra/infrastructure/issues/165)). Cambiarlo fuera de ese bloque es
+cambiarlo en los seis, y `infrastructure` se mezcla el último. Lo que sí es de aquí es la
+autoprueba, que ejerce la lista de este árbol.
+
 | Verificación | Cómo se demostró que puede fallar | Resultado |
 |---|---|---|
 

@@ -7,7 +7,7 @@
 | `yarn verificar` | El descriptor: lint, tipos (**dos** `tsconfig`) y pruebas | **los cinco clones hermanos** (§1.1) |
 | `yarn capacidad --ambiente prod` | Si el stack cabe en el nodo, sin desplegar | nada |
 | `cd librerias-backend && ./gradlew build` | Las barreras que consumen los cinco backends | nada |
-| `node docs/00-gobierno/verificar-las-muestras-del-registro.mjs` | Que la guarda de #711 muerde y no muerde de más | nada |
+| `node docs/00-gobierno/verificar-las-muestras-del-registro.mjs` | Que la guarda de #711 muerde y no muerde de más: que la **fila** se exija, y —desde #165— que el cierre declarado sea uno que **GitHub entienda** | nada |
 
 Ninguna de esas necesita Pulumi, ni token, ni clúster. **Y ninguna de esas es suficiente**, que es
 lo propio de este repositorio: ver §4.
@@ -144,7 +144,7 @@ Tres cosas de esa lista no son un detalle:
 ## 5. La guarda del registro (#711)
 
 ```bash
-node docs/00-gobierno/verificar-las-muestras-del-registro.mjs   # 6 muestras: 3 rojas, 3 verdes
+node docs/00-gobierno/verificar-las-muestras-del-registro.mjs   # 12 muestras: 7 rojas, 5 verdes
 node docs/00-gobierno/verificar-fila-del-registro.mjs           # contra el PR actual
 ```
 

@@ -196,7 +196,7 @@ config:
   # la autorizacion y la recibe por el buzon, que ya funciona en este nodo—, el realm
   # renombrado y `SgtmAplicacion` -> `KamayukAplicacion`. **Las 16 migraciones son las
   # mismas** que las de la version anterior, medido: el `Job` de migracion no aplica nada.
-  kamayuk:versionDeRentas: 235590e243f8af8d19a402c6861e229a2c2cc28f
+  kamayuk:versionDeRentas: 70853239c61d7af26bbec3d9307d037413553f72
   # Sube con el estreno de su interfaz: el manifiesto pasa a pedir
   # `kamayuk-<sistema>-interfaz:<sha>`, y con el `sha` anterior esa etiqueta **no existe** —medido,
   # `yarn imagenes` contestaba `NO EXISTE`—. En `catastro` ademas la imagen se llamaba `-web`.
