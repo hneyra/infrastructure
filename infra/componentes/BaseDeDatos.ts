@@ -522,7 +522,18 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
   // **El nombre lleva la huella del contenido**, como el Job del realm: anadir un sistema anade
   // su `crear-roles.sql`, la huella cambia y nace un Job que corre. Sin cambios no hay Job
   // nuevo, asi que esto no repite trabajo en cada despliegue.
+  // El `2` no es decoracion: **es lo que desatasca `stg`** (#81).
+  //
+  // El primer `Job` salio sin politica de red, murio, y ahi se quedo — con su nombre derivado
+  // del contenido, que no cambio. Un `Job` de Kubernetes es INMUTABLE, asi que ningun `up`
+  // posterior lo arregla: Pulumi lo refresca, lo ve fallido, y lo informa como no sano en cada
+  // corrida. `main` estuvo sin poder desplegar desde entonces, y `aplicar-prod` con el, porque
+  // depende de `aplicar-stg`.
+  //
+  // Cambiar lo que se resume cambia el nombre, y un nombre nuevo es un objeto nuevo. Lo que
+  // impide que esto vuelva a hacer falta es el `ttlSecondsAfterFinished` de mas abajo.
   const huellaDeLasBases = huellaDelContenido({
+    "version-del-job": "2",
     ...deLosSistemas.data,
     "05-crear-bases.sh": inicializacion.data["05-crear-bases.sh"] ?? "",
     "06-roles-de-los-sistemas.sh": inicializacion.data["06-roles-de-los-sistemas.sh"] ?? "",
@@ -538,6 +549,22 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
     },
     spec: {
       backoffLimit: 3,
+      // **Un `Job` fallido se recoge solo, y eso es lo que impide que atasque la cadena.**
+      //
+      // Los otros diez `Job` del producto llevan 86400 (24 h) para que quede que leer por la
+      // manana. Este lleva 15 minutos, y la diferencia tiene motivo: los otros se llaman por la
+      // VERSION del sistema, asi que la siguiente version trae un `Job` nuevo de todas formas.
+      // Este se llama por el CONTENIDO, que puede no cambiar en semanas — y un fallido con el
+      // mismo nombre bloquea todos los despliegues hasta que alguien lo borre a mano, porque un
+      // `Job` es inmutable. Medido: paso el 2026-09-13 y dejo `main` sin desplegar.
+      //
+      // Con el TTL, el objeto desaparece, el siguiente `up` lo vuelve a crear y el fallo se
+      // REINTENTA en vez de quedarse. El coste es que tambien se recoge cuando sale bien, asi
+      // que corre en cada despliegue: son segundos, y es idempotente por construccion —
+      // `CREATE DATABASE ... WHERE NOT EXISTS` y `crear-roles.sql` dentro de un `DO ... IF NOT
+      // EXISTS`—. Para lo que este `Job` existe —«que no falte ninguna base»— correr siempre es
+      // mas correcto que correr una vez.
+      ttlSecondsAfterFinished: 900,
       template: {
         metadata: { labels: { ...etiquetas, app: "postgres-crear-bases" } },
         spec: {
