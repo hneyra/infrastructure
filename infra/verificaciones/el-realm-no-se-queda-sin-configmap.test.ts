@@ -153,6 +153,7 @@ function identidadDe(
     smtp: s.identity.smtp,
     ubigeo: s.implantacion.ubigeo,
     administrador: s.implantacion.administrador,
+    cuentasDeOperacionDePrueba: s.identity.seedTestUsers,
   });
   const cm = configMapsDelRealm(ambiente, ms)[0];
   const job = ms.find(
