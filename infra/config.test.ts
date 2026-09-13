@@ -250,7 +250,7 @@ describe("ADR-0012 — el relay SMTP, opcional, y bien declarado si se declara",
   });
 });
 
-describe("ADR-0011 — el estado de Pulumi no guarda ni versiones ni secretos", () => {
+describe("ADR-0011 — el estado de Pulumi no guarda secretos, y la versión vive en una sola línea", () => {
   it("las claves de los roles generadas en el estado", () => {
     for (const environment of ["stg", "prod"] as const) {
       const c = baseline(environment);
@@ -262,7 +262,7 @@ describe("ADR-0011 — el estado de Pulumi no guarda ni versiones ni secretos", 
   it("la etiqueta de la imagen metida en la configuración", () => {
     const c = baseline();
     c.application.imageRepository = "ghcr.io/hneyra/kamayuk:1.4.2";
-    expectViolation(c, "la pone el flujo de liberación, no Pulumi");
+    expectViolation(c, "la versión de cada sistema vive en su línea");
   });
 
   it.each(["postgres:latest", "postgres", "quay.io/keycloak/keycloak:main"])(

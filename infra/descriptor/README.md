@@ -38,9 +38,15 @@ confianza en quien lo escribió. **Si se rompe eso, esto no funciona.**
 | (d) | Un `Deployment` sin límites o sin sondas | **`auditarManifiestos`, el de los componentes propios** |
 | (e) | Un `Secret` en claro | `auditarSecretoEnClaro` |
 
-**La (b) es la que sostiene todo lo demás.** Si la etiqueta entra en el descriptor, entra en el
-estado de Pulumi: cada liberación vuelve a ser un `pulumi up`, cada reversión también, y componer
-aquí pasa de barato a ser el cuello de botella que la separación venía a quitar (ADR-0011 §5).
+**La (b) es la que sostiene todo lo demás.** La versión de cada sistema vive en **una línea por
+stack**, `kamayuk:versionDe<Sistema>` de `Pulumi.<ambiente>.yaml`, y liberar o revertir es cambiar
+esa línea (ADR-0011 §5, con su enmienda de #172). El descriptor es uno para los dos ambientes y
+sale de `main` del hermano: con la etiqueta dentro, `stg` y `prod` correrían la misma versión, sin
+promoción posible, y bajar la línea no revertiría nada.
+
+Hasta #172 el motivo escrito aquí era que «si la etiqueta entra en el descriptor, entra en el
+estado de Pulumi: cada liberación vuelve a ser un `pulumi up`». Partía de que la etiqueta estaba
+fuera del estado, y medido el 2026-09-13 no lo estaba. La prohibición sigue; el motivo cambió.
 
 **La (d) es la que enseña cómo está montado esto: no se implementa aquí.** La hace
 `auditarManifiestos`, el mismo que audita `BaseDeDatos.ts` o `Ingreso.ts`. Escribirla otra vez

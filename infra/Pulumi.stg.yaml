@@ -155,8 +155,12 @@ config:
   # —lo unico que se puede saber sin hablar con el registro— lo comprueba
   # `verificaciones/imagenes-publicadas.test.ts` en cada corrida.
   #
-  # Subir una de estas cuatro lineas NO reemplaza la imagen de un `Deployment` que ya corre
-  # (ADR-0011 §5, `ignoreChanges`), pero **no es inerte**: el `Job` de migracion de ese sistema
+  # **Subir o bajar una de estas lineas ES liberar o revertir ese sistema** (ADR-0011 §5, enmienda
+  # del 2026-09-14, #172): el `pulumi up` cambia la imagen de sus `Deployment` y sus `CronJob`.
+  # Hasta #172 aqui decia que subirla «NO reemplaza la imagen de un `Deployment` que ya corre» por
+  # un `ignoreChanges`: medido el 2026-09-13, si la reemplaza. Como se hace:
+  # `docs/B0-operacion/runbooks/liberar-una-version-y-revertirla.md`. Y **no es inerte** tampoco
+  # por el otro lado: el `Job` de migracion de ese sistema
   # lleva la version en el nombre, asi que un valor nuevo no modifica un Job — crea otro, y ese
   # Job aplica las migraciones de esa version.
   kamayuk:versionDeRentas: 1fd7fd983401ffc540221ef0f94d31bd5d7efd52

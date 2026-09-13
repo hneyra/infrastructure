@@ -2,6 +2,7 @@
 
 **Estado:** Aceptado
 **Fecha:** 2026-08-20
+**Enmendado:** 2026-09-14 — §5: la versión vive en el stack ([#172](https://github.com/hneyra/infrastructure/issues/172)). Ver [la enmienda](#enmienda-del-2026-09-14--la-versión-vive-en-el-stack), al final
 
 ## Contexto
 
@@ -110,6 +111,12 @@ retira.**
 
 ### 5. La frontera: qué gestiona Pulumi y qué gestiona el flujo de liberación
 
+> **Superado en parte el 2026-09-14** por la [enmienda del final](#enmienda-del-2026-09-14--la-versión-vive-en-el-stack)
+> (opción A de [#172](https://github.com/hneyra/infrastructure/issues/172)): **la etiqueta de la
+> imagen no está fuera del estado de Pulumi**, y la primera fila de la columna derecha y el
+> párrafo que la motiva ya no rigen. Se dejan tal cual se decidieron; el resto de §5 sigue
+> vigente.
+
 | Gestionado por Pulumi | Gestionado por el flujo de liberación |
 |---|---|
 | El clúster, sus namespaces, sus cuentas de servicio y su RBAC | **La etiqueta de la imagen de la aplicación, del migrador y de la interfaz** |
@@ -119,6 +126,7 @@ retira.**
 | La **definición** de los despliegues y de los Jobs de migración e implantación | |
 | Límites de recursos, sondas, prioridades y políticas de red | |
 
+*[Superado el 2026-09-14 — ver la enmienda. La versión entra al clúster con `pulumi up`.]*
 El motivo de la primera fila es el único que hace falta: **si el número de versión de la imagen vive
 en el estado de Pulumi, cada liberación es un `pulumi up` y cada reversión también.** Eso acopla el
 ritmo de la aplicación —que cambia seguido— al de la infraestructura —que casi no cambia— y
@@ -177,6 +185,8 @@ siguiente—.
 - La diferencia entre `stg` y `prod` es auditable: son dos archivos de configuración, en el diff.
 - Un lenguaje menos para el equipo, con errores en compilación en vez de en `apply`.
 - La reversión de la aplicación es independiente de la infraestructura: no ejecuta `pulumi up`.
+  *[Superado el 2026-09-14 — ver la enmienda: revertir es un commit a `Pulumi.<ambiente>.yaml`
+  y su `pulumi up`.]*
 - La infraestructura entra por PR, con `preview` publicado. Un cambio de red o de límites se revisa
   como se revisa el código.
 
@@ -208,6 +218,9 @@ siguiente—.
 - **La frontera con el flujo de liberación hay que respetarla.** Si alguien pone la etiqueta de la
   imagen en el estado de Pulumi, todo lo de §5 se pierde sin que nada se ponga rojo. No hay
   verificación automática de esto todavía; es una revisión de PR (issue #148).
+  *[Superado el 2026-09-14 — ver la enmienda: la etiqueta vive en el estado a propósito, y lo
+  que ahora vigila una guarda es lo contrario, que nadie vuelva a declarar un `ignoreChanges`
+  sobre la imagen.]*
 - **El estado y el clúster pueden divergir.** Un `kubectl apply` a mano funciona, no deja rastro en
   Pulumi y desaparece en el siguiente `up`. El `preview` programado de §6 es lo que lo detecta,
   y solo si alguien lo lee.
@@ -260,3 +273,98 @@ siguiente—.
 - [`despliegue/README.md`](../../../despliegue/README.md) — el compose, que no se retira
 - [`ADR-0008` del SRTM](https://github.com/hneyra/srtm/blob/main/docs/30-arquitectura/adr/ADR-0008-infraestructura-como-codigo.md)
   — la forma, no la topología
+
+## Enmienda del 2026-09-14 — la versión vive en el stack
+
+**Decide:** la opción A de [#172](https://github.com/hneyra/infrastructure/issues/172), elegida
+por la dirección del proyecto. **Enmienda** la primera fila de la columna derecha de §5 y el
+párrafo que la motiva, y dos consecuencias. §1–§4 y §6 siguen vigentes, y §6 es la que le da a
+esta enmienda su control: `prod` sigue siendo `pulumi up` con aprobación manual explícita.
+
+### Lo que se midió
+
+§5 decía que la etiqueta de la imagen «sale del flujo de liberación y entra al clúster como una
+actualización de la imagen del despliegue», fuera del estado de Pulumi. `infra/index.ts` lo
+sostenía con un `ignoreChanges` sobre `spec.template.spec.containers[*].image`. **No se cumplía**:
+
+| Fecha | Ambiente | Lo que se hizo | Lo que el `pulumi up` hizo |
+|---|---|---|---|
+| 2026-09-12 | `prod` | un `up` con `versionDeIdentidad` nueva | `kamayuk-identidad-web` pasó a `generation` 2 con la imagen nueva, sin recrearse, y con `pulumi-kubernetes-…` como **único** gestor de campos (anotado ese día en el runbook de liberación) |
+| 2026-09-13 | `stg` | el puente (#164) integró `84d1507`, que cambia **sólo** `kamayuk:versionDeCaja` | corrida [34768644141](https://github.com/hneyra/infrastructure/actions/runs/34768644141): `kamayuk-caja-web` y `kamayuk-caja-interfaz` `updated [diff: ~spec]`, los dos `Job` de `9c8e026` creados y los de `0772e25` borrados — `Resources: + 2 created ~ 3 updated - 2 deleted` —, y `ReplicaSet` nuevos a las 16:31:44Z corriendo `9c8e026` |
+| 2026-09-13 | `prod` | [#177](https://github.com/hneyra/infrastructure/pull/177) subió `kamayuk:versionDeRentas` de `235590e` a `7085323` | corrida [34776934615](https://github.com/hneyra/infrastructure/actions/runs/34776934615), aprobada a mano: **exactamente ocho** objetos de `rentas` —dos `Deployment` y dos `CronJob` actualizados, dos `Job` creados y dos borrados—, y `/rentas/` pasó de servir `index-BXbeNhmF.js` a `index--Id7jpQh.js` |
+
+**Por qué no se cumplía:** el `ignoreChanges` se ponía desde la opción `transformations` de un
+`k8s.yaml.v2.ConfigGroup`, que es un componente **remoto**: sus hijos los registra el proveedor y
+esa opción no llega a ellos (medido con `@pulumi/kubernetes` 4.33.0 durante #166, en un comentario
+de #172). La anotación `pulumi.com/patchForce` de la misma transformación tampoco llega a ninguno,
+medido en el clúster de `stg`: es [#186](https://github.com/hneyra/infrastructure/issues/186), y
+esta enmienda no la toca.
+
+**La consecuencia que obligaba a decidir:** la reversión que el runbook enseñaba —`kubectl rollout
+undo`— la deshacía el siguiente `pulumi up`, que volvía a poner la versión clavada en
+`Pulumi.<ambiente>.yaml`. El repositorio decía una cosa y hacía la otra.
+
+### La decisión
+
+**La versión que corre de cada sistema es `kamayuk:versionDe<Sistema>` en
+`infra/Pulumi.<ambiente>.yaml`**: una línea por sistema y por stack, y es la que corre después
+del `pulumi up`.
+
+- **Liberar es un commit a esa línea.** En `stg` lo escribe el puente (`declarar-version.yml`,
+  #164) cuando un hermano publica, y `aplicar-stg` lo aplica; en `prod` es un PR, y
+  `aplicar-prod` espera la aprobación del *environment* (§6).
+- **Revertir es otro commit**: el que devuelve la línea anterior, y su `pulumi up`. Por el mismo
+  camino y con la misma aprobación.
+- **`kubectl set image` y `kubectl rollout undo` quedan como medida de emergencia**, y así se
+  nombran: el siguiente `pulumi up` lo deshace, así que la misma línea se clava enseguida. Es la
+  deriva de §6, no una liberación.
+- **El `ignoreChanges` inerte se retira** de `infra/index.ts`, y
+  `infra/verificaciones/la-version-vive-en-el-stack.test.ts` impide que vuelva y que el runbook
+  vuelva a enseñar la reversión por `kubectl` sin su advertencia.
+
+### Por qué A y no B
+
+La opción B era hacer cumplir el `ignoreChanges` —con `transforms`, demostrado con una rotura— y
+mantener `kubectl set image` como liberación.
+
+- **A es lo que el sistema ya hacía**, y lo que ya se construyó encima: el puente de #164 clava
+  versiones en el stack y #177 liberó `prod` así. B contradecía los dos.
+- **Con A, git dice qué versión corre en cada ambiente**, y la liberación pasa por las mismas
+  guardas que cualquier PR: `deriva-de-migraciones`, `imagenes-publicadas` y
+  `la-version-clavada-afilia-a-los-consumidores`. Con `kubectl set image` no pasa por ninguna.
+- **B no quitaba el `pulumi up` de la liberación**: los `Job` de migración e implantación llevan
+  la versión en el nombre y viven en el stack, así que una liberación fuera de Pulumi tendría que
+  renderizar y lanzar su propia migración (#173 §2).
+
+### Lo que cuesta, y el motivo original no era falso
+
+El motivo de §5 sigue siendo cierto: **con la versión en el estado, cada liberación es un `pulumi
+up` y cada reversión también.** Se acepta sabiéndolo:
+
+- **Una reversión ya no son tres minutos sin tocar la infraestructura.** Es un commit, el `up` del
+  stack entero y, en `prod`, una persona que apruebe. Medido en #177: el trabajo `aplicar-prod`
+  duró 5 min 3 s una vez aprobado, y el `up` —del primer `refreshing` a `Resources:`— 38 s; lo
+  que no tiene cota es la espera hasta la aprobación, que en #177 —del merge al arranque del trabajo— fue de hora y media.
+- **Una liberación de un sistema pasa por `infrastructure`.** ADR-0031 §3 lo daba por evitado; su
+  enmienda del mismo día lo corrige.
+- **Dentro del `up`, el `Job` y el `Deployment` no van en orden.** En la corrida de #177,
+  `kamayuk-rentas-web` terminó de actualizarse a las 20:45:03Z y el `Job` de implantación de esa
+  versión se dio por creado a las 20:45:06Z: empezaron a la vez. Sin migraciones en el rango no
+  importó; con ellas, la aplicación nueva puede arrancar antes que su esquema.
+- **Aprobar una corrida vieja de `prod` despliega versiones viejas**, porque aplica el
+  `Pulumi.prod.yaml` de su commit. Pasó a estar en juego en cada aprobación.
+
+### Lo que queda superado, y lo que no
+
+- **Superados**: la primera fila de la columna derecha de §5 («La etiqueta de la imagen de la
+  aplicación, del migrador y de la interfaz»), el párrafo «El motivo de la primera fila es el único
+  que hace falta…», la consecuencia positiva «La reversión de la aplicación es independiente de la
+  infraestructura» y la negativa «La frontera con el flujo de liberación hay que respetarla». Se
+  marcan en su sitio y no se borran.
+- **No decidido aquí**: la segunda fila de esa columna, «el número de réplicas cuando se ajusta a
+  mano». Tiene la misma forma —un `kubectl scale` es deriva que el siguiente `up` deshace, lo dice
+  §6— y no se ha medido.
+- **Sigue vigente**: que la interfaz es «un artefacto que se promueve, no se reconstruye» — la
+  imagen se promueve cambiando la línea, no reconstruyéndola.
+- **GitOps** (Alternativas) sigue siendo la evolución natural, pero ya no «encaja con la frontera
+  de §5»: tendría que convivir con la versión en el stack (#173 §3).

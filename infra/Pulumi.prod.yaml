@@ -151,7 +151,8 @@ config:
   # `keycloakSmtpPort` / `keycloakSmtpFrom` (en claro) y —si pide auth— el `Secret`
   # `kamayuk-prod-smtp` (`usuario`/`clave`), que NO genera `bootstrap-secretos.sh`
   # (INF-06 §1.2). No hace falta relanzar el alta: reenviar el enlace a cada usuario.
-  # Sin etiqueta, a propósito: la pone el flujo de liberación (ADR-0011 §5, issue #148).
+  # Sin etiqueta, a propósito: la versión de cada sistema es su `kamayuk:versionDe<Sistema>` de
+  # abajo, una línea por sistema (ADR-0011 §5, enmienda de #172).
   kamayuk:applicationImageRepository: ghcr.io/hneyra
   # El usuario con que el nodo se autentica contra ghcr.io para traer sgtm-aplicacion,
   # sgtm-migrador y sgtm-interfaz —los tres privados—. No es secreto; lo que sí lo es
@@ -182,15 +183,18 @@ config:
   # —lo unico que se puede saber sin hablar con el registro— lo comprueba
   # `verificaciones/imagenes-publicadas.test.ts` en cada corrida.
   #
-  # Subir una de estas cuatro lineas NO reemplaza la imagen de un `Deployment` que ya corre
-  # (ADR-0011 §5, `ignoreChanges`), pero **no es inerte**: el `Job` de migracion de ese sistema
-  # lleva la version en el nombre, asi que un valor nuevo no modifica un Job — crea otro, y ese
-  # Job aplica las migraciones de esa version.
+  # **Subir o bajar una de estas lineas ES liberar o revertir ese sistema** (ADR-0011 §5, enmienda
+  # del 2026-09-14, #172): el `pulumi up` cambia la imagen de sus `Deployment` y sus `CronJob`, y
+  # como el `Job` de migracion lleva la version en el nombre, un valor nuevo no modifica un Job —
+  # crea otro, y ese Job aplica las migraciones de esa version—. Hasta #172 aqui decia que subirla
+  # «NO reemplaza la imagen de un `Deployment` que ya corre» por un `ignoreChanges`: medido el
+  # 2026-09-13, si la reemplaza. Como: `docs/B0-operacion/runbooks/liberar-una-version-y-revertirla.md`.
   # Sube para que `prod` sirva el arreglo del retorno de la autenticacion
   # (`rentas`#71/#73): hasta este `sha`, quien se autenticaba volvia a la raiz del SITIO
-  # —`https://<dominio>/`— y recibia un 404, con el `code` correcto. El campo `image` de
-  # los `Deployment` se ignora tras crearse (ADR-0011 §5), asi que sin subir esta linea el
-  # arreglo se queda en `main` y el nodo sigue sirviendo el paquete viejo.
+  # —`https://<dominio>/`— y recibia un 404, con el `code` correcto. Sin subir esta linea el
+  # arreglo se queda en `main` y el nodo sigue sirviendo el paquete viejo: la imagen que corre
+  # es la de esta linea (ADR-0011 §5, enmienda de #172; aqui decia «se ignora tras crearse», y
+  # #177 midio lo contrario al subirla).
   #
   # El salto trae ademas la etapa 5 de ADR-0039 en `rentas` —su sembrador deja de escribir
   # la autorizacion y la recibe por el buzon, que ya funciona en este nodo—, el realm
@@ -220,10 +224,12 @@ config:
   # etapa 4, o sea CON su consumidor: los consumidores existian y las cuentas que los
   # autorizan no. Lo vigila `la-version-clavada-afilia-a-los-consumidores.test.ts`.
   kamayuk:versionDeIdentidad: 226ec6ffdc62961c1d40dcd9a8ed475e8d49ff5d
-  # La versión con la que Pulumi CREA los despliegues. El campo `image` de los tres
-  # `Deployment` queda ignorado después (ADR-0011 §5), así que subir esta línea **no**
-  # reemplaza la imagen de un `Deployment` que ya corre: eso lo hace el flujo de
-  # liberación con `kubectl set image`.
+  # La versión con la que Pulumi CREA los despliegues **y la que corre después de cada `up`**.
+  # Hasta #172 este bloque decía que el campo `image` «queda ignorado después (ADR-0011 §5)» y
+  # que la imagen de un `Deployment` en marcha la reemplaza «el flujo de liberación con
+  # `kubectl set image`». Era falso, medido el 2026-09-13: subir la línea reemplaza la imagen,
+  # y es la liberación. El resto del bloque —los `Job` con la versión en el nombre— sigue
+  # siendo cierto.
   #
   # **Pero no es inerte sobre un clúster en marcha, y creerlo cuesta caro.** Los dos
   # Jobs de arranque llevan la versión EN EL NOMBRE (`sufijoDeVersion()`,

@@ -18,9 +18,12 @@
 #
 # Lo que mira, en este orden:
 #
-#   1. La version declarada, la desplegada y **el esquema**, POR SISTEMA. Es la trampa de #434: el
-#      campo `image` de un Deployment lleva `ignoreChanges` (ADR-0011 §5), asi que la
-#      version que corre puede ser legitimamente mas nueva que la declarada. Lo que NO
+#   1. La version declarada, la desplegada y **el esquema**, POR SISTEMA. Es la trampa de #434. Hasta
+#      #172 aqui decia que el campo `image` llevaba `ignoreChanges` y que la version que corre
+#      podia ser «legitimamente mas nueva que la declarada»: no era asi, la que corre tras un
+#      `up` es la declarada (ADR-0011 §5, enmienda del 2026-09-14), y una distinta es una medida
+#      de emergencia sin clavar que el siguiente `pulumi up` deshace. Este guion IMPRIME las dos y
+#      no las compara. Lo que NO
 #      puede es que la base tenga MENOS migraciones que las que trae la version
 #      declarada: eso significa que el Job de migracion de esa version no corrio, y el
 #      sintoma de esa situacion no es un error sino una carga que termina en verde sin

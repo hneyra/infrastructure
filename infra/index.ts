@@ -38,14 +38,33 @@ import { commonLabels, loadSettings, namespaceName, resourceName } from "./confi
  * clúster. Es lo que permite que un PR de cualquiera ponga rojo un despliegue mal
  * formado.
  *
- * ## La frontera con el flujo de liberación
+ * ## La versión que corre vive en el stack (#172)
  *
- * **Pulumi define el despliegue; no la versión que corre** (`ADR-0011` §5). El campo
- * `image` de los contenedores lleva `ignoreChanges`: Pulumi lo escribe al crear el
- * recurso y no vuelve a mirarlo. El flujo de liberación mueve la etiqueta con
- * `kubectl set image` —el mecanismo que #148 dejó demostrado—, y ni la liberación ni la
- * reversión ejecutan `pulumi up`. Sin `ignoreChanges`, el `preview` diario vería la
- * versión liberada como deriva y el siguiente `up` la desharía en silencio.
+ * **Pulumi define el despliegue y también la versión que corre** (`ADR-0011` §5, enmienda
+ * del 2026-09-14). La imagen de cada sistema la compone `imagenDe()` con
+ * `kamayuk:versionDe<Sistema>` de `Pulumi.<ambiente>.yaml`, y un `pulumi up` con una línea
+ * distinta cambia el binario de sus `Deployment` y de sus `CronJob`, y crea los dos `Job` de
+ * esa versión. Así que:
+ *
+ * - **una liberación es un commit a `Pulumi.<ambiente>.yaml`**: en `stg` lo escribe solo el
+ *   puente (`declarar-version.yml`, #164) cuando un hermano publica; en `prod` es un PR y el
+ *   `pulumi up` espera la aprobación manual (`ADR-0011` §6, que no cambia);
+ * - **una reversión es otro commit**, el que devuelve la línea anterior, y su `up`;
+ * - `kubectl set image` / `rollout undo` quedan como medida de emergencia: el siguiente
+ *   `pulumi up` lo deshace, y la misma línea hay que clavarla enseguida. Lo cuenta el runbook
+ *   `docs/B0-operacion/runbooks/liberar-una-version-y-revertirla.md`.
+ *
+ * **Lo que este bloque decía hasta el 2026-09-14, y era falso.** «Pulumi define el
+ * despliegue; no la versión que corre»: el campo `image` llevaba `ignoreChanges`, la
+ * liberación movía la etiqueta con `kubectl set image` y «sin `ignoreChanges` […] el
+ * siguiente `up` la desharía en silencio». Medido el 2026-09-13: el puente clavó
+ * `caja@9c8e026` en `stg` y su `up` (corrida 34768644141) hizo `updating [diff: ~spec]` sobre
+ * `kamayuk-caja-web` y `kamayuk-caja-interfaz`, con `ReplicaSet` nuevos corriendo `9c8e026`; y
+ * #177 subió `rentas` en `prod` con la misma mecánica. El `ignoreChanges` no llegaba a ningún
+ * `Deployment` —la transformación que lo ponía no alcanza a los hijos de este `ConfigGroup`,
+ * ver abajo—, así que el daño que el bloque decía evitar era el que ocurría: un
+ * `rollout undo` lo deshacía el siguiente `up`. Se eligió la opción A de #172 —la versión
+ * vive en el stack— y el `ignoreChanges` inerte se retiró.
  *
  * ## Lo que este archivo NO crea: los `Secret` de la aplicación
  *
@@ -147,9 +166,10 @@ if (noCabe.length > 0) {
 /**
  * El proveedor de Kubernetes, contra el kubeconfig del stack.
  *
- * `enableServerSideApply` deja que el API server resuelva las fusiones de campos, que es
- * lo que permite que el flujo de liberación cambie `image` sin que Pulumi lo reclame
- * como suyo en el siguiente `up`.
+ * `enableServerSideApply` deja que el API server resuelva las fusiones de campos. Hasta
+ * #172 este bloque añadía que eso permitía «que el flujo de liberación cambie `image` sin
+ * que Pulumi lo reclame como suyo en el siguiente `up`»: no es así —la imagen la pone el
+ * stack, y el `up` la reclama—, y la liberación es un commit a `Pulumi.<ambiente>.yaml`.
  *
  * `upsertExistingObjects` existe por el `Namespace` (issue #158, encontrado reconstruyendo
  * el VPS de verdad): `bootstrap-secretos.sh` corre ANTES que este `up` a propósito —el
@@ -169,14 +189,13 @@ const proveedor = new k8s.Provider(resourceName(env, "kubernetes"), {
   upsertExistingObjects: true,
 });
 
-/**
- * El campo que el flujo de liberación mueve, y que Pulumi no vuelve a mirar.
- *
- * Se aplica a todo recurso con plantilla de pod. Un `Job` no lo necesita —su nombre
- * lleva la versión y uno nuevo se crea entero—, pero incluirlo no hace daño y evita
- * tener que acordarse de la excepción.
+/*
+ * Aquí vivía `IGNORAR_LA_VERSION`, la ruta de la imagen de los contenedores que la
+ * transformación de abajo pasaba como `ignoreChanges` a los `Deployment`, con el docblock «el
+ * campo que el flujo de liberación mueve, y que Pulumi no vuelve a mirar». Se retiró con #172:
+ * no llegaba a ningún hijo del `ConfigGroup` y la versión vive en el stack. Que no vuelva lo
+ * vigila `verificaciones/la-version-vive-en-el-stack.test.ts`.
  */
-const IGNORAR_LA_VERSION = ["spec.template.spec.containers[*].image"];
 
 /**
  * `pulumi.com/patchForce`, en TODOS los objetos del `ConfigGroup` (issue #257,
@@ -197,6 +216,13 @@ const IGNORAR_LA_VERSION = ["spec.template.spec.containers[*].image"];
  * solo dos corridas de la misma intención. Y en un `Job` en particular no puede haber
  * ademas un cambio de valor real —su `spec.template` es inmutable una vez creado—, así
  * que forzar aquí es tomar propiedad de un campo, nunca sobrescribir un valor distinto.
+ *
+ * **Y no llega a ningún hijo del `ConfigGroup`, medido** (#186): el 2026-09-13, en `stg`, ni
+ * uno de los 17 `Deployment`, 11 `Job` y 7 `CronJob` que aplica Pulumi lleva la anotación,
+ * mientras el `ServiceAccountPatch` de más abajo —que la escribe en sus propios argumentos— sí
+ * la tiene en los seis espacios. Es la misma causa que dejaba inerte el `ignoreChanges` de #172.
+ * #172 no la toca: la función y su aplicación siguen exactamente como estaban, y qué hacer con
+ * ella lo decide #186.
  */
 function conPatchForce(props: Record<string, unknown>): Record<string, unknown> {
   const metadata = (props.metadata as Record<string, unknown> | undefined) ?? {};
@@ -239,13 +265,12 @@ const recursos = new k8s.yaml.v2.ConfigGroup(
     // se midio con `@pulumi/kubernetes` 4.33.0 que `transformations` sobre este `ConfigGroup`
     // —un componente remoto, cuyos hijos construye el proveedor y no este proceso— se invoca UNA
     // vez, sobre el propio grupo, y nunca sobre sus hijos. Va en `manifiestosDelAmbiente()`, antes
-    // de llegar a `objs`. Lo que esa medida implica para el `ignoreChanges` de aqui abajo es #172.
+    // de llegar a `objs`. Lo que esa medida implicaba para el `ignoreChanges` que esta
+    // transformacion ponia a los `Deployment` fue #172: era inerte, y se retiro al decidir que la
+    // version vive en el stack. Lo que implica para el `patchForce` que sigue aqui es #186.
     transformations: [
       (args) => {
         const props = conPatchForce(args.props as Record<string, unknown>);
-        if (args.type.startsWith("kubernetes:apps/v1:Deployment")) {
-          return { props, opts: { ...args.opts, ignoreChanges: IGNORAR_LA_VERSION } };
-        }
         return { props, opts: args.opts };
       },
     ],
@@ -465,9 +490,12 @@ export const isDemonstration = settings.application.isDemonstration;
  * repositorio que construyo esa imagen, que es lo unico que permite contestar «que esta
  * corriendo» y volver de ahi al codigo.
  *
- * **No es la que corre**: la que corre la pone el flujo de liberacion y se lee del
- * cluster con `kubectl get deployment -o jsonpath='{...image}'`, que es lo que demuestra
- * el criterio 1 de #148. Se publica para poder comparar las dos.
+ * **Es la que corre, despues de este `up`** (#172). Hasta el 2026-09-14 este bloque decia
+ * «no es la que corre: la que corre la pone el flujo de liberacion», y era falso: el `up`
+ * pone en cada `Deployment` la imagen de esta linea. Se sigue publicando para comparar con
+ * lo que el cluster dice (`kubectl get deployment -o jsonpath='{...image}'`): si difieren,
+ * alguien uso la medida de emergencia del runbook de liberacion y el siguiente `pulumi up`
+ * lo deshace.
  */
 export const versionesDeLosSistemas = settings.sistemas.versiones;
 

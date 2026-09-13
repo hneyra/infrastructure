@@ -22,10 +22,15 @@
  * vez seria dos definiciones de «limites de recursos» envejeciendo aparte, que es lo que
  * este repositorio evita en todas partes.
  *
- * Y la (b) es la que sostiene todo lo demas. Si la etiqueta de la imagen entra en el
- * descriptor, entra en el estado de Pulumi: cada liberacion vuelve a ser un `pulumi up`,
- * cada reversion tambien, y componer aqui pasa de ser barato a ser el cuello de botella
- * que ADR-0029 venia a quitar. Por eso su mensaje es el mas largo de los cinco.
+ * Y la (b) es la que sostiene todo lo demas. La version de cada sistema vive en UNA linea por
+ * stack —`kamayuk:versionDe<Sistema>`— y liberar o revertir es cambiarla (ADR-0011 §5, enmienda
+ * de #172). El descriptor es uno para los dos ambientes y sale de `main` del hermano: con la
+ * etiqueta dentro, `stg` y `prod` correrian la misma version, sin promocion posible, y la linea
+ * del stack dejaria de decidir que corre. Por eso su mensaje es el mas largo de los cinco.
+ *
+ * Hasta #172 el motivo escrito aqui era otro —«si la etiqueta entra en el descriptor, entra en
+ * el estado de Pulumi: cada liberacion vuelve a ser un `pulumi up`»—, y partia de que la
+ * etiqueta estaba fuera del estado. No lo estaba: la prohibicion sigue, el motivo cambio.
  *
  * Devuelve la lista de incumplimientos; vacia significa admisible. Pura, como todo lo
  * demas de esta carpeta.
@@ -164,11 +169,13 @@ function auditarEtiquetaDeImagen(
           problemas.push(
             `[${d.sistema}] ${donde}, contenedor «${c.name}»: la imagen «${c.image}» no sale de ` +
               "`entorno.imagenDe()`. **La etiqueta la pone `infrastructure`, nunca el " +
-              "descriptor** (ADR-0011 §5). Es la prohibicion que sostiene a las otras cuatro: " +
-              "si la etiqueta entra en el descriptor entra en el estado de Pulumi, y entonces " +
-              "cada liberacion vuelve a ser un `pulumi up`, cada reversion tambien, y componer " +
-              "aqui pasa de ser barato a ser el cuello de botella que la separacion venia a " +
-              `quitar. Admisibles: ${[...admisibles].join(", ") || "(ninguna: declara `imagenes`)"}.`,
+              "descriptor** (ADR-0011 §5, enmienda de #172). Es la prohibicion que sostiene a " +
+              "las otras cuatro: la version de cada sistema vive en UNA linea por stack, " +
+              "`kamayuk:versionDe<Sistema>`, y liberar o revertir es cambiar esa linea. El " +
+              "descriptor es uno para los dos ambientes y sale de `main` del hermano: con la " +
+              "etiqueta dentro, `stg` y `prod` correrian la misma version —y tiene que poder ser " +
+              "distinta por stack, que es lo que es promover— y bajar la linea no revertiria " +
+              `nada. Admisibles: ${[...admisibles].join(", ") || "(ninguna: declara `imagenes`)"}.`,
           );
         }
       }

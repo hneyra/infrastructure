@@ -11,8 +11,10 @@
  * La version que se fija aqui es la **del paquete del descriptor** —`@kamayuk/infra-catastro`
  * en el `package.json`—, no la de la imagen. Son dos cosas distintas y confundirlas es la
  * prohibicion (b): el descriptor describe *como* se despliega un sistema y cambia cuando
- * cambian sus limites o sus sondas; la imagen dice *que version corre*, se mueve con
- * `kubectl set image` y no pasa por Pulumi (ADR-0011 §5).
+ * cambian sus limites o sus sondas; la imagen dice *que version corre*, y la dice la linea
+ * `kamayuk:versionDe<Sistema>` de cada stack, que se sube para liberar y se baja para revertir
+ * (ADR-0011 §5, enmienda de #172). Hasta #172 aqui decia que la imagen «se mueve con `kubectl`
+ * y no pasa por Pulumi»: no era asi.
  *
  * ## Hoy compone cero descriptores, y es correcto
  *

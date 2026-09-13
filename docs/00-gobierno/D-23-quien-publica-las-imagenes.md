@@ -56,6 +56,10 @@ con el `up` en verde.
 4. **Y la pone `infrastructure`, no el descriptor.** `imagenDe()` sigue componiéndola aquí, que es
    la prohibición (b) de `descriptor/auditoria.ts` y ADR-0011 §5: si la etiqueta entra en el
    descriptor entra en el estado de Pulumi, y entonces cada liberación vuelve a ser un `pulumi up`.
+   *[Nota del 2026-09-14, #172: el motivo partía de que la etiqueta estaba fuera del estado, y no
+   lo estaba — estas mismas líneas por stack son la versión que corre, y liberar es un `pulumi
+   up`. La decisión de este punto se sostiene por otro motivo: el descriptor es uno para los dos
+   ambientes, y la versión tiene que poder ser distinta por stack, que es el punto 3.]*
 
 ### 2.1 · Cuatro claves y no un mapa
 

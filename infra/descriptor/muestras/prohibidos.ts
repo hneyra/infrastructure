@@ -44,8 +44,9 @@ export const rutaFueraDeSuPrefijo: DescriptorDeSistema = {
 /**
  * (b) La etiqueta de la imagen, declarada en el descriptor.
  *
- * Es la que sostiene a las otras cuatro. Con ella dentro, la etiqueta entra en el estado
- * de Pulumi y cada liberacion vuelve a ser un `pulumi up`.
+ * Es la que sostiene a las otras cuatro. Con ella dentro, `stg` y `prod` correrian la version
+ * que diga `main` del hermano, y la linea `kamayuk:versionDe<Sistema>` del stack —la que se sube
+ * para liberar y se baja para revertir (#172)— dejaria de decidir que corre.
  */
 export const etiquetaDeImagenPropia: DescriptorDeSistema = {
   ...catastro,

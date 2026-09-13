@@ -99,7 +99,7 @@ configuración **no contradiga lo que el proyecto ya decidió por escrito**.
 | `stg` va marcada como instalación de demostración | `INF-03` §3.2, #122 |
 | Keycloak nunca en `start-dev`; usuarios de prueba nunca en `prod` | `INF-01` §1, `INF-03` §4 |
 | Las claves de los roles no se generan en el estado de Pulumi | `ADR-0011` §3 |
-| `applicationImageRepository` **sin etiqueta** | `ADR-0011` §5 |
+| `applicationImageRepository` **sin etiqueta**: la versión es la línea de cada sistema | `ADR-0011` §5, enmienda de #172 |
 | Las imágenes fijan versión; nada de `latest` | `INF-01` §5 |
 | El `server` del kubeconfig apunta al bucle local | `INF-01` §1.4 — la cicatriz de `../iaac` |
 | `versionDe<Sistema>` es un `sha` de **cuarenta hexadecimales** del repositorio de ESE sistema | [D-23](../docs/00-gobierno/D-23-quien-publica-las-imagenes.md) |
@@ -171,6 +171,13 @@ Y sobre los manifiestos, en `auditoria.ts`:
 > es una revisión de PR». Ahora sí la tiene: `applicationImageRepository` con etiqueta
 > pone rojo el stack. El ADR no se edita —así es como se registran las decisiones—, pero
 > conviene saber que en este punto el código llegó más lejos que el documento.
+>
+> **Y desde el 2026-09-14 esa frontera está enmendada** (#172): la versión de la imagen **sí**
+> vive en el estado de Pulumi, en `kamayuk:versionDe<Sistema>`, y liberar es cambiar esa
+> línea. La invariante de la etiqueta se queda —una segunda versión en el repositorio de
+> imágenes sería una versión escrita donde nadie la sube—, y la vigilancia que el ADR echaba
+> en falta ahora mira lo contrario: `verificaciones/la-version-vive-en-el-stack.test.ts`
+> impide que vuelva un `ignoreChanges` sobre la imagen.
 
 ## Cómo se demuestra que las verificaciones pueden fallar
 
@@ -259,30 +266,27 @@ se pueda fabricar aquí: lo emite el proveedor del relay, y se pone a mano con
 
 ## Liberar una versión nueva
 
-La etiqueta de la imagen **no la mueve Pulumi** (`ADR-0011` §5): el campo `image` lleva
-`ignoreChanges`, así que el flujo de liberación lo cambia con `kubectl` y el `preview`
-diario no lo ve como deriva.
-
-**Se libera un sistema, no «la aplicación».** Hasta `E` esto nombraba
-`kamayuk-<amb>-aplicacion` y `ghcr.io/hneyra/sgtm-aplicacion`, que eran el `Deployment` y
-la imagen del monolito; hoy cada sistema tiene su espacio de nombres, su `Deployment` y su
-par de imágenes. Con `rentas` de ejemplo:
+**Liberar es subir una línea, y revertir es bajarla** (`ADR-0011` §5, enmienda del
+2026-09-14, #172). La imagen de cada sistema la compone `imagenDe()` con
+`kamayuk:versionDe<Sistema>` de `Pulumi.<ambiente>.yaml`, y el `pulumi up` cambia la imagen de
+sus `Deployment` y sus `CronJob` y crea los dos `Job` de esa versión. En `stg` la línea la
+escribe el puente (`declarar-version.yml`) cuando un hermano publica; en `prod` es un PR y la
+aprobación de `aplicar-prod`. Con `rentas` de ejemplo, en `prod`:
 
 ```bash
-kubectl -n kamayuk-rentas-prod set image deployment/kamayuk-rentas-web \
-  rentas=ghcr.io/hneyra/kamayuk-rentas:<sha>
-kubectl -n kamayuk-rentas-prod rollout status deployment/kamayuk-rentas-web
-# Y revertir, sin pulumi up y en segundos:
-kubectl -n kamayuk-rentas-prod rollout undo deployment/kamayuk-rentas-web
+sed -i 's/^  kamayuk:versionDeRentas: .*/  kamayuk:versionDeRentas: <sha de 40>/' Pulumi.prod.yaml
+git commit -am "prod despliega rentas@<sha7>"    # un PR, su preview, merge y aprobación
 ```
 
-**Si la versión nueva trae migraciones**, antes hay que correr el Job de migración con
-esa versión. `yarn manifiestos` lo emite ya listo — y ya no hay un `--componente
-migracion` que valga para todos, porque el Job de migración es de cada sistema:
+El procedimiento entero —cómo se revierte, cómo se comprueba con el resumen del trabajo, las
+imágenes y la ruta pública, y la medida de emergencia— está en el runbook
+[`liberar-una-version-y-revertirla.md`](../docs/B0-operacion/runbooks/liberar-una-version-y-revertirla.md).
 
-```bash
-yarn manifiestos --ambiente prod --componente rentas | kubectl apply -f -
-```
+**Hasta #172 esta sección decía lo contrario**: que la etiqueta «no la mueve Pulumi» porque el
+campo `image` llevaba `ignoreChanges`, que se liberaba con `kubectl set image` y que se revertía
+«sin pulumi up y en segundos» con `kubectl rollout undo`. Medido el 2026-09-13, el
+`ignoreChanges` no llegaba a ningún `Deployment`: **el siguiente `pulumi up` lo deshace**, y
+esos dos comandos quedan como medida de emergencia, con la misma línea clavada enseguida.
 
 El nombre del Job lleva la versión, así que una versión nueva crea un Job nuevo y
 volver a aplicar la misma no hace nada: el migrador es idempotente.
