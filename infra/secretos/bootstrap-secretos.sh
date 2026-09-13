@@ -87,9 +87,13 @@ command -v kubectl >/dev/null 2>&1 || { echo "Falta kubectl." >&2; exit 1; }
 #
 # La causa medida no fue de credenciales ni de red del runner —el paso anterior habia
 # leido el nodo sin problema—: fue CONTENCION DE CPU en la maquina que aloja el nodo.
-# El contenedor de k3d no lleva limite ni reserva (`NanoCpus=0`, `CpuShares=0`), asi que
-# compite en igualdad con todo lo demas; con la maquina a 40 % de presion de CPU
-# sostenida (`/proc/pressure/cpu`, `some avg300=40.32`) y carga 10,6 sobre 6 nucleos, un
+# El contenedor de k3d que `stg` usaba entonces no llevaba limite ni reserva
+# (`NanoCpus=0`, `CpuShares=0`), asi que competia en igualdad con todo lo demas. El
+# 2026-09-13 `stg` mudo a k3s nativo (#145) y ese contenedor ya no existe; lo que si
+# sigue existiendo es la contencion, porque `system-reserved` reserva CPU para el
+# sistema y no para el resto de procesos del anfitrion. Con la maquina a 40 % de presion
+# de CPU sostenida (`/proc/pressure/cpu`, `some avg300=40.32`) y carga 10,6 sobre 6
+# nucleos, un
 # handshake TLS —que es trabajo de CPU— no cabe en el plazo del cliente. El kubelet
 # sigue sano y el nodo sigue `Ready`, que es lo que hace el sintoma tan desconcertante:
 # no hay ninguna condicion de presion que mirar.

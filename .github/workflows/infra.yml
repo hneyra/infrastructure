@@ -905,12 +905,12 @@ jobs:
           install -m 700 -d ~/.ssh
           install -m 600 /dev/null ~/.ssh/despliegue
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/despliegue
-          # stg corre en k3d (Kubernetes en un contenedor) en vez de k3s directo sobre el
-          # host: la API queda publicada en el puerto 6445 del VPS, no en el 6443 de un
-          # k3s nativo (que es lo que usa prod). El lado local del túnel sigue siendo
-          # 6443, que es lo que el kubeconfig de stg declara.
+          # Los dos ambientes corren k3s nativo sobre el host, así que los dos extremos
+          # del túnel son el 6443. Hasta la mudanza del 2026-09-13 (#145) `stg` corría
+          # en k3d —Kubernetes dentro de un contenedor—, que publicaba la API en el 6445
+          # del VPS, y esta línea era la única diferencia entre los dos ambientes.
           ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=~/.ssh/known_hosts \
-              -i ~/.ssh/despliegue -f -N -L 6443:localhost:6445 "$VPS_USER@$VPS_HOST"
+              -i ~/.ssh/despliegue -f -N -L 6443:localhost:6443 "$VPS_USER@$VPS_HOST"
 
       # Los tres bootstrap secrets de infraestructura (ADR-0011 §3) se inyectan aquí,
       # frescos en cada corrida, y nunca tocan el checkout: `stacks.test.ts` exige que
@@ -1161,7 +1161,7 @@ jobs:
           # del trabajo. Fijar la huella real del VPS es trabajo de endurecimiento
           # (issue #157), no de este issue.
           ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=~/.ssh/known_hosts \
-              -i ~/.ssh/despliegue -f -N -L 6443:localhost:6445 "$VPS_USER@$VPS_HOST"
+              -i ~/.ssh/despliegue -f -N -L 6443:localhost:6443 "$VPS_USER@$VPS_HOST"
 
       # `bootstrap-secretos.sh` habla con el API por `kubectl` suelto, no por el
       # proveedor de Pulumi: sin esto, `kubectl` no encuentra ningun kubeconfig y cae al
@@ -1302,6 +1302,20 @@ jobs:
           work-dir: infrastructure/infra
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          # La misma entrada a mano que `aplicar-prod`, y por el mismo defecto: el estado de
+          # Pulumi guarda dentro de su proveedor el kubeconfig del nodo VIEJO, asi que tras una
+          # mudanza el refresco muere leyendo objetos contra un cluster al que ya no apunta.
+          #
+          # `stg` no la tenia, y eso NO era una decision: `prod` mudo de nodo el 2026-09-11 y
+          # `stg` no habia mudado nunca. El 2026-09-13 mudo (k3d en `vmd194233` -> k3s en
+          # `vmd205066`, #145) y el paso 5 del procedimiento no se podia dar.
+          #
+          # ⚠ Lo que cuesta esta escrito entero en `aplicar-prod`, y vale igual aqui: NO limpia
+          # un cluster que ya no existe, suelta del estado lo que el proveedor no pudo LEER. Si
+          # el nodo viejo sigue en pie, esos objetos quedan HUERFANOS y vivos.
+          PULUMI_K8S_DELETE_UNREACHABLE: >-
+            ${{ (github.event_name == 'workflow_dispatch'
+                 && inputs.soltar_recursos_inalcanzables) && 'true' || '' }}
 
       # El ambiente que acaba de aplicarse, comprobado CONTRA SI MISMO (#434).
       #
