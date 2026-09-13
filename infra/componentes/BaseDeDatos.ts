@@ -6,7 +6,6 @@ import {
   type TablaDeRecursos,
   contenedorDeDescargaDeWalg,
   montajeDeWalg,
-  huellaDelContenido,
   nombreDePrioridad,
   secretoDeCredencialesDeRespaldo,
   secretos,
@@ -31,15 +30,7 @@ import {
   rolDeRespaldoSh,
   rolesDeLosSistemasSh,
 } from "./fuentes";
-import type {
-  ConfigMap,
-  Deployment,
-  Job,
-  Manifiesto,
-  PersistentVolumeClaim,
-  Service,
-  Volumen,
-} from "./tipos";
+import type { ConfigMap, Deployment, Manifiesto, PersistentVolumeClaim, Service } from "./tipos";
 
 /** `postgres-exporter`, con version fijada (issue #156). */
 const IMAGEN_DE_POSTGRES_EXPORTER = "prometheuscommunity/postgres-exporter:v0.15.0";
@@ -216,39 +207,6 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
   // `postgres`, que las heredan—. `40-rol-de-respaldo.sh` no las necesita: crea el
   // rol, no invoca wal-g.
   const variablesDeWalg = variablesWalg({ backup, credenciales, secretoDeRespaldo: secreto.respaldo });
-
-  /**
-   * Los dos volumenes de la inicializacion, COMPARTIDOS con el `Job` que crea las bases
-   * (#81). Definirlos una vez es lo que impide que el camino de `initdb` y el de
-   * reparacion se separen: el dia que alguien cambie un `defaultMode` o un `items`, lo
-   * cambia para los dos o para ninguno.
-   */
-  const volumenesDeLaInicializacion: Volumen[] = [
-          { name: "inicializacion", configMap: { name: inicializacion.metadata.name, defaultMode: 493 } },
-          // 0o444: aqui no se ejecuta nada, se lee. `lib-extensiones.sh` se hace `source`, no
-          // se invoca.
-          //
-          // Las claves con `/` dentro —`roles/<sistema>.sql`— las proyecta el kubelet como
-          // subdirectorio, que es lo que hace que `$DIR/roles/*.sql` encuentre los cuatro sin
-          // que ningun guion tenga que saber cuantos hay.
-          {
-            name: "roles-de-los-sistemas",
-            configMap: {
-              name: deLosSistemas.metadata.name,
-              defaultMode: 292,
-              // `items` y no la proyeccion por omision: los cuatro `.sql` tienen que caer en
-              // `roles/`, que es donde `$DIR/roles/*.sql` los busca, y una clave de ConfigMap
-              // no puede llevar la barra dentro.
-              items: [
-                { key: "lib-extensiones.sh", path: "lib-extensiones.sh" },
-                ...SISTEMAS_DEL_PRODUCTO.map((s) => ({
-                  key: `${s}.sql`,
-                  path: `roles/${s}.sql`,
-                })),
-              ],
-            },
-          },
-  ];
 
   const motor: Deployment = {
     apiVersion: "apps/v1",
@@ -471,7 +429,30 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
             // el modo por omision de un `ConfigMap` (0644) los deja sin permiso de
             // ejecucion: el motor los ignoraria en silencio y la base arrancaria sin
             // claves asignadas.
-            ...volumenesDeLaInicializacion,
+            { name: "inicializacion", configMap: { name: inicializacion.metadata.name, defaultMode: 493 } },
+            // 0o444: aqui no se ejecuta nada, se lee. `lib-extensiones.sh` se hace `source`, no
+            // se invoca.
+            //
+            // Las claves con `/` dentro —`roles/<sistema>.sql`— las proyecta el kubelet como
+            // subdirectorio, que es lo que hace que `$DIR/roles/*.sql` encuentre los cuatro sin
+            // que ningun guion tenga que saber cuantos hay.
+            {
+              name: "roles-de-los-sistemas",
+              configMap: {
+                name: deLosSistemas.metadata.name,
+                defaultMode: 292,
+                // `items` y no la proyeccion por omision: los cuatro `.sql` tienen que caer en
+                // `roles/`, que es donde `$DIR/roles/*.sql` los busca, y una clave de ConfigMap
+                // no puede llevar la barra dentro.
+                items: [
+                  { key: "lib-extensiones.sh", path: "lib-extensiones.sh" },
+                  ...SISTEMAS_DEL_PRODUCTO.map((s) => ({
+                    key: `${s}.sql`,
+                    path: `roles/${s}.sql`,
+                  })),
+                ],
+              },
+            },
             volumenDeWalg(),
             volumenDeTmpDeWalg(),
           ],
@@ -499,116 +480,5 @@ export function manifiestosDeBaseDeDatos(args: BaseDeDatosArgs): Manifiesto[] {
     },
   };
 
-  // --- La base que NACE DESPUES que el volumen (#81) --------------------------------
-  //
-  // `05-crear-bases.sh` es correcto e idempotente, y aun asi la base `identidad` no existia en
-  // `stg`: vive en `docker-entrypoint-initdb.d`, y la imagen de PostgreSQL ejecuta ese
-  // directorio **solo cuando `PGDATA` esta vacio**. El volumen de `stg` se creo el 2026-09-05 y
-  // el quinto sistema nacio despues, asi que el guion que sabe crearla no se volvio a ejecutar
-  // nunca. Medido: `FATAL: database "identidad" does not exist` una vez cada cinco segundos
-  // durante ocho horas, con `kamayuk-identidad-web` en CrashLoopBackOff y 103 reinicios.
-  //
-  // Y el sintoma no se parece a la causa: se lee como «la migracion fallo» o «la URL apunta
-  // mal», cuando lo que dice es «ese guion corrio una vez, hace seis dias, cuando este sistema
-  // no existia». Nada se ponia rojo por ello — los Job arrancan, se conectan y mueren.
-  //
-  // Este `Job` ejecuta **los mismos dos guiones, sin tocar una linea**: usan `psql` sin
-  // `--host`, asi que honran `PGHOST` y valen igual desde un pod. Cero divergencia entre el
-  // camino de `initdb` y el de reparacion, que es lo que evita que uno de los dos se quede
-  // viejo. Y son idempotentes contra una base que ya tiene datos: `crear-roles.sql` crea sus
-  // roles dentro de un `DO ... IF NOT EXISTS (SELECT 1 FROM pg_roles ...)` y lo demas son
-  // `GRANT`, que no duele repetir.
-  //
-  // **El nombre lleva la huella del contenido**, como el Job del realm: anadir un sistema anade
-  // su `crear-roles.sql`, la huella cambia y nace un Job que corre. Sin cambios no hay Job
-  // nuevo, asi que esto no repite trabajo en cada despliegue.
-  // El `2` no es decoracion: **es lo que desatasca `stg`** (#81).
-  //
-  // El primer `Job` salio sin politica de red, murio, y ahi se quedo — con su nombre derivado
-  // del contenido, que no cambio. Un `Job` de Kubernetes es INMUTABLE, asi que ningun `up`
-  // posterior lo arregla: Pulumi lo refresca, lo ve fallido, y lo informa como no sano en cada
-  // corrida. `main` estuvo sin poder desplegar desde entonces, y `aplicar-prod` con el, porque
-  // depende de `aplicar-stg`.
-  //
-  // Cambiar lo que se resume cambia el nombre, y un nombre nuevo es un objeto nuevo. Lo que
-  // impide que esto vuelva a hacer falta es el `ttlSecondsAfterFinished` de mas abajo.
-  const huellaDeLasBases = huellaDelContenido({
-    "version-del-job": "2",
-    ...deLosSistemas.data,
-    "05-crear-bases.sh": inicializacion.data["05-crear-bases.sh"] ?? "",
-    "06-roles-de-los-sistemas.sh": inicializacion.data["06-roles-de-los-sistemas.sh"] ?? "",
-  });
-
-  const crearBases: Job = {
-    apiVersion: "batch/v1",
-    kind: "Job",
-    metadata: {
-      name: `${resourceName(environment, "postgres-crear-bases")}-${huellaDeLasBases}`,
-      namespace,
-      labels: { ...etiquetas, huella: huellaDeLasBases },
-    },
-    spec: {
-      backoffLimit: 3,
-      // **Un `Job` fallido se recoge solo, y eso es lo que impide que atasque la cadena.**
-      //
-      // Los otros diez `Job` del producto llevan 86400 (24 h) para que quede que leer por la
-      // manana. Este lleva 15 minutos, y la diferencia tiene motivo: los otros se llaman por la
-      // VERSION del sistema, asi que la siguiente version trae un `Job` nuevo de todas formas.
-      // Este se llama por el CONTENIDO, que puede no cambiar en semanas — y un fallido con el
-      // mismo nombre bloquea todos los despliegues hasta que alguien lo borre a mano, porque un
-      // `Job` es inmutable. Medido: paso el 2026-09-13 y dejo `main` sin desplegar.
-      //
-      // Con el TTL, el objeto desaparece, el siguiente `up` lo vuelve a crear y el fallo se
-      // REINTENTA en vez de quedarse. El coste es que tambien se recoge cuando sale bien, asi
-      // que corre en cada despliegue: son segundos, y es idempotente por construccion —
-      // `CREATE DATABASE ... WHERE NOT EXISTS` y `crear-roles.sql` dentro de un `DO ... IF NOT
-      // EXISTS`—. Para lo que este `Job` existe —«que no falte ninguna base»— correr siempre es
-      // mas correcto que correr una vez.
-      ttlSecondsAfterFinished: 900,
-      template: {
-        metadata: { labels: { ...etiquetas, app: "postgres-crear-bases" } },
-        spec: {
-          priorityClassName: nombreDePrioridad(environment, "lote"),
-          restartPolicy: "OnFailure",
-          securityContext: { fsGroup: 999 },
-          containers: [
-            {
-              name: "crear-bases",
-              image,
-              securityContext: seguridadSinRoot({ runAsUser: 999 }),
-              env: [
-                { name: "POSTGRES_USER", value: "postgres" },
-                {
-                  name: "PGPASSWORD",
-                  valueFrom: { secretKeyRef: { name: secreto.motor, key: CLAVES.superusuario } },
-                },
-                { name: "PGHOST", value: nombre },
-                { name: "KAMAYUK_DIR_KAMAYUK", value: "/etc/kamayuk" },
-              ],
-              command: ["/bin/bash", "-c"],
-              args: [
-                [
-                  "set -euo pipefail",
-                  // El motor puede estar arrancando: se espera, y se falla diciendolo en vez de
-                  // morir con un «connection refused» que parece otra cosa.
-                  'for _ in $(seq 1 60); do pg_isready -q && break; sleep 2; done',
-                  'pg_isready -q || { echo "FALLO: el motor no acepta conexiones tras 120s." >&2; exit 1; }',
-                  "bash /docker-entrypoint-initdb.d/05-crear-bases.sh",
-                  "bash /docker-entrypoint-initdb.d/06-roles-de-los-sistemas.sh",
-                ].join("\n"),
-              ],
-              volumeMounts: [
-                { name: "inicializacion", mountPath: "/docker-entrypoint-initdb.d", readOnly: true },
-                { name: "roles-de-los-sistemas", mountPath: "/etc/kamayuk", readOnly: true },
-              ],
-              resources: recursos.auxiliar,
-            },
-          ],
-          volumes: volumenesDeLaInicializacion,
-        },
-      },
-    },
-  };
-
-  return [inicializacion, deLosSistemas, volumen, motor, servicio, crearBases];
+  return [inicializacion, deLosSistemas, volumen, motor, servicio];
 }
