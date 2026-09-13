@@ -98,10 +98,21 @@ config:
   kamayuk:responsableDeOperacion: Equipo de operacion (ensayo)
   kamayuk:canalDeOperacion: operaciones@example.pe
   kamayuk:acmeEmail: operaciones@example.pe
-  # Certificado del entorno de pruebas de Let's Encrypt: aquí se ajusta el ingreso sin
-  # gastar el límite de tasa. En prod está prohibido, porque ese certificado no lo
-  # acepta ningún navegador (RNF-074).
-  kamayuk:acmeStaging: "true"
+  # Certificado REAL de Let's Encrypt desde el 2026-09-13, como `prod`.
+  #
+  # Hasta ese dia era el del entorno de pruebas —«aqui se ajusta el ingreso sin gastar el
+  # limite de tasa»—, y daba igual: el dominio de `stg` no apuntaba a su nodo, asi que ACME no
+  # podia emitir nada y Traefik servia su `TRAEFIK DEFAULT CERT`. Con la mudanza a `vmd205066`
+  # (#145) `stg` tiene por primera vez un nombre publico que es suyo, y el de pruebas lo
+  # rechaza TODO navegador con `ERR_CERT_AUTHORITY_INVALID`: un aviso rojo permanente en el
+  # ambiente de ensayo no protege nada, ensena a pulsar «continuar» — y ese reflejo es el que
+  # deja pasar el dia que el aviso sea de verdad.
+  #
+  # Lo que cuesta: si el ingreso se rompe en bucle, cada intento gasta limite de tasa REAL.
+  # `prod` ya emite sobre `vmd206041.contaboserver.net` (medido: `CN=YR1`, 2026-09-11), asi que
+  # el dominio padre compartido no lo impide. Para ensayar un cambio del ingreso sin gastarlo,
+  # el modo de pruebas sigue existiendo: `acmeStaging: "true"` aqui, y NUNCA en `prod` (RNF-074).
+  kamayuk:acmeStaging: "false"
   kamayuk:postgresImage: postgis/postgis:16-3.4-alpine
   kamayuk:postgresStorageSize: 20Gi
   kamayuk:keycloakImage: quay.io/keycloak/keycloak:26.0

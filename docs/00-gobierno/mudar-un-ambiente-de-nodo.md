@@ -179,6 +179,16 @@ la desengancha, si la entrada nace marcada, o si su descripción deja de avisar.
    - Y **`pulumi preview` del PR seguirá en rojo hasta que esta corrida pase**: corre sólo en
      `pull_request` y no tiene —ni debe tener— esta vía de escape. Un `preview` que suelta
      estado deja de ser una previsualización. El PR de la mudanza se integra con ese check rojo.
+   - **Si hay pods en `ImagePullBackOff` con `failed to fetch anonymous token`, bórralos.**
+     Medido en `stg` el 2026-09-13 ([#166](https://github.com/hneyra/infrastructure/issues/166)):
+     en un clúster **vacío** los pods se crean antes de que Pulumi parchee la `ServiceAccount`
+     `default` con el secreto del registro —allí, 14:24:15Z contra 14:26:52Z—, y ese secreto se
+     inyecta **sólo al crear el pod**. Los sistemas con paquete público no lo notan; el que lo
+     tenga privado —`identidad`— no baja su imagen, y detrás caen las implantaciones de los
+     demás con `No se pudo leer el buzon de identidad`.
+     `kubectl -n kamayuk-identidad-<amb> delete pod --all` y comprobar que los recreados llevan
+     `spec.imagePullSecrets`. Los `Job` de implantación de los otros se recuperan solos en su
+     siguiente reintento.
 7. Comprobar que la corrida siguiente, **sin** marcarlo, sale verde. Si no, el estado no quedó
    limpio y hay que mirarlo antes de seguir — no volver a marcarlo por costumbre.
 8. **Lanzar el respaldo a mano, sin esperar al `CronJob`**, y leer su salida:
