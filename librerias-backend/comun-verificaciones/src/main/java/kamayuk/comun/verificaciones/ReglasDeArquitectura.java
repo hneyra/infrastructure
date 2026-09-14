@@ -19,6 +19,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Las reglas de ARQ-04 §2 que pueden expresarse como regla de ArchUnit, expresadas como regla de
@@ -596,6 +597,28 @@ public final class ReglasDeArquitectura {
      *
      * <p>Un {@code bbox} no es geometria y no se marca: es un marco, que es justamente la forma que
      * ADR-0034 obliga a usar.
+     *
+     * <h2>El testimonio, y por que la regla tiene una excepcion desde ADR-0048</h2>
+     *
+     * <p>ADR-0048 separa tres clases de geometria y descubre que esta regla sobre-dispara para una
+     * de ellas. El <b>acervo</b> —{@code predio.geometria}, {@code via.eje}— y la <b>propuesta</b>
+     * —la linea de corte de una division— entran por la carga y aqui no cambia nada. El
+     * <b>testimonio</b> —el punto que dice donde estuvo una brigada— no puede cambiar el area de
+     * nada, y esa no es una intencion sino una propiedad sujeta por el esquema.
+     *
+     * <p>La excepcion se declara <b>por clase y por metodo</b> en {@link
+     * SinGeometriaEnLaPeticion#TESTIMONIOS_DECLARADOS}, que es un solo sitio y se lee entero de una
+     * vez. No es una anotacion a proposito: una anotacion la pone cualquiera encima de su propia
+     * clase, en su propio repositorio, y nadie la vuelve a leer — que es la diferencia entre una
+     * excepcion y un {@code @SuppressWarnings}. Esta hay que escribirla aqui, en {@code
+     * infrastructure}, que se mezcla el ULTIMO de los seis.
+     *
+     * <p>Y no es una mordaza: eximir <b>cambia</b> la prohibicion por obligaciones comprobables. Un
+     * metodo declarado que reciba algo que no sea un punto sigue rojo, y uno que no traiga la
+     * observacion ni el reloj del aparato que su declaracion nombra tambien. Lo que la regla no
+     * puede ver desde el bytecode —que la tabla no tenga foranea a {@code predio} ni a {@code
+     * ficha_catastral}, y que el motor no le de {@code UPDATE} ni {@code DELETE}— es por lo que la
+     * declaracion NOMBRA la tabla: para que la revision sepa contra que migracion mirar.
      */
     public static final ArchRule TODA_GEOMETRIA_ENTRA_POR_BATCH =
             ArchRuleDefinition.classes()
@@ -1177,7 +1200,175 @@ public final class ReglasDeArquitectura {
                         "polygon",
                         "multipolygon",
                         "linestring",
-                        "coordenadas");
+                        "coordenadas",
+                        "punto",
+                        "point");
+
+        /**
+         * Lo unico que la exencion tolera: un PUNTO, y no la geometria en general (ADR-0048 §2).
+         *
+         * <p>Un metodo exento que recibiera un {@code wkt}, un {@code poligono} o un {@code
+         * geojson} sigue rojo. Sin este cerco la exencion seria una puerta: se declara el ingreso
+         * de la tableta, se le anade despues un campo con el lote, y la regla que existe para eso
+         * ya no mira ese metodo.
+         */
+        private static final Set<String> NOMBRES_DEL_TESTIMONIO = Set.of("punto", "point");
+
+        /** Un motivo es una frase, no una palabra; por debajo de esto no se ha escrito nada. */
+        private static final int MOTIVO_MINIMO = 80;
+
+        /**
+         * La exencion de ADR-0048 §2: quien puede recibir un testimonio, y con que obligaciones.
+         *
+         * <h2>Por que esta forma y no otra</h2>
+         *
+         * <p><b>Por que una lista aqui y no una anotacion.</b> Una anotacion
+         * —{@code @GeometriaDeTestimonio} sobre la clase— la escribe cualquiera encima de su propio
+         * codigo, en su propio repositorio, en el mismo commit que la usa, y no la vuelve a leer
+         * nadie. Eso es un {@code @SuppressWarnings} con otro nombre. Esta lista vive en {@code
+         * comun-verificaciones}, o sea en {@code infrastructure}, que es un repositorio distinto y
+         * <b>se mezcla el ultimo de los seis</b>: pedir la exencion obliga a abrir ahi un cambio
+         * que se revisa aparte del codigo que la aprovecha. Y se lee entera de un vistazo, que es
+         * lo que hace posible preguntarse si sobra alguna.
+         *
+         * <p><b>Por que por METODO y no por clase.</b> {@code FiscalizacionCatastralController}
+         * publica quince operaciones; eximir la clase eximiria las quince y las que vengan. Lo que
+         * ADR-0048 decide es que <b>un</b> ingreso concreto puede recibir un punto.
+         *
+         * <p><b>Por que nombra la TABLA.</b> Dos de las cuatro condiciones de ADR-0048 §2 —sin
+         * foranea a {@code predio} ni a {@code ficha_catastral}, e inmutable en el motor— viven en
+         * el esquema y no en el bytecode, asi que esta regla no las puede comprobar. Callarlas
+         * seria fingir que las cuatro estan sujetas aqui. Nombrar la tabla convierte la revision en
+         * una lectura concreta —«abrir la migracion y mirar sus {@code GRANT}»— en vez de en una
+         * confianza.
+         *
+         * <p><b>Por que nombra los DOS campos.</b> Porque la tercera condicion si es comprobable, y
+         * comprobarla es lo que impide que la exencion sea una mordaza: el metodo exento tiene que
+         * recibir el componente que aqui se declara como observacion (regla 10) y el que se declara
+         * como reloj del aparato (ADR-0035 punto 3). Si alguien los quita o los renombra, el metodo
+         * se pone rojo <b>por su propia exencion</b>. El segundo reloj —el del servidor— no se
+         * declara a proposito: no puede venir en la peticion, lo pone el caso de uso.
+         *
+         * <p><b>Y una declaracion que no exime nada tambien es roja.</b> Si el metodo declarado
+         * existe en el arbol que se esta revisando y no recibe ninguna geometria, la entrada sobra:
+         * es el defecto de «nombrar algo que no esta» que {@link ConfiguracionDeLasVerificaciones}
+         * describe —una entrada que no casa no exime a nadie, el conjunto sigue en verde, y el dia
+         * que alguien anada un punto a ese metodo queda eximido sin que nadie lo haya decidido—.
+         *
+         * <p><b>Su limite, dicho.</b> Lo que NO se puede comprobar asi es la entrada cuya clase o
+         * cuyo metodo no existe en ningun sitio: esta lista es la misma en los cinco repositorios y
+         * cuatro no tienen la del quinto, de modo que «no esta aqui» no significa «no esta». Una
+         * declaracion que sobrevive al borrado de su endpoint no la caza nadie hasta que alguien
+         * relea la lista — que es exactamente para lo que la lista se mantiene corta y en un solo
+         * sitio.
+         *
+         * @param clase el nombre COMPLETO de la clase; por nombre, como manda ADR-0048 §2 punto 4
+         * @param metodo el metodo exento, y solo ese
+         * @param tabla contra que migracion se revisan las dos condiciones que no se ven aqui
+         * @param observacion el componente que trae la observacion de la regla 10
+         * @param relojDelAparato el componente que trae el reloj del aparato
+         * @param motivo por que este ingreso no puede mover el padron. Escrito, no aludido
+         */
+        private record TestimonioDeclarado(
+                String clase,
+                String metodo,
+                String tabla,
+                String observacion,
+                String relojDelAparato,
+                String motivo) {
+
+            private TestimonioDeclarado {
+                exigir(clase, "clase");
+                exigir(metodo, "metodo");
+                exigir(tabla, "tabla");
+                exigir(observacion, "observacion");
+                exigir(relojDelAparato, "relojDelAparato");
+                exigir(motivo, "motivo");
+                if (motivo.strip().length() < MOTIVO_MINIMO) {
+                    throw new IllegalStateException(
+                            "La exencion de "
+                                    + clase
+                                    + '#'
+                                    + metodo
+                                    + " no trae motivo escrito: "
+                                    + MOTIVO_MINIMO
+                                    + " caracteres como minimo. Una exencion sin motivo es un"
+                                    + " @SuppressWarnings, y ADR-0048 §2 punto 4 existe"
+                                    + " precisamente para que no lo sea");
+                }
+            }
+
+            private static void exigir(String valor, String campo) {
+                if (valor == null || valor.isBlank()) {
+                    throw new IllegalStateException(
+                            "Una exencion de TODA_GEOMETRIA_ENTRA_POR_BATCH declara su '"
+                                    + campo
+                                    + "', y esta no lo trae");
+                }
+            }
+        }
+
+        /**
+         * Quien puede recibir un testimonio por la peticion. Se lee entera, y es a proposito corta.
+         *
+         * <p>Las dos primeras son de {@code catastro}; la tercera y la cuarta son de la muestra,
+         * que viaja con las reglas y existe para que esta exencion no se pueda convertir en una
+         * puerta de atras sin que nada se ponga rojo.
+         */
+        private static final List<TestimonioDeclarado> TESTIMONIOS_DECLARADOS =
+                List.of(
+                        new TestimonioDeclarado(
+                                "kamayuk.catastro.fiscalizacion.infraestructura.web"
+                                        + ".FiscalizacionCatastralController",
+                                "levantarCaptura",
+                                "inspeccion_ubicacion",
+                                "observacion",
+                                "capturadoEn",
+                                "El ingreso de la tableta (ADR-0048 §2). El punto dice DONDE ESTUVO"
+                                        + " LA BRIGADA, no que hay en el padron: `inspeccion_ubicacion`"
+                                        + " no tiene foranea a `predio` ni a `ficha_catastral`, ninguna"
+                                        + " columna suya se copia a ellas, y `V22` solo le concede"
+                                        + " INSERT y SELECT a `kamayuk_app` —sin UPDATE y sin DELETE—."
+                                        + " De modo que no puede cambiar el area de nada, que es lo que"
+                                        + " ADR-0021 protege de verdad. Un testimonio no se corrige: se"
+                                        + " levanta otro"),
+                        new TestimonioDeclarado(
+                                "kamayuk.comun.verificaciones.muestras.web"
+                                        + ".MuestraDeControladorConTestimonioDeclarado",
+                                "sincronizarSinObservacion",
+                                "muestra_ubicacion",
+                                "observacion",
+                                "capturadoEn",
+                                "MUESTRA. Declarada a proposito sobre un metodo que NO cumple la"
+                                        + " tercera condicion de ADR-0048 §2 —no trae la observacion ni"
+                                        + " el reloj del aparato—, para demostrar que eximir no es"
+                                        + " callar: la exencion cambia la prohibicion por obligaciones,"
+                                        + " y sin ellas el metodo sigue rojo"),
+                        new TestimonioDeclarado(
+                                "kamayuk.comun.verificaciones.muestras.web"
+                                        + ".MuestraDeControladorConTestimonioDeclarado",
+                                "sincronizarElLote",
+                                "muestra_ubicacion",
+                                "observacion",
+                                "capturadoEn",
+                                "MUESTRA. Declarada a proposito sobre un metodo que aprovecha la"
+                                        + " exencion para colar un POLIGONO, que es exactamente la"
+                                        + " puerta de atras que ADR-0048 §2 teme: la exencion tolera un"
+                                        + " punto y no la geometria, y este metodo tiene que seguir"
+                                        + " rojo pese a estar declarado"),
+                        new TestimonioDeclarado(
+                                "kamayuk.comun.verificaciones.muestras.web"
+                                        + ".MuestraDeControladorConTestimonioDeclarado",
+                                "sincronizar",
+                                "muestra_ubicacion",
+                                "observacion",
+                                "capturadoEn",
+                                "MUESTRA, y es EL CONTRASTE: cumple las condiciones comprobables y"
+                                        + " la regla NO se puede quejar de el. Sin este contraste, una"
+                                        + " exencion que no eximiera a nadie —o una regla que la"
+                                        + " ignorase— seguiria pasando la prueba de que muerde, que es"
+                                        + " la forma de fallo que esta casa mide antes de creerse una"
+                                        + " barrera"));
 
         SinGeometriaEnLaPeticion() {
             super("no recibir geometria en ningun parametro de la peticion");
@@ -1186,52 +1377,167 @@ public final class ReglasDeArquitectura {
         @Override
         public void check(JavaClass clase, ConditionEvents eventos) {
             for (JavaMethod metodo : clase.getMethods()) {
+                TestimonioDeclarado testimonio = declaracionDe(clase, metodo);
+                boolean recibeGeometria = false;
                 for (JavaParameter parametro : metodo.getParameters()) {
-                    JavaClass tipo = parametro.getRawType();
-                    String motivo = motivoDe(metodo, parametro, tipo);
-                    if (motivo != null) {
-                        eventos.add(
-                                SimpleConditionEvent.violated(
-                                        metodo,
-                                        "el metodo "
-                                                + metodo.getFullName()
-                                                + " recibe geometria por la peticion ("
-                                                + motivo
-                                                + "). La geometria entra por la carga, con su plano"
-                                                + " y su acta: un poligono que llega por HTTP mueve"
-                                                + " el padron sin que nadie lo haya levantado"
-                                                + " (ADR-0021)"));
+                    for (Geometria hallada : geometriasDe(metodo, parametro)) {
+                        recibeGeometria = true;
+                        if (testimonio == null) {
+                            eventos.add(
+                                    SimpleConditionEvent.violated(
+                                            metodo,
+                                            "el metodo "
+                                                    + metodo.getFullName()
+                                                    + " recibe geometria por la peticion ("
+                                                    + hallada.motivo()
+                                                    + "). La geometria entra por la carga, con su plano"
+                                                    + " y su acta: un poligono que llega por HTTP mueve"
+                                                    + " el padron sin que nadie lo haya levantado"
+                                                    + " (ADR-0021)"));
+                        } else if (!esSoloUnPunto(hallada.nombre())) {
+                            eventos.add(
+                                    SimpleConditionEvent.violated(
+                                            metodo,
+                                            "el metodo "
+                                                    + metodo.getFullName()
+                                                    + " esta declarado como testimonio sobre «"
+                                                    + testimonio.tabla()
+                                                    + "», y un testimonio es un PUNTO: dice donde"
+                                                    + " estuvo alguien. Lo que llega es "
+                                                    + hallada.motivo()
+                                                    + ", que es geometria del acervo y entra por la"
+                                                    + " carga (ADR-0048 §2, ADR-0021). La exencion"
+                                                    + " abre la puerta a un punto, no a la geometria"));
+                        }
                     }
+                }
+                if (testimonio != null && recibeGeometria) {
+                    exigirLoQueUnTestimonioLleva(metodo, testimonio, eventos);
+                }
+                if (testimonio != null && !recibeGeometria) {
+                    eventos.add(
+                            SimpleConditionEvent.violated(
+                                    metodo,
+                                    "el metodo "
+                                            + metodo.getFullName()
+                                            + " esta declarado como testimonio sobre «"
+                                            + testimonio.tabla()
+                                            + "» y no recibe ninguna geometria: la exencion sobra."
+                                            + " Una entrada que no exime a nadie no da error hoy y"
+                                            + " por eso es peor mañana — el dia que aparezca un"
+                                            + " metodo con ese nombre queda eximido sin que nadie"
+                                            + " lo haya decidido (ADR-0048 §4)"));
                 }
             }
         }
 
-        private static String motivoDe(JavaMethod metodo, JavaParameter parametro, JavaClass tipo) {
+        /** Lo que una geometria hallada deja saber: con que nombre entro y como decirlo. */
+        private record Geometria(String motivo, String nombre) {}
+
+        /** La declaracion de este metodo, si la hay. */
+        private static @Nullable TestimonioDeclarado declaracionDe(
+                JavaClass clase, JavaMethod metodo) {
+            return TESTIMONIOS_DECLARADOS.stream()
+                    .filter(t -> t.clase().equals(clase.getName()))
+                    .filter(t -> t.metodo().equals(metodo.getName()))
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        /**
+         * Lo que la exencion exige a cambio: la observacion y el reloj del aparato (ADR-0048 §2).
+         *
+         * <p>Mira donde puede mirar —el nombre de los parametros y los componentes de un {@code
+         * record} de la peticion, un nivel y no mas, igual que {@link #geometriasDe}—, y lo que
+         * busca es exactamente lo que la declaracion dice que hay. No adivina nombres: si lo
+         * hiciera, renombrar el campo dejaria la comprobacion muda en verde.
+         */
+        private static void exigirLoQueUnTestimonioLleva(
+                JavaMethod metodo, TestimonioDeclarado testimonio, ConditionEvents eventos) {
+
+            Set<String> loQueEntra = new java.util.HashSet<>();
+            for (JavaParameter parametro : metodo.getParameters()) {
+                loQueEntra.add(nombreDelParametro(metodo, parametro.getIndex()));
+                JavaClass tipo = parametro.getRawType();
+                if (tipo.isRecord()) {
+                    tipo.getFields().forEach(componente -> loQueEntra.add(componente.getName()));
+                }
+            }
+            for (String exigido : List.of(testimonio.observacion(), testimonio.relojDelAparato())) {
+                if (!loQueEntra.contains(exigido)) {
+                    eventos.add(
+                            SimpleConditionEvent.violated(
+                                    metodo,
+                                    "el metodo "
+                                            + metodo.getFullName()
+                                            + " esta exento como testimonio sobre «"
+                                            + testimonio.tabla()
+                                            + "» y no recibe «"
+                                            + exigido
+                                            + "», que su propia exencion declara. Un testimonio sin"
+                                            + " quien, sin cuando y sin por que no es un testimonio"
+                                            + " (ADR-0048 §2 punto 3, regla 10, ADR-0035 punto 3)."
+                                            + " Lo que recibe es "
+                                            + loQueEntra.stream().sorted().toList()));
+                }
+            }
+        }
+
+        /** Lo que llega nombra un punto y nada mas: ni un wkt, ni un poligono, ni un geojson. */
+        private static boolean esSoloUnPunto(String nombre) {
+            return segmentosDe(nombre).stream()
+                    .filter(NOMBRES_DE_GEOMETRIA::contains)
+                    .allMatch(NOMBRES_DEL_TESTIMONIO::contains);
+        }
+
+        /**
+         * Toda la geometria que entra por un parametro, y no solo la primera.
+         *
+         * <p><b>Todas</b> importa desde ADR-0048, y el motivo es peor que «por completitud»: un
+         * cuerpo con {@code punto} y {@code poligonoDelLote} dentro trae DOS, la exencion tolera el
+         * primero y no el segundo, y {@code JavaClass.getFields()} <b>no garantiza el orden de los
+         * componentes de un record</b>. Mirando solo el primero, que el poligono se vea o no queda
+         * a suertes. Medido, y con este final: con la version que devolvia una sola, la muestra
+         * salio roja igual —el poligono llego primero esa vez— y la prueba paso sin estar
+         * comprobando nada. Devolverlas todas es lo que hace el resultado independiente del orden.
+         *
+         * <p>Las tres primeras vias devuelven a lo sumo una, y se conserva su orden: es el que
+         * decide que mensaje sale, y {@code ReglasDeArquitecturaMuerdenTestBase} lo comprueba por
+         * el texto.
+         */
+        private static List<Geometria> geometriasDe(JavaMethod metodo, JavaParameter parametro) {
+            JavaClass tipo = parametro.getRawType();
             if (nombraGeometria(tipo.getSimpleName())) {
-                return "el tipo " + tipo.getSimpleName();
+                return List.of(
+                        new Geometria("el tipo " + tipo.getSimpleName(), tipo.getSimpleName()));
             }
             for (var anotacion : parametro.getAnnotations()) {
                 for (Object valor : anotacion.getProperties().values()) {
                     if (nombraGeometria(valor.toString())) {
-                        return "el parametro «" + valor + "»";
+                        return List.of(
+                                new Geometria("el parametro «" + valor + "»", valor.toString()));
                     }
                 }
             }
             String nombre = nombreDelParametro(metodo, parametro.getIndex());
             if (nombraGeometria(nombre)) {
-                return "el parametro «" + nombre + "»";
+                return List.of(new Geometria("el parametro «" + nombre + "»", nombre));
             }
+            List<Geometria> halladas = new java.util.ArrayList<>();
             if (tipo.isRecord()) {
                 for (JavaField componente : tipo.getFields()) {
                     if (nombraGeometria(componente.getName())) {
-                        return "el componente «"
-                                + componente.getName()
-                                + "» de "
-                                + tipo.getSimpleName();
+                        halladas.add(
+                                new Geometria(
+                                        "el componente «"
+                                                + componente.getName()
+                                                + "» de "
+                                                + tipo.getSimpleName(),
+                                        componente.getName()));
                     }
                 }
             }
-            return null;
+            return halladas;
         }
 
         /**
@@ -1315,11 +1621,16 @@ public final class ReglasDeArquitectura {
          * siguen dando {@code false} con el corte de camelCase puesto.
          */
         private static boolean nombraGeometria(String nombre) {
+            return segmentosDe(nombre).stream().anyMatch(NOMBRES_DE_GEOMETRIA::contains);
+        }
+
+        /** Las palabras de un identificador, con el camelCase ya partido. */
+        private static List<String> segmentosDe(String nombre) {
             String limpio =
                     nombre.replaceAll("([a-z0-9])([A-Z])", "$1 $2")
                             .toLowerCase(java.util.Locale.ROOT)
                             .replaceAll("[^a-z]", " ");
-            return Arrays.stream(limpio.split(" +")).anyMatch(NOMBRES_DE_GEOMETRIA::contains);
+            return Arrays.stream(limpio.split(" +")).toList();
         }
     }
 

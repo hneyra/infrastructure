@@ -87,4 +87,52 @@ public abstract class ReglasDeArquitecturaMuerdenTestBase {
                 .hasMessageContaining("corregirSinNombrarElParametro")
                 .hasMessageContaining("wktDelLote");
     }
+
+    /**
+     * La exencion de ADR-0048 §2 <b>no es una mordaza</b>, y el {@code @TestFactory} no lo ve.
+     *
+     * <p>Aquel exige que la regla lance y le basta una violacion en el paquete, que ya se la da
+     * {@code MuestraDeControladorQueRecibeGeometria}. De modo que borrar la exencion entera —o
+     * escribirla de forma que solo callara— dejaba esta prueba en verde. Aqui se exigen las tres
+     * cosas que la hacen una decision y no un {@code @SuppressWarnings}, por el mensaje:
+     *
+     * <ol>
+     *   <li>un metodo declarado que no trae lo que su declaracion dice, sale rojo;
+     *   <li>un metodo declarado que aprovecha la exencion para colar un poligono, sale rojo. Este
+     *       exige ademas que la regla mire TODOS los componentes del cuerpo y no el primero que
+     *       casa: el cuerpo trae un punto y un poligono, y {@code getFields()} no promete en que
+     *       orden los devuelve;
+     *   <li>un metodo <b>no</b> declarado de la misma clase, con su punto, sale rojo: la exencion
+     *       es por metodo y no por clase.
+     * </ol>
+     */
+    @Test
+    @DisplayName("la exencion del testimonio exige lo que promete, y no cubre la clase entera")
+    void laExencionDelTestimonioNoEsUnaMordaza() {
+        assertThatThrownBy(
+                        () -> ReglasDeArquitectura.TODA_GEOMETRIA_ENTRA_POR_BATCH.check(muestras))
+                .as("la exencion de ADR-0048 §2 tiene que cambiar la prohibicion por obligaciones")
+                .isInstanceOf(AssertionError.class)
+                .hasMessageContaining("sincronizarSinObservacion")
+                .hasMessageContaining("poligonoDelLote")
+                .hasMessageContaining("sincronizarSinDeclarar");
+    }
+
+    /**
+     * Y EL CONTRASTE: el testimonio bien declarado <b>pasa</b>.
+     *
+     * <p>Sin esto, una exencion rota —una que no eximiera a nadie— o una regla que ignorase la
+     * lista entera seguirian pasando todo lo de arriba, porque todo lo de arriba comprueba rojos.
+     * Si la regla marcara este metodo, el ingreso de la tableta seria inimplementable y ADR-0048 no
+     * habria decidido nada.
+     */
+    @Test
+    @DisplayName("EL CONTRASTE: el testimonio declarado y completo no se marca")
+    void elTestimonioDeclaradoYCompletoPasa() {
+        assertThatThrownBy(
+                        () -> ReglasDeArquitectura.TODA_GEOMETRIA_ENTRA_POR_BATCH.check(muestras))
+                .isInstanceOf(AssertionError.class)
+                .as("el testimonio que cumple las condiciones de ADR-0048 §2 tiene que pasar")
+                .hasMessageNotContaining(".sincronizar(kamayuk");
+    }
 }
