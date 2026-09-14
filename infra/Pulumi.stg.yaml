@@ -167,7 +167,7 @@ config:
   # Sube con el estreno de su interfaz: el manifiesto pasa a pedir
   # `kamayuk-<sistema>-interfaz:<sha>`, y con el `sha` anterior esa etiqueta **no existe** —medido,
   # `yarn imagenes` contestaba `NO EXISTE`—. En `catastro` ademas la imagen se llamaba `-web`.
-  kamayuk:versionDeCatastro: 4d0ca5fe6e496d14cc7088b4e2fda881ce765979
+  kamayuk:versionDeCatastro: 71b530886e1852fdde9e8e7ce2073e1e35737784
   kamayuk:versionDeNormativa: db721c04c7905b942ab7b88fbfc2e51bfe74cecb
   kamayuk:versionDeCaja: b4e8ef71048de476fa2a340970d44da9b97134f0
   # El quinto (ADR-0039). Es el `sha` de `main` de `hneyra/identidad` —su etapa 1 se integro
