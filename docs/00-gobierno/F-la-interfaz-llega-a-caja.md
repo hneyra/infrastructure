@@ -3,6 +3,13 @@
 **Estado:** aplicado en `infrastructure`. Los cinco clones **no se tocan**: su `git status` queda
 limpio.
 
+> **Nota de estado (2026-09-14, `caja`#83).** La interfaz de `caja` que este documento describe
+> —nginx copiado en un `ConfigMap` bajo `/etc/nginx/`— **ya no existe**: se rehízo con la forma de
+> `rentas`, con el `nginx.conf` dentro de la imagen y un `ConfigMap` que sólo monta
+> `configuracion.js`. Lo que aquí se decidió sigue en pie —la fuente del nginx se deriva del punto de
+> montaje—, y por eso el censo de `sondas-contra-la-cadena` y de `upstream-de-la-interfaz` pasa a
+> decir `kamayuk-caja-interfaz <- imagen` sin tocar la lógica.
+
 `caja` estrenó su interfaz de ventanilla (#16, #17): una tercera imagen, un quinto `Deployment` y
 un cuarto servicio en su compose. En `infrastructure` eso puso **catorce pruebas en rojo**, y
 ninguna decía lo que pasaba de verdad — **acusaban al repositorio equivocado**.

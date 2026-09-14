@@ -197,10 +197,12 @@ export function fuenteDeLaCadena(sistema: string): string {
 /**
  * De donde sale la configuracion de nginx que **de verdad** sirve a ese contenedor.
  *
- * Hay dos formas legitimas y estan las dos en el arbol, medidas:
+ * Hay dos formas legitimas, y hasta `caja`#83 estaban las dos en el arbol, medidas:
  *
- *   - `caja` monta un `ConfigMap` en `/etc/nginx/conf.d/default.conf` con `subPath` — nginx lee
- *     su servidor de ahi, asi que **el `ConfigMap` es la configuracion**;
+ *   - `caja` montaba un `ConfigMap` en `/etc/nginx/conf.d/default.conf` con `subPath` — nginx lee
+ *     su servidor de ahi, asi que **el `ConfigMap` es la configuracion**. Desde #83 lleva la forma
+ *     de `rentas`, y hoy la primera forma no la usa nadie: se conserva porque el dia que alguien
+ *     vuelva a ella, lo que se despliega es el `ConfigMap` y es lo que hay que leer;
  *   - `rentas` la lleva DENTRO de la imagen (`rentas`#44 lo decidio con todas las letras: «no
  *     hace falta el equivalente de `nginxDelCluster()` ni una copia literal del `nginx.conf`
  *     dentro del descriptor»), y su unico `ConfigMap` monta `configuracion.js` bajo
