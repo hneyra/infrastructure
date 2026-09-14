@@ -4,7 +4,7 @@
 |---|---|
 | Cuándo | El tablero **Kamayuk — Resumen operativo** carga, pero una fila o todas salen vacías |
 | Qué cubre | Distinguir el vacío que es un **hueco declarado** del que es una **avería** (§1); Prometheus sin raspar (§2); **Prometheus con una configuración vieja**, que es el que engaña (§3); Grafana con un tablero viejo (§4); y la red (§5). Llegar a Grafana está en [`abrir-grafana.md`](abrir-grafana.md) |
-| Estado del ensayo | **Remedido contra el `stg` nuevo** (`vmd205066`, k3s nativo, 2026-09-13): las doce consultas, los objetivos, las reglas y las huellas. **Ensayado antes contra el k3d de `vmd194233`** (2026-09-12), incluido el remedio de §3, que se aplicó. **No ensayados:** los remedios de §4 y §5, y nada contra `prod` — ver «Estado del ensayo» |
+| Estado del ensayo | **Remedido contra el `stg` nuevo** (`vmd205066`, k3s nativo, 2026-09-13): las doce consultas, los objetivos, las reglas y las huellas. **Ensayado antes contra el k3d de `vmd194233`** (2026-09-12), incluido el remedio de §3, que se aplicó. **En `prod`** (2026-09-14), sólo el disco del nodo y sus alertas (#147). **No ensayados:** los remedios de §4 y §5, y el resto contra `prod` — ver «Estado del ensayo» |
 
 ## Síntoma
 
@@ -236,6 +236,15 @@ Las tres, contra el sistema real:
 - el origen de datos sano, y la métrica del certificado de Traefik presente (`traefik_tls_certs_not_after`);
 - §5 desde el pod de Grafana: `Prometheus Server is Ready.`.
 
+**El disco del nodo, en los dos ambientes y contrastado con `df`** (2026-09-14, #147). `count(node_filesystem_avail_bytes{mountpoint="/"})` da **1** en los dos, y su tamaño casa **byte a byte** con el `df -B1` del `/` del VPS, leído dentro de node-exporter sobre su montaje `/host`:
+
+| Ambiente | Dispositivo | Tamaño (Prometheus = `df`) | En uso | `SinMetricasDelNodo`, `DiscoDelNodoAlto` |
+|---|---|---|---|---|
+| `stg` | `/dev/sda1`, `ext4` | 207 071 854 592 bytes | 61 % | `inactive` |
+| `prod` | `/dev/sda1`, `ext4` | 207 071 854 592 bytes | 11 % | `inactive` |
+
+El espacio libre difiere en menos de 1 MB entre las dos lecturas, que no son simultáneas. En `prod`, además, `traefik_tls_certs_not_after` existe y `CertificadoPorExpirar` está en `inactive`, con el certificado a 87 días de caducar.
+
 **Ensayado antes contra el k3d de `vmd194233`** (2026-09-12), que ya no es `stg`:
 
 - las **doce** consultas del tablero, una a una, contra su Prometheus: la tabla de §1;
@@ -252,7 +261,7 @@ Las tres, contra el sistema real:
   reiniciar Grafana sólo para medirlo no aporta nada que Kubernetes no documente.
 - **§5 con la red rota.** Habría que borrar una `NetworkPolicy` de `stg`. El diagnóstico se apoya
   en leer las dos políticas, no en haber visto el fallo.
-- **`prod`, entero.** En la máquina de trabajo no hay kubeconfig de `prod`.
+- **`prod`, salvo el disco del nodo y sus alertas**: las consultas del tablero, los objetivos, las reglas y las huellas no se han medido allí.
 
 ## Documentos relacionados
 
