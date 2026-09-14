@@ -4,7 +4,7 @@
 |---|---|
 | Cuándo | Mirar el estado de la plataforma en sus tableros: el motor, el nodo, los pods |
 | Qué cubre | Entrar por **`https://<dominio>/grafana`** con una cuenta del realm de operación ([ADR-0041](../../30-arquitectura/adr/ADR-0041-grafana-detras-del-realm-de-operacion.md), #149); los errores del login y su remedio; y **el acceso de emergencia**, cuando Keycloak no responde. Un tablero que abre y **sale vacío** está en [`grafana-no-muestra-datos.md`](grafana-no-muestra-datos.md) |
-| Estado del ensayo | **El login, ensayado en local** contra Grafana 11.3.0 y Keycloak 26.0.8 —las versiones de los dos ambientes—, con la configuración de #149, sus roturas y sus remedios (2026-09-13). **En los ambientes lo ensaya `verificar-login-de-grafana.sh`**, y su resultado se anota aquí al desplegar. El túnel y el `Secret` de Grafana, remedidos en el `stg` nuevo (`vmd205066`) **antes** de #149. **No ensayado en `prod`** — ver «Estado del ensayo» |
+| Estado del ensayo | **Ensayado en los dos ambientes con #149 desplegado** (2026-09-14): `verificar-login-de-grafana.sh` en verde en `stg` (8 de 8) y en `prod` (6 de 6), y en `stg` un login real con navegador, con la carga del tablero medida contra los límites de tasa. Antes, **en local**, las roturas de la configuración y sus remedios (2026-09-13). **No ensayado:** el login en navegador en `prod`, y la ventana de *basic auth* en un ambiente — ver «Estado del ensayo» |
 
 ## Síntoma
 
@@ -16,9 +16,8 @@ No es una falla: es consulta corriente.
    `kamayuk-grafana`. Hoy hay una: la del `administrador` de la municipalidad implantada, derivada de
    su archivo versionado (#148). Más cuentas, y quitarle el rol a quien deje de operar, son #150.
    **No sirve una cuenta de funcionario**: es otro realm, y Grafana no lo conoce.
-2. **Su clave, la primera vez.** Donde hay relay de correo (`stg`), Keycloak manda un enlace para
-   fijarla. Donde no lo hay (`prod`), el `Job` del realm le puso una clave **temporal**, la misma que
-   la de su cuenta del realm de funcionarios:
+2. **Su clave, la primera vez.** Donde no hay relay de correo (`prod`), el `Job` del realm le puso
+   una clave **temporal**, la misma que la de su cuenta del realm de funcionarios:
 
    ```bash
    kubectl -n kamayuk-<amb> get secret kamayuk-<amb>-keycloak \
@@ -27,6 +26,26 @@ No es una falla: es consulta corriente.
 
    Keycloak obliga a cambiarla al entrar, **en cada realm por separado**: son dos cuentas con dos
    credenciales. **La clave no se pega en un chat, un ticket ni un mensaje.**
+
+   **Donde hay relay (`stg`), la cuenta NO tiene clave**: ni la del `Secret` ni ninguna. Medido el
+   2026-09-13: cero credenciales y `UPDATE_PASSWORD` pendiente, así que cualquier clave da «contraseña
+   errada». Keycloak le mandó **un correo por realm** con un enlace para fijarla, y los dos esperan en el
+   buzón de pruebas de `stg` (Mailpit), no en un correo de verdad:
+
+   ```bash
+   kubectl -n kamayuk-stg port-forward svc/kamayuk-stg-correo 8025:8025
+   ```
+
+   En `http://127.0.0.1:8025`, dos «Update Your Account» para `administrador@<municipalidad>`. **El de
+   Grafana es el que lleva `/realms/kamayuk-operacion/` en el enlace**; el otro, `/realms/kamayuk/`, es
+   el de las aplicaciones. Cada enlace **caduca a las 12 horas** (*«expire within 12 hours»*) y sirve una
+   vez. Caducado o usado, se pide otro desde la consola de Keycloak
+   ([`abrir-la-consola-de-keycloak.md`](abrir-la-consola-de-keycloak.md)): realm `kamayuk-operacion` →
+   *Users* → `administrador` → *Credentials* → *Credential reset* → *Update Password*.
+
+   **La clave de un realm no abre el otro.** Medido el 2026-09-14: la clave de `administrador` en
+   `kamayuk` entra en ese realm y en `kamayuk-operacion` da `Invalid username or password`
+   (`invalid_user_credentials` en el registro de Keycloak).
 
 ## Pasos
 
@@ -159,10 +178,31 @@ Sin esas políticas contesta **`wget: can't connect to remote host (…): Connec
 
 ### El navegador dice `429 Too Many Requests`
 
-La ruta de Grafana pasa por `limite-de-tasa`: 100 peticiones por minuto de media por IP, con ráfagas
-de 50. La pantalla de acceso de Keycloak pasa por `limite-de-identidad`, 10 por minuto con ráfagas de
-20. **No está medido todavía** si la primera carga de Grafana o un login llegan a ellos: anotar aquí
-lo que dé en `stg`.
+Dos límites por IP, cada uno en su ruta:
+
+| Ruta | Middleware | Límite | Lo que pide un login con la caché vacía (medido en `stg`, 2026-09-14) |
+|---|---|---|---|
+| `/grafana` | `limite-de-tasa` | 100 por minuto de media, ráfagas de 50 | login y tablero abierto 150 s: **127 respuestas, pico de 87 en un minuto y de 25 en un segundo, ningún 429** |
+| `/keycloak` | `limite-de-identidad` | 10 por minuto de media, ráfagas de 20 | la pantalla de acceso de Grafana: **12**, ningún 429 |
+
+**El que muerde es el de identidad**, y cuenta también el CSS, el JS y las fuentes de la pantalla de
+acceso. Medido: 30 peticiones seguidas a `/keycloak` dan **exactamente 20 con 200** y el resto `429`, en
+texto plano y con `retry-after: 5`. Así que:
+
+- **un segundo intento de login dentro del mismo minuto** puede quedarse sin cupo. Lo que se ve es una
+  página en blanco con «Too Many Requests», y Keycloak no registra nada, porque la clave no le llega;
+- **la consola de cuenta del realm `kamayuk` no entra al primer intento**: pide 29 peticiones y Traefik
+  rechaza 9, **incluido el propio envío del formulario**
+  ([#192](https://github.com/hneyra/infrastructure/issues/192)).
+
+Remedio mientras siga #192: **esperar dos minutos** antes de volver a intentarlo. El cupo se recarga a
+10 por minuto, así que la ráfaga entera tarda dos en volver: medido, tras 130 s de espera pasaron otra
+vez 20 peticiones seguidas. Que con los recursos en la caché del navegador el reintento pida menos es
+lo esperable, pero **no está medido**.
+
+Traefik **no publica métricas por ruta** (`traefik_router_requests_total` está vacía): el contador de
+429 que hay es el del entrypoint, `traefik_entrypoint_requests_total{entrypoint="websecure",code="429"}`,
+y no dice de qué ruta vino cada uno.
 
 ## Acceso de emergencia: Keycloak no responde
 
@@ -315,6 +355,24 @@ No es un problema de acceso: [`grafana-no-muestra-datos.md`](grafana-no-muestra-
 
 ## Estado del ensayo
 
+**Con #149 desplegado** (2026-09-14; `pulumi up` en `stg` a las 21:18Z y en `prod` a las 21:37Z del día
+anterior):
+
+- `verificar-login-de-grafana.sh --ambiente stg`: **8 comprobaciones en verde**, incluidas las dos
+  cuentas de prueba (`lector` → `Viewer`; sin rol → sin sesión, por `role_attribute_strict_violation`);
+- `verificar-login-de-grafana.sh --ambiente prod`: **6 en verde**, con la clave real de `admin` (400 por
+  el formulario, 401 por *basic auth*). Sin cuentas de prueba, como corresponde;
+- Grafana hacia identidad, desde el pod, **en los dos**: contesta el emisor de `kamayuk-operacion`, donde
+  antes de desplegar daba `Connection refused`;
+- el realm de operación, leído con `kcadm`: en `stg`, `administrador` con rol `administrador`,
+  `operador-de-prueba-lector` con `lector` y `operador-de-prueba-sin-rol` sin rol; en `prod`,
+  `administrador` con rol `administrador` y su clave temporal pendiente de cambio (`UPDATE_PASSWORD`);
+- **un login con navegador en `stg`** (Chromium sin interfaz, caché vacía, `operador-de-prueba-lector`):
+  entra en 2,5 s como `Viewer` sin ser administrador del servidor; el tablero carga en 3,1 s; *Sign out*
+  pasa por el `logout` de Keycloak y vuelve a su pantalla de acceso, y `/grafana/api/user` da **401**
+  después. La carga, contra los límites de tasa: la tabla de «`429 Too Many Requests`»;
+- la ráfaga de `limite-de-identidad` (20) y el login de la consola de cuenta que no cabe en ella (#192).
+
 **El login de #149, en local** (2026-09-13), contra Grafana 11.3.0 y Keycloak 26.0.8 arrancados con la
 configuración que declara `Observabilidad.ts`, y recorrido con `curl`:
 
@@ -349,14 +407,12 @@ configuración que declara `Observabilidad.ts`, y recorrido con `curl`:
 `prod`; sin túnel, túnel al puerto equivocado y sin `port-forward`; la línea de log de una clave
 inválida; y que la imagen trae `grafana cli admin reset-admin-password --password-from-stdin`.
 
-**Pendiente de anotar al desplegar #149:** `verificar-login-de-grafana.sh --ambiente stg` y
-`--ambiente prod`; Grafana hacia identidad desde el pod, que tiene que conectar; la carga contra los
-límites de tasa (429).
-
 **No ensayado:**
 
-- **`prod`.** En la máquina de trabajo no hay kubeconfig de `prod`. El procedimiento es el mismo
-  cambiando `<amb>`, pero ningún comando de aquí se ha ejecutado contra `prod`.
+- **Un login con navegador en `prod`**, y el de `administrador` en ninguno de los dos. En `prod` su clave
+  es temporal y cambiarla es de la persona; en `stg`, la clave con que se probó era la de `kamayuk`, que
+  en `kamayuk-operacion` no vale. El paso de `administrador` a `Admin` se midió en local, y en los dos
+  ambientes está leído el rol.
 - **La ventana de *basic auth* en un ambiente**: medida sólo en local.
 - **El acceso de emergencia a Prometheus** con Keycloak caído, y que un `port-forward` a Grafana no
   sirve para el navegador: lo segundo se sigue de la configuración, no de una medición.
