@@ -81,11 +81,14 @@ describe("#12 · el reenvio de una interfaz DESPLEGADA resuelve en su espacio de
    * quito antes de desplegarla. O sea que esta guarda no cambio de lado: la interfaz que contaba
    * como «publicada y no desplegada, y no arrancaria» pasa a contar como desplegada **porque el
    * defecto que se le anoto se arreglo**, y no porque nadie lo mirara.
+   *
+   * **Y la de `caja` pasa de `configmap` a `imagen` con `caja`#83**: su `nginx.conf` deja de
+   * copiarse en un `ConfigMap` y viaja en la imagen, como las otras tres. Sigue sin reenvios.
    */
   it.each(ENVIRONMENTS)("y en «%s» se cuenta cuantas se miraron y cuantos reenvios", (ambiente) => {
     const desplegadas = conSusReenvios(ambiente).filter((i) => i.interfaz.desplegada);
     expect(desplegadas.map((i) => `${i.interfaz.imagen} <- ${i.interfaz.fuente.clase}`)).toEqual([
-      "kamayuk-caja-interfaz <- configmap",
+      "kamayuk-caja-interfaz <- imagen",
       "kamayuk-catastro-interfaz <- imagen",
       "kamayuk-normativa-interfaz <- imagen",
       "kamayuk-rentas-interfaz <- imagen",

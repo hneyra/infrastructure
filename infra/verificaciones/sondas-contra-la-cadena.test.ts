@@ -206,7 +206,8 @@ describe("la lectura de la cadena muerde, y no muerde de mas", () => {
  * Hasta I-44 esto leia los `location` de cualquier `ConfigMap` del sistema, y daba por hecho que
  * la configuracion de nginx viaja en uno. Son **dos formas legitimas** y estan las dos:
  *
- *   - `caja` monta un `ConfigMap` en `/etc/nginx/conf.d/default.conf`: **ese** es su servidor;
+ *   - `caja` montaba un `ConfigMap` en `/etc/nginx/conf.d/default.conf`: **ese** era su servidor
+ *     (hasta `caja`#83, que paso a la forma de `rentas`);
  *   - `rentas` la lleva dentro de la imagen (#44), y su unico `ConfigMap` monta
  *     `configuracion.js` bajo `/usr/share/nginx/html/` — contenido servido, no servidor.
  *
@@ -302,7 +303,12 @@ describe("#16 · la sonda de un contenedor que no es el backend, contra su nginx
    * **Y de dos pasan a CUATRO** con `normativa`#41 y `catastro`#104: los dos ultimos sistemas con
    * pantalla estrenan su despliegue, y los dos llevan su nginx **dentro de la imagen**, que es la
    * forma de `rentas` y no la de `caja`. Asi que lo que este censo vigila deja de ser un empate:
-   * **tres de cuatro viajan en la imagen** y solo `caja` monta un `ConfigMap` encima. Los cinco
+   * **tres de cuatro viajan en la imagen** y solo `caja` monta un `ConfigMap` encima.
+   *
+   * **Y desde `caja`#83 son las CUATRO.** `caja` rehizo su interfaz con la forma de `rentas`: el
+   * `nginx.conf` viaja en la imagen, y su `ConfigMap` ya no es el servidor sino `configuracion.js`
+   * bajo `/usr/share/nginx/html/`, que {@link nginxMontado} no cuenta —se deriva del punto de
+   * montaje, no se declara—. El empate que este censo vigilaba se acaba en unanimidad. Los cinco
    * sistemas tienen ya su interfaz desplegada; el que no sale aqui es `identidad`, que no tiene
    * pantalla —sirve el buzon—, y por eso este censo no puede crecer mas sin que alguien estrene
    * un contenedor que no sea ni el backend ni una interfaz.
@@ -318,7 +324,7 @@ describe("#16 · la sonda de un contenedor que no es el backend, contra su nginx
         }),
     );
     expect([...new Set(censo)].sort()).toEqual([
-      "caja: kamayuk-caja-interfaz <- configmap",
+      "caja: kamayuk-caja-interfaz <- imagen",
       "catastro: kamayuk-catastro-interfaz <- imagen",
       "normativa: kamayuk-normativa-interfaz <- imagen",
       "rentas: kamayuk-rentas-interfaz <- imagen",
