@@ -138,7 +138,13 @@ const BACKEND_QUE_CHOCA_CON_LA_PLATAFORMA: Readonly<Record<string, string>> = {
 export function servicioDe(sistema: string, proceso: string): string {
   if (proceso === "web") return BACKEND_QUE_CHOCA_CON_LA_PLATAFORMA[sistema] ?? sistema;
   if (proceso === "migrador") return `${sistema}-migraciones`;
-  return `${sistema}-implantacion`;
+  if (proceso === "implantacion") return `${sistema}-implantacion`;
+  // Y cualquier OTRO proceso de larga vida se llama `<sistema>-<perfil>`, que es como `caja`
+  // llama en su compose al publicador del buzon de pagos (#79). Antes esta linea era el
+  // `return` de `implantacion` y valia para todo lo que no fuera `web` ni `migrador`: con un
+  // cuarto proceso, el par `publicador` ↔ `caja-implantacion` habria comparado dos conjuntos
+  // de variables que no tienen nada que ver y el rojo habria acusado al servicio equivocado.
+  return `${sistema}-${proceso}`;
 }
 
 /** Los sistemas cuyo backend NO se llama como ellos, para que una prueba pueda fijarlos. */
@@ -189,8 +195,9 @@ function procesoDelContenedor(
  * propio descriptor—. Emparejarla con un servicio del compose compararia dos conjuntos vacios y
  * saldria verde sin medir nada.
  *
- * **Y sigue lanzando si hay dos del jar**, que es lo que la hacia util: dos backends en un mismo
- * proceso si son una ambiguedad que nadie ha decidido.
+ * **Y sigue lanzando si hay dos del jar**, que es lo que la hacia util: un `Job` con dos procesos
+ * de Spring dentro si es una ambiguedad que nadie ha decidido. Lo que ya NO lanza es el
+ * despliegue, que desde `caja`#79 tiene mas de uno a proposito: ver {@link desplegadosDe}.
  */
 function principalDe(ms: Manifiesto[], que: string, sistema: string): Contenedor {
   const pods = ms.flatMap((m) => podsDe(m));
@@ -209,6 +216,65 @@ function principalDe(ms: Manifiesto[], que: string, sistema: string): Contenedor
   return contenedores[0] as Contenedor;
 }
 
+/**
+ * Los procesos de larga vida del descriptor, **uno por perfil de Spring**.
+ *
+ * `despliegue()` devolvia un solo proceso del jar hasta `caja`#79, que estrena el `Deployment`
+ * del perfil `publicador` —el que saca el buzon de pagos—. Con `principalDe` puesto ahi, esta
+ * lectura **lanzaba**, y al lanzar se llevaba por delante los hallazgos de LOS CINCO sistemas:
+ * el archivo entero dejaba de verificar nada. Es el mismo modo de fallo que la interfaz de
+ * ventanilla trajo en #16, y por eso se arregla igual — decidiendo el emparejamiento en vez de
+ * dejar que la comparacion elija.
+ *
+ * **La clave es el perfil, no el orden.** Lo que empareja un proceso con su servicio del compose
+ * es `SPRING_PROFILES_ACTIVE`, que es tambien lo que decide que configuracion arranca dentro del
+ * contenedor: `web` ↔ `caja`, `publicador` ↔ `caja-publicador`. Tomar «el primero» y «el
+ * segundo» compararia las variables del publicador contra las del backend en cuanto el
+ * descriptor cambiara de orden, y ese rojo acusaria al compose de un desajuste que no tiene.
+ *
+ * Y el emparejamiento sigue siendo **estricto**: un contenedor del jar sin perfil, o dos con el
+ * mismo, lanzan. Un `Deployment` sin `SPRING_PROFILES_ACTIVE` no se puede comparar con nada
+ * —tampoco arrancaria con la configuracion que su compose le da—, y dos con el mismo perfil son
+ * dos procesos para un servicio.
+ */
+function desplegadosDe(ms: Manifiesto[], sistema: string): Map<string, Contenedor> {
+  const porPerfil = new Map<string, Contenedor>();
+  const contenedores = ms
+    .flatMap((m) => podsDe(m))
+    .flatMap((p) => p.pod.containers)
+    .filter((c) => correElBackend(sistema, c));
+
+  if (contenedores.length === 0) {
+    throw new Error(
+      `«${sistema}: despliegue» no tiene ningun contenedor que corra el jar. Un sistema sin ` +
+        "backend desplegado no se puede comparar con su compose, y dar eso por bueno seria " +
+        "verde sin haber mirado nada.",
+    );
+  }
+
+  for (const c of contenedores) {
+    const perfil = (c.env ?? []).find((v) => v.name === "SPRING_PROFILES_ACTIVE")?.value;
+    if (perfil === undefined) {
+      throw new Error(
+        `«${sistema}: despliegue» tiene un contenedor del jar (${c.name}) sin ` +
+          "`SPRING_PROFILES_ACTIVE`. Es lo que empareja cada proceso con su servicio del " +
+          "compose, y ademas lo que decide que configuracion arranca dentro: sin el no hay con " +
+          "que comparar, y el proceso arrancaria con la base.",
+      );
+    }
+    if (porPerfil.has(perfil)) {
+      throw new Error(
+        `«${sistema}: despliegue» declara DOS contenedores del jar en el perfil «${perfil}». ` +
+          "Esta comprobacion empareja un proceso del descriptor con un servicio del compose, y " +
+          "con dos no hay emparejamiento que valga: hay que decidir como se llama cada uno en " +
+          "vez de dejar que la comparacion elija.",
+      );
+    }
+    porPerfil.set(perfil, c);
+  }
+  return porPerfil;
+}
+
 /** Lo que el descriptor de un sistema declara, listo para comparar contra su compose. */
 export function loQueElDescriptorDice(
   descriptor: DescriptorDeSistema,
@@ -221,11 +287,12 @@ export function loQueElDescriptorDice(
     base: descriptor.baseDeDatos(e).nombre,
     imagenes: descriptor.imagenes,
     procesos: {
-      web: procesoDelContenedor(
-        sistema,
-        "web",
-        "aplicacion",
-        principalDe(descriptor.despliegue(e), `${sistema}: despliegue`, sistema),
+      // Uno por perfil de larga vida: `web` siempre, y desde `caja`#79 tambien `publicador`.
+      ...Object.fromEntries(
+        [...desplegadosDe(descriptor.despliegue(e), sistema)].map(([perfil, c]) => [
+          perfil,
+          procesoDelContenedor(sistema, perfil, "aplicacion", c),
+        ]),
       ),
       migrador: procesoDelContenedor(
         sistema,
@@ -357,7 +424,11 @@ export function desajustes(
             ? "sin migrar, y la aplicacion arranca con `spring.flyway.enabled: false` sobre una base vacia."
             : proceso === "implantacion"
               ? "sin fila de `municipalidad`, y entonces no hay municipalidad_id que poner en ningun token."
-              : "sin backend."),
+              : proceso === "web"
+                ? "sin backend."
+                : `sin el proceso del perfil «${proceso}», que en el clúster si corre — lo que ` +
+                  "se prueba en local deja de ser lo que se despliega, y justo en la pieza que " +
+                  "solo existe desplegada."),
       );
       continue;
     }

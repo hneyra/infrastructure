@@ -367,11 +367,35 @@ describe("C-19 · el perfil de recursos de un ambiente no alcanza al otro", () =
    * su pico pide 8 576Mi. Las dos frases de arriba sobre «`prod` sigue sin caber» son de antes
    * de esa mudanza y se conservan como historia: lo que vale hoy lo dice `capacidad.test.ts`,
    * que lo DERIVA y no lo trae escrito.
+   *
+   * ## Y suben LAS DOS otra vez con el publicador del buzon de `caja` (`caja`#79)
+   *
+   * `caja` estrena `kamayuk-caja-publicador`, el `Deployment` del perfil `publicador` que saca su
+   * buzon de pagos (ADR-0026 §3). Hasta ahora **nadie lo sacaba en el clúster** —medido en `stg`
+   * el 2026-09-14, `pago_evento` = 0 en la base de `rentas`—, asi que esto no es un ajuste de
+   * prueba: es una pieza del camino del dinero que empieza a correr. Lleva los `requests` de
+   * `RECURSOS_DE_ARRANQUE` —50m / 256Mi, los mismos que el `CronJob` y los dos `Job` que corren
+   * ese mismo jar— y es un `Deployment`, asi que cuenta en las dos mitades.
+   *
+   * | | permanente | pico |
+   * |---|---|---|
+   * | con las dos interfaces nuevas | 1640m / 5664Mi | 2460m / 9568Mi |
+   * | y con el publicador de `caja` | **1690m / 5920Mi** | **2510m / 9824Mi** |
+   *
+   * O sea **+50m / +256Mi en las dos**, que es exactamente un `RECURSOS_DE_ARRANQUE` y sale del
+   * descriptor de `caja`, no de aqui.
+   *
+   * **Y esta vez `prod` SI cambia de veredicto, que es lo que distingue esta subida de la
+   * anterior.** Su nodo reparte 9 907Mi asignables, o sea 9 747Mi disponibles tras los pods de
+   * serie de k3s, y el pico pasa de 9 568Mi —339Mi de margen— a 9 824Mi: **faltan 77Mi**. No se
+   * arregla subiendo una cifra, asi que queda **declarado** como brecha de capacidad en
+   * `Pulumi.prod.yaml`, que es lo que apaga `aplicar-prod` (#25) en vez de dejarlo empezar un
+   * despliegue que se colgaria. `stg` sigue cabiendo: pide 8 832Mi contra los mismos 9 747Mi.
    */
-  it("prod pide exactamente lo medido en `E`, mas el ingestor de #21, el quinto sistema, sus cuatro consumidores y las dos interfaces nuevas", () => {
+  it("prod pide exactamente lo medido en `E`, mas el ingestor de #21, el quinto sistema, sus cuatro consumidores, las dos interfaces nuevas y el publicador de `caja`", () => {
     const demanda = demandaDelStack(manifiestosDe("prod"));
-    expect(demanda.permanente).toEqual({ cpuEnMili: 1640, memoriaEnMi: 5664 });
-    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 2460, memoriaEnMi: 9568 });
+    expect(demanda.permanente).toEqual({ cpuEnMili: 1690, memoriaEnMi: 5920 });
+    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 2510, memoriaEnMi: 9824 });
   });
 
   /** Y `prod` declara el perfil dimensionado, que es la tabla base. */
