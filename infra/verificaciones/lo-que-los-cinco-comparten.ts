@@ -471,6 +471,21 @@ export const DIVERGENCIAS_DECLARADAS: readonly DivergenciaDeclarada[] = [
   },
   {
     pieza: "plataforma",
+    archivo: "web/FiltroDeLaConsulta.java",
+    grupos: "caja, catastro, identidad, rentas",
+    clase: "solo-en-uno",
+    motivo:
+      "De `normativa`#49 (PR `normativa`#74, `10c6754`, 2026-09-14): la borro porque tenia CERO " +
+      "usos alli. Lo unico que resuelve es un dato que llega a la vez por la consulta y por el " +
+      "cuerpo, y ningun controlador de `normativa` recibe un `@RequestBody` —los dos " +
+      "`@RequestParam` de `SnapshotController` solo viajan por la URL—. Los otros cuatro la " +
+      "conservan: `rentas` la usa en once controladores y `caja`, `catastro` e `identidad` la " +
+      "llevan sin un solo uso en `src/main`.**No es un defecto de ningun lado** y la decision del dueno fue " +
+      "declararla, no restaurarla en `normativa` ni borrarla en los otros. Cierra: la libreria 2 " +
+      "de #22 (`comun-plataforma`), o que un controlador de `normativa` llegue a necesitarla.",
+  },
+  {
+    pieza: "plataforma",
     archivo: "plataforma/TokenDeServicioDeKeycloak.java",
     grupos: "rentas",
     clase: "solo-en-uno",
