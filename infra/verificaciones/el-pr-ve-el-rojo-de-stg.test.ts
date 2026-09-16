@@ -39,6 +39,19 @@ const RAIZ = raizDelRepositorio();
 const GUION = join(RAIZ, ".github/el-despliegue-de-stg-en-main.sh");
 const FLUJO = join(RAIZ, ".github/workflows/infra.yml");
 
+/**
+ * El nombre del paso del `up`, **LEIDO DEL GUION** y no escrito aqui.
+ *
+ * Lo trajo #201, y el defecto es de la clase que este archivo vigila: el guion busca el paso
+ * por `PASO_DEL_UP="Run pulumi/actions@v6"`, o sea que **subir esa accion de version le cambia
+ * el nombre al paso**. La guarda de mas abajo ata esa constante a lo que `infra.yml` declara y
+ * se pone roja si se olvida — pero las respuestas de mentira de este mismo archivo llevaban el
+ * nombre escrito a mano, asi que al subirla se quedaban nombrando el paso VIEJO y las tres
+ * pruebas de la consulta fallaban por una discrepancia entre dos copias del mismo dato, no por
+ * un defecto del guion. Leyendolo, hay un solo sitio donde vive.
+ */
+const PASO_DEL_UP = /^PASO_DEL_UP="([^"]+)"$/m.exec(readFileSync(GUION, "utf8"))?.[1] ?? "";
+
 const TEMPORALES: string[] = [];
 function temporal(): string {
   const dir = mkdtempSync(join(tmpdir(), "stg-en-main-"));
@@ -178,7 +191,7 @@ describe("#79 · la consulta, con un `gh` de mentira que aplica el `--jq` de ver
       completed_at: "2026-09-13T10:38:06Z",
       steps: [
         { name: "Abrir el túnel SSH al API de k3s", conclusion: "success" },
-        { name: "Run pulumi/actions@v6", conclusion: up },
+        { name: PASO_DEL_UP, conclusion: up },
       ],
     });
     return { corridas, trabajos, job };

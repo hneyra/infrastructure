@@ -38,8 +38,8 @@ set -euo pipefail
 # renombra el trabajo o el paso, esto dejaria de encontrarlos y diria «no se sabe» para siempre.
 FLUJO="infra.yml"
 TRABAJO="pulumi up en stg"
-# El nombre con que GitHub muestra el paso `uses: pulumi/actions@v6` sin `name:`.
-PASO_DEL_UP="Run pulumi/actions@v6"
+# El nombre con que GitHub muestra el paso `uses: pulumi/actions@v7` sin `name:`.
+PASO_DEL_UP="Run pulumi/actions@v7"
 # Cuantas corridas de `main` se miran antes de rendirse. Las `schedule` no cuentan y los trabajos
 # en curso o saltados se pasan de largo, asi que diez sobran: medido, en las 60 ultimas corridas de
 # `main` no hubo nunca dos seguidas sin un `pulumi up en stg` terminado.
