@@ -65,18 +65,28 @@ describe("AC-4 — el catalogo unido de «identidad» y el catalogo real de cada
    * dos listas escritas, y las dos estaban igual de cortas—; lo vio del lado de `caja` la prueba
    * que lee `@RequiereAcceso` del bytecode, que es donde vive la otra mitad de la verdad. El
    * catalogo unido pasa de 157 a 161.
+   *
+   * Y la cuarta es la de `normativa` (normativa#53, identidad#48), que pasa de 1 a 2 y **anade sin
+   * retirar**: ADR-0043 §2 de su repositorio mete el modulo `NORMATIVA` con la opcion `conjuntos`
+   * —de la que cuelgan las cuatro hojas de su interfaz nueva, y que sus tres lecturas de conjuntos
+   * sellados declaran desde ese mismo PR—, y `parametros` **se queda** en `SEGURIDAD` y con su
+   * nombre: su `SembradorDelCatalogo` siembra con `ON CONFLICT ... DO NOTHING`, asi que mover una
+   * opcion de modulo no llega a ninguna base ya sembrada, y retirar es identidad#16 / #21, que dejo
+   * la replica de `rentas` parada 20 h. Se comprobo que `conjuntos` esta en las DOS puntas —el
+   * `CatalogoDelSistema.java` de `normativa` y el `normativa.json` de `identidad`, los dos ya en su
+   * `main`— antes de mover la cifra. El catalogo unido pasa de 161 a 162.
    */
-  it("y los cinco catalogos suman 161 opciones, repartidas 130·16·1·7·7", () => {
+  it("y los cinco catalogos suman 162 opciones, repartidas 130·16·2·7·7", () => {
     expect(censoDeOpciones()).toEqual({
       rentas: 130,
       catastro: 16,
-      normativa: 1,
+      normativa: 2,
       caja: 7,
       identidad: 7,
     });
     expect(
       Object.values(censoDeOpciones()).reduce((total, cuantas) => total + cuantas, 0),
-    ).toBe(161);
+    ).toBe(162);
   });
 
   it("y el catalogo unido declara lo mismo, sistema a sistema", () => {
@@ -87,7 +97,7 @@ describe("AC-4 — el catalogo unido de «identidad» y el catalogo real de cada
       Object.fromEntries(
         SISTEMAS_DEL_PRODUCTO.map((sistema) => [sistema, opcionesDeclaradas(sistema).length]),
       ),
-    ).toEqual({ rentas: 130, catastro: 16, normativa: 1, caja: 7, identidad: 7 });
+    ).toEqual({ rentas: 130, catastro: 16, normativa: 2, caja: 7, identidad: 7 });
   });
 
   it("los cinco sistemas se derivan de SISTEMAS_DEL_PRODUCTO y no se escriben aqui", () => {
