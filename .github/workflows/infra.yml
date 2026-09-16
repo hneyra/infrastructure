@@ -192,7 +192,7 @@ jobs:
       # `checkout-en-el-espacio-de-trabajo.test.ts` lo comprueba en los cinco
       # repositorios, para que el siguiente `path: ../` no vuelva a aparecer solo al
       # empujar.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: infrastructure
           # Historial completo, desde #675: `deriva-de-migraciones.test.ts` cuenta las
@@ -222,7 +222,7 @@ jobs:
           token: ${{ secrets.GH_CLONE_KEY || github.token }}
           historial-completo: 'si'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: yarn
@@ -249,7 +249,7 @@ jobs:
     steps:
       # `path: infrastructure` y la accion de al lado: componer el manifiesto necesita los
       # cuatro descriptores hermanos (C-9a, C-20).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: infrastructure
 
@@ -257,7 +257,7 @@ jobs:
         with:
           token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: yarn
@@ -297,7 +297,7 @@ jobs:
       # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
       # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
       # haga de padre. El porque completo esta en la accion (C-9a, C-20).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: infrastructure
 
@@ -305,7 +305,7 @@ jobs:
         with:
           token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: yarn
@@ -319,12 +319,12 @@ jobs:
       # `backend.yml`: la prueba de aislamiento es del backend, y aquí solo cambia
       # contra qué motor corre.
       - name: Instalar JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 25
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
 
       # Levanta el motor con los guiones que el manifiesto monta, comprueba los cuatro
       # roles contra el proceso en marcha y ejecuta `verificarAislamiento` contra esa
@@ -358,7 +358,7 @@ jobs:
       # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
       # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
       # haga de padre. El porque completo esta en la accion (C-9a, C-20).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: infrastructure
 
@@ -366,7 +366,7 @@ jobs:
         with:
           token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: yarn
@@ -400,7 +400,7 @@ jobs:
       # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
       # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
       # haga de padre. El porque completo esta en la accion (C-9a, C-20).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: infrastructure
 
@@ -408,7 +408,7 @@ jobs:
         with:
           token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: yarn
@@ -470,7 +470,7 @@ jobs:
       # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
       # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
       # haga de padre. El porque completo esta en la accion (C-9a, C-20).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: infrastructure
 
@@ -478,7 +478,7 @@ jobs:
         with:
           token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: yarn
@@ -539,7 +539,7 @@ jobs:
       # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
       # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
       # haga de padre. El porque completo esta en la accion (C-9a, C-20).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: infrastructure
 
@@ -547,7 +547,7 @@ jobs:
         with:
           token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: yarn
@@ -623,7 +623,7 @@ jobs:
       # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
       # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
       # haga de padre. El porque completo esta en la accion (C-9a, C-20).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: infrastructure
 
@@ -631,7 +631,7 @@ jobs:
         with:
           token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: yarn
@@ -751,7 +751,7 @@ jobs:
       # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
       # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
       # haga de padre. El porque completo esta en la accion (C-9a, C-20).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: infrastructure
 
@@ -759,7 +759,7 @@ jobs:
         with:
           token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: yarn
@@ -793,7 +793,7 @@ jobs:
       # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
       # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
       # haga de padre. El porque completo esta en la accion (C-9a, C-20).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: infrastructure
 
@@ -801,7 +801,7 @@ jobs:
         with:
           token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: yarn
@@ -831,7 +831,7 @@ jobs:
       # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
       # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
       # haga de padre. El porque completo esta en la accion (C-9a, C-20).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: infrastructure
 
@@ -839,7 +839,7 @@ jobs:
         with:
           token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: yarn
@@ -904,7 +904,7 @@ jobs:
 
     steps:
       # Solo `.github`: el guion no necesita ni `infra/` ni los hermanos.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: infrastructure
           sparse-checkout: .github
@@ -935,7 +935,7 @@ jobs:
       # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
       # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
       # haga de padre. El porque completo esta en la accion (C-9a, C-20).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: infrastructure
 
@@ -943,7 +943,7 @@ jobs:
         with:
           token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: yarn
@@ -1046,7 +1046,7 @@ jobs:
       #
       # En `preview` el refresco es EN MEMORIA: no guarda estado, solo evita comparar contra algo
       # que ya no existe. Por eso vale en un PR, donde escribir estado no seria aceptable.
-      - uses: pulumi/actions@v6
+      - uses: pulumi/actions@v7
         if: steps.token.outputs.hay == 'si'
         with:
           command: preview
@@ -1071,7 +1071,7 @@ jobs:
       # `path: infrastructure` y la accion de al lado: este trabajo necesita los cuatro
       # descriptores hermanos, y la unica forma de tenerlos es que el espacio de trabajo
       # haga de padre. El porque completo esta en la accion (C-9a, C-20).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: infrastructure
 
@@ -1079,7 +1079,7 @@ jobs:
         with:
           token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: yarn
@@ -1163,7 +1163,7 @@ jobs:
       #
       # En `preview` el refresco es EN MEMORIA: no guarda estado, solo evita comparar contra algo
       # que ya no existe. Por eso vale en un PR, donde escribir estado no seria aceptable.
-      - uses: pulumi/actions@v6
+      - uses: pulumi/actions@v7
         if: steps.token.outputs.hay == 'si'
         with:
           command: preview
@@ -1204,7 +1204,7 @@ jobs:
 
     steps:
       # `path: infrastructure`: ver la accion de al lado (C-9a, C-20).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: infrastructure
           # Historial completo: `verificar-el-ambiente.sh` compara las migraciones que
@@ -1218,7 +1218,7 @@ jobs:
         with:
           token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: yarn
@@ -1387,7 +1387,7 @@ jobs:
           pulumi config set --secret --stack stg backupSecretAccessKey -- "$BACKUP_SECRET_ACCESS_KEY_VALUE"
           pulumi config set --secret --stack stg registryPullToken -- "$REGISTRY_PULL_TOKEN_VALUE"
 
-      - uses: pulumi/actions@v6
+      - uses: pulumi/actions@v7
         if: steps.credenciales.outputs.hay == 'si'
         with:
           command: up
@@ -1496,7 +1496,7 @@ jobs:
 
     steps:
       # `path: infrastructure`: ver la accion de al lado (C-9a, C-20).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: infrastructure
           # Historial completo: `verificar-el-ambiente.sh` compara las migraciones que
@@ -1510,7 +1510,7 @@ jobs:
         with:
           token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: yarn
@@ -1674,7 +1674,7 @@ jobs:
           pulumi config set --secret --stack prod backupSecretAccessKey -- "$BACKUP_SECRET_ACCESS_KEY_VALUE"
           pulumi config set --secret --stack prod registryPullToken -- "$REGISTRY_PULL_TOKEN_VALUE"
 
-      - uses: pulumi/actions@v6
+      - uses: pulumi/actions@v7
         if: steps.brecha.outputs.declarada != 'si'
         with:
           command: up
@@ -1771,7 +1771,7 @@ jobs:
 
     steps:
       # `path: infrastructure`: ver la accion de al lado (C-9a, C-20).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: infrastructure
           # Historial completo: el paso «prod, comprobado contra si mismo» de abajo
@@ -1783,7 +1783,7 @@ jobs:
         with:
           token: ${{ secrets.GH_CLONE_KEY || github.token }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: yarn

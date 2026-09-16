@@ -40,7 +40,7 @@ jobs:
         working-directory: librerias-backend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: La version de Java declarada es la que instala CI
         run: |
@@ -51,13 +51,20 @@ jobs:
           fi
 
       - name: Instalar JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 25
 
+      # `v5`, y NO `v6`, a proposito (#201, y es lo que `caja`#90 dejo medido).
+      # `v5` es la primera mayor que declara `node24` y la ultima entera bajo MIT. `v6`
+      # tambien trae `node24`, pero extrae el cache a `gradle-actions-caching`, un componente
+      # **propietario** fuera de la MIT: su propia nota de version lo dice con estas palabras,
+      # «By upgrading to v6, you accept the Terms of Use for the `gradle-actions-caching`
+      # component». Aceptar una licencia comercial en nombre del producto no lo decide un
+      # cambio de version de una accion, asi que se queda en `v5` con el motivo aqui al lado.
       - name: Preparar Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
 
       - name: Descargar la distribucion de Gradle, con reintentos
         run: |

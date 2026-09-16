@@ -26,7 +26,7 @@
 # Una accion local se referencia por su ruta dentro del espacio de trabajo, asi que
 # **solo se puede usar despues de que este repositorio este clonado**:
 #
-#     - uses: actions/checkout@v4
+#     - uses: actions/checkout@v7
 #       with:
 #         path: infrastructure
 #     - uses: ./infrastructure/.github/actions/clonar-los-hermanos
@@ -85,28 +85,28 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         repository: hneyra/rentas
         path: rentas
         token: ${{ inputs.token }}
         fetch-depth: ${{ inputs.historial-completo == 'si' && '0' || '1' }}
 
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         repository: hneyra/catastro
         path: catastro
         token: ${{ inputs.token }}
         fetch-depth: ${{ inputs.historial-completo == 'si' && '0' || '1' }}
 
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         repository: hneyra/normativa
         path: normativa
         token: ${{ inputs.token }}
         fetch-depth: ${{ inputs.historial-completo == 'si' && '0' || '1' }}
 
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         repository: hneyra/caja
         path: caja
@@ -116,7 +116,7 @@ runs:
     # El quinto (ADR-0039). Igual que los otros cuatro y con la MISMA credencial: aqui no
     # hay nada que decidir por sistema, y un checkout que se saliera del patron seria el
     # sitio por donde vuelve el defecto que C-20 cerro.
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         repository: hneyra/identidad
         path: identidad

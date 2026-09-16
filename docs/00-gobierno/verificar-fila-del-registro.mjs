@@ -91,11 +91,43 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-/** Lo que hace de un cambio «codigo» a efectos de esta guarda. */
+/** Lo que hace de un cambio «codigo» a efectos de esta guarda.
+ *
+ * ## `.github/` ENTRA, y la decision es de `infrastructure`#201
+ *
+ * Hasta #201 no estaba, y el hueco se midio en `caja`#90: un PR que subia las acciones de los
+ * SEIS flujos de aquel repositorio —o sea, lo que se construye, con que cache, con que
+ * credenciales y que se publica en `ghcr.io`— recibio de esta guarda «no toca codigo de
+ * produccion: la fila no se exige». La fila se escribio igual, por criterio de quien lo hizo,
+ * y eso es exactamente lo que esta guarda existe para no depender: el modo de fallo es
+ * silencioso, y la fila que falta no se distingue de la que nadie tenia que escribir.
+ *
+ * Un flujo de CI **es** configuracion de produccion, y en ESTE repositorio lo es de la forma
+ * mas literal que hay: `.github/workflows/infra.yml` ejecuta `pulumi up` contra `prod`.
+ * Cambiarlo cambia lo que se aplica al cluster, y puede aflojar cualquiera de las barreras sin
+ * dejar rastro — que es el «verde rancio» contra el que esta escrito medio `infra.yml`.
+ *
+ * **Y no es solo `workflows/`.** Medido el 2026-09-16, `.github/` de este arbol tiene exactamente
+ * nueve archivos: cinco flujos, una accion compuesta (`actions/clonar-los-hermanos`) y tres
+ * guiones que los flujos ejecutan (`comprobar-el-tunel.sh`, `el-despliegue-de-stg-en-main.sh`,
+ * `diagnostico-del-namespace.sh`). Los tres ultimos deciden tanto como los flujos —el del tunel
+ * es el que impide que un `ssh -f -N` sin nadie al otro lado pase por tunel abierto—, asi que
+ * entran los tres grupos y no uno. Lo que NO entra es lo que `.github/` podria llegar a tener y
+ * es papeleo: plantillas de issue, `CODEOWNERS`, `FUNDING`. Por eso son tres patrones y no un
+ * `^\.github\/` a secas: el dia que aparezca una plantilla, no se convierte en codigo sola.
+ *
+ * Esto NO obliga a nada a los otros cinco repositorios: este bloque —su comentario y la lista—
+ * es lo unico que `las-seis-copias-de-la-guarda-del-registro.test.ts` deja que difiera entre las
+ * seis copias, asi que cada uno lo aplica en su propio cambio y ninguno se queda roto entretanto.
+ */
 export const RUTAS_DE_CODIGO = [
   /^infra\/(?!README)/,
   /^librerias-backend\/[^/]+\/src\/main\//,
   /^despliegue\//,
+  // Los flujos, la accion compuesta que invocan y los guiones que ejecutan (#201).
+  /^\.github\/workflows\//,
+  /^\.github\/actions\//,
+  /^\.github\/[^/]+\.sh$/,
 ];
 
 /**

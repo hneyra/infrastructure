@@ -119,7 +119,7 @@ jobs:
       # `path: infrastructure` y no la raiz, porque todo este proyecto supone que los seis
       # clones son HERMANOS y `actions/checkout` se niega a escribir fuera del espacio de
       # trabajo: lo que se mueve es el anfitrion, y el espacio pasa a hacer de padre (C-9a).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: infrastructure
 

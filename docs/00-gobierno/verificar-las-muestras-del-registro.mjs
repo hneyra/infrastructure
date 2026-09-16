@@ -173,6 +173,48 @@ const CASOS = [
     anadido: `+${FILA}\n+| La del segundo (#712) | … | … |\n+| La del tercero (#713) | … | … |`,
     esperado: 'verde',
   },
+
+  /* `.github/` entra en `RUTAS_DE_CODIGO` desde `infrastructure`#201, y sus tres patrones se
+     ejercen aqui uno a uno. El hueco lo midio `caja`#90: un PR que subia las acciones de sus
+     seis flujos —lo que se construye, con que credenciales y que se publica— recibio «no toca
+     codigo de produccion: la fila no se exige». En ESTE repositorio la consecuencia es mas
+     directa todavia: `.github/workflows/infra.yml` ejecuta `pulumi up` contra `prod`. */
+  {
+    nombre: 'cierra un issue, toca un flujo de CI y NO deja fila',
+    cuerpo: 'Closes #711.\n\nSube las acciones a las que declaran node24.',
+    archivos: ['.github/workflows/infra.yml'],
+    anadido: '',
+    esperado: 'rojo',
+    dice: ['#711', 'falta la fila'],
+  },
+  {
+    nombre: 'cierra un issue, toca la accion compuesta que los flujos invocan y NO deja fila',
+    cuerpo: 'Closes #711.',
+    archivos: ['.github/actions/clonar-los-hermanos/action.yml'],
+    anadido: '',
+    esperado: 'rojo',
+    dice: ['#711', 'falta la fila'],
+  },
+  {
+    /* Los guiones que los flujos ejecutan deciden tanto como los flujos: `comprobar-el-tunel.sh`
+       es el que impide que un `ssh -f -N` sin nadie al otro lado pase por tunel abierto. */
+    nombre: 'cierra un issue, toca un guion que ejecuta la CI y NO deja fila',
+    cuerpo: 'Closes #711.',
+    archivos: ['.github/comprobar-el-tunel.sh'],
+    anadido: '',
+    esperado: 'rojo',
+    dice: ['#711', 'falta la fila'],
+  },
+  {
+    /* Y el contraste, que es lo que impide leer lo de arriba como «todo `.github/` cuenta»: el
+       papeleo del repositorio no es codigo de produccion, y por eso son tres patrones y no un
+       `^\.github\/` a secas. */
+    nombre: 'cierra un issue y solo toca el papeleo de `.github/`',
+    cuerpo: 'Closes #711.',
+    archivos: ['.github/ISSUE_TEMPLATE/defecto.md', '.github/CODEOWNERS'],
+    anadido: '',
+    esperado: 'verde',
+  },
 ];
 
 /* Y la direccion que faltaba, que es de `rentas`#45: TODO patron de `RUTAS_DE_CODIGO` tiene que
