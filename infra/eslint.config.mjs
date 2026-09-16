@@ -98,4 +98,21 @@ export default tseslint.config(
     files: ["**/*.test.ts"],
     rules: { "no-restricted-syntax": "off" },
   },
+
+  // Los filtros que los guiones de shell canalizan (`… | node observabilidad/x.mjs | …`).
+  // No son parte del programa de Pulumi —no los importa `index.ts` ni los mira `tsc`—, pero
+  // son codigo de este arbol y llevan sus mismas prohibiciones. Sin este bloque ESLint los
+  // linta sin los globales de Node y los senala enteros por `process`, que no es lo que se
+  // quiere decir de ellos.
+  {
+    files: ["**/*.mjs"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: { ...globals.node, ...globals.es2022 },
+    },
+    rules: {
+      "no-restricted-syntax": ["error", ...EN_TODAS_PARTES],
+    },
+  },
 );

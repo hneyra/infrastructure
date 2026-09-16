@@ -26,39 +26,14 @@ cd "$INFRA"
 command -v kubectl >/dev/null 2>&1 || { echo "FALLO: falta kubectl." >&2; exit 1; }
 
 echo "· Aplicando el manifiesto de stg contra el clúster"
+# El filtro es UNO SOLO para este guion y para `verificar-alertas.sh` —hasta #203 la
+# lista vivia copiada en los dos—, y su cabecera dice que se quita y por que cada
+# cosa, incluidos los CINCO espacios de nombres que ADR-0031 anadio y que hasta #203
+# se aplicaban enteros. Lo que sigue a continuacion SI es de aqui.
 yarn --silent manifiestos --ambiente stg \
+    | node observabilidad/lo-que-la-observabilidad-necesita.mjs stg \
     | node -e '
         const entrada = JSON.parse(require("fs").readFileSync(0, "utf8"));
-        const deTraefik = ["IngressRoute", "Middleware", "TLSOption", "HelmChartConfig"];
-        entrada.items = entrada.items.filter((i) => !deTraefik.includes(i.kind));
-
-        // Interfaz, aplicacion, Keycloak (identidad + el Job de realm) y los Job de
-        // migracion/implantacion no le hacen falta a esta comprobacion -los dos
-        // paneles de la aplicacion los sirve el exportador sintetico de mas abajo, y
-        // ningun panel del tablero lee nada de Keycloak-, y el nodo UNICO de `kind`
-        // no tiene CPU para desplegarlos a la vez que postgres y los cinco
-        // componentes de observabilidad. Encontrado en CI dos veces seguidas: con el
-        // manifiesto completo, el scheduler reportaba "Insufficient cpu" para varios
-        // Pods, y bajo esa saturacion hasta Prometheus -que SI llegaba a Ready- dejaba
-        // de contestar peticiones HTTP durante minutos. No es que Prometheus se haya
-        // roto: es que compartir un runner de 2 vCPU con dos Keycloak reintentando su
-        // arranque, dos replicas de interfaz reintentando una imagen que este
-        // repositorio no publica, y el resto del padron completo no deja margen para
-        // que nada responda a tiempo.
-        const pesados = [
-          { kind: "Deployment", prefijo: "kamayuk-stg-interfaz" },
-          { kind: "Service", prefijo: "kamayuk-stg-interfaz" },
-          { kind: "Deployment", prefijo: "kamayuk-stg-identidad" },
-          { kind: "Job", prefijo: "kamayuk-stg-realm-" },
-          { kind: "Job", prefijo: "kamayuk-stg-migracion-" },
-          { kind: "Job", prefijo: "kamayuk-stg-implantacion-" },
-          { kind: "Deployment", prefijo: "kamayuk-stg-aplicacion" },
-          { kind: "CronJob", prefijo: "kamayuk-stg-lote" },
-        ];
-        entrada.items = entrada.items.filter((i) => {
-          const nombre = i.metadata?.name ?? "";
-          return !pesados.some((p) => i.kind === p.kind && nombre.startsWith(p.prefijo));
-        });
 
         // Solo aqui, nunca en Observabilidad.ts: `node_exporter` excluye "overlay" de
         // sus metricas de filesystem por omision, y con motivo -en un VPS real la raiz
