@@ -241,10 +241,21 @@ describe("#196 · la cuenta con la que se mide una interfaz desplegada", () => {
     // `Secret`... Lo que se busca es la ASIGNACION, no la mencion: el nombre de la clave aparece
     // a proposito en el inventario, en el guion y en el runbook.
     const ASIGNA = /(?:clave-de-medicion|KC_CLAVE_DE_MEDICION)\s*[:=]\s*["']?[A-Za-z0-9+/=_.-]{8,}/;
-    const YO = "infra/verificaciones/la-cuenta-de-medicion.test.ts";
+    // Dos exenciones, las dos nombradas y con su motivo dentro de la guarda:
+    //
+    //   - **esta misma guarda**, que escribe el patron para poder buscarlo;
+    //   - **`docs/agent/HISTORY.md`**, que anota el ROJO EXACTO de la rotura con que se demostro
+    //     que esto muerde —`KC_CLAVE_DE_MEDICION=Sup3rS3cret0Deprueba` en `.env.ejemplo`—. Es la
+    //     misma razon por la que `sin-el-nombre-del-monolito` no barre `docs/`: una fila del
+    //     registro ES la medicion que se hizo, y reescribirla la falsifica. Lo que se exime es el
+    //     registro, no `docs/`: un valor escrito en un runbook sigue saliendo rojo.
+    const EXENTOS = new Set([
+      "infra/verificaciones/la-cuenta-de-medicion.test.ts",
+      "docs/agent/HISTORY.md",
+    ]);
     const culpables: string[] = [];
     for (const ruta of versionados) {
-      if (ruta === YO) continue;
+      if (EXENTOS.has(ruta)) continue;
       const absoluta = join(raiz, ruta);
       if (!existsSync(absoluta)) continue;
       let texto: string;
