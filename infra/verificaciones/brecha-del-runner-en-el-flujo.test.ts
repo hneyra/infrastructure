@@ -4,17 +4,22 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { load } from "js-yaml";
 import { describe, expect, it } from "vitest";
+import { auditarCapacidad } from "../capacidad";
 import { raizDelRepositorio } from "../componentes/fuentes";
+import { manifiestosDelAmbiente } from "../herramientas/emitir-manifiestos";
+import { invariantesDe } from "./stacks";
 
 /**
  * #203 — el trabajo `capacidad` no comprueba el caso A con la brecha del runner declarada,
  * **y lo dice**.
  *
  * `verificar-contra-el-planificador.sh` necesita un nodo de `kind` con CPU para el stack
- * ENTERO de `prod`, y lo tuvo hasta el 2026-09-14: la corrida `34817399680` midio
- * **4 CPU / 16373452Ki**; la `34823544429`, hora y cuarto despues, **2 CPU / 8128880Ki**. El
- * unico commit entre las dos es un «stg despliega normativa@0f258a2c0668». **No cambio el
- * repositorio: cambio el runner.**
+ * ENTERO de `prod`, y **el tamano de ese nodo no esta garantizado**. Medido, corrida a
+ * corrida: `34817399680` (2026-09-14 07:23Z) 4 CPU y los tres trabajos verdes;
+ * `34823544429` (08:36Z) 2 CPU y los tres rojos, con un unico commit entre medias que
+ * cambia una linea de `Pulumi.stg.yaml`; `35039858531` (09-16 00:28Z) 2 CPU;
+ * `35101337027` (09-16 13:23Z) **4 otra vez**. No cambia el repositorio: cambia el runner,
+ * y cambia en las dos direcciones.
  *
  * Y este guion no se puede encoger para que quepa — lo que mide es el stack entero contra un
  * planificador de verdad, asi que aplicar menos es pasar en verde habiendo dejado de medir—.
@@ -24,10 +29,19 @@ import { raizDelRepositorio } from "../componentes/fuentes";
  *
  * Con un `kubectl` y un `yarn` de mentira delante en el `PATH`, que es lo unico que hace
  * falta para que este guion decida como decide en CI. Un `grep` sobre el fuente afirmaria lo
- * que el guion dice; esto comprueba lo que hace, **en las cuatro esquinas**: con brecha y sin
- * sitio, sin brecha y sin sitio, con brecha y CON sitio —la direccion que impide que la marca
- * se quede puesta—, y sin brecha y con sitio, que es la que impide que esto rechace a todo el
- * mundo.
+ * que el guion dice; esto comprueba lo que hace, **en las cuatro esquinas**.
+ *
+ * <h2>Y la reciprocidad NO mira el nodo de esta corrida</h2>
+ *
+ * La primera version del guion salia ROJA cuando el nodo daba y la brecha estaba puesta,
+ * pidiendo que se retirara. **Se midio en la primera corrida del PR y estaba mal**: le toco
+ * un runner de 4 CPU, el veredicto fue «cabe» y el trabajo salio rojo — o sea, rojo justo en
+ * la corrida que SI podia medir. Con un runner que flota, esa reciprocidad convierte la
+ * brecha en un interruptor que se dispara al azar.
+ *
+ * La correcta mira el nodo **MINIMO** que el runner puede dar: mientras `prod` no quepa en
+ * 2 CPU, la brecha es real. El dia que quepa —porque baje la demanda o porque el runner
+ * minimo crezca— esto se pone rojo, en un PR y sin clúster.
  */
 
 const GUION = join(
@@ -39,6 +53,14 @@ const FLUJO = join(raizDelRepositorio(), ".github/workflows/infra.yml");
 
 /** El formato que el guion exige: `<issue>@<AAAA-MM-DD>`. */
 const FORMATO = /^[0-9]+@[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+
+/**
+ * El nodo MAS PEQUENO que el runner ha dado, medido: `2 CPU / 8128880Ki` asignables, de
+ * los que el plano de control de `kind` ya pide **950m** (corrida `35018105559`). El
+ * guion le pasa a `capacidad.ts` lo que queda LIBRE en CPU y lo asignable entero en
+ * memoria, asi que aqui se hace igual para que las dos cuentas sean la misma.
+ */
+const NODO_MINIMO_DEL_RUNNER = { cpuAsignable: "1050m", memoriaAsignable: "8128880Ki" };
 
 interface Corrida {
   codigo: number;
@@ -131,18 +153,26 @@ describe("#203 · la brecha del runner, ejecutada", () => {
     expect(salida).toContain("No se da por bueno en silencio");
   });
 
-  /** La direccion que impide que la marca se quede puesta. Es la reciprocidad de #25. */
-  it("CON sitio y con la brecha declarada: rojo pidiendo que se retire", () => {
+  /**
+   * **La brecha no silencia lo que SI se puede medir**, y esta es la esquina que se
+   * aprendio midiendo: la primera version salia roja aqui, y le toco un runner de 4 CPU
+   * en la primera corrida del PR.
+   */
+  it("CON sitio y con la brecha declarada: la comprueba igual, como si no hubiera brecha", () => {
     const { codigo, salida } = correr({
       cpu: "8",
       veredicto: "cabe",
       brecha: "203@2026-09-16",
     });
 
-    expect(codigo, `el guion salio con ${String(codigo)}:\n${salida}`).toBe(1);
-    expect(salida).toContain("::error::");
-    expect(salida, "no dice que hay que retirar ni de donde").toContain("BRECHA_DEL_RUNNER");
-    expect(salida).toContain(".github/workflows/infra.yml");
+    expect(
+      salida,
+      "con nodo de sobra, la brecha declarada se salto la comprobacion: un interruptor",
+    ).toContain("Aplicando el stack");
+    expect(salida, "la brecha no puede hacer que un nodo con sitio salga rojo").not.toContain(
+      "::error::",
+    );
+    expect(codigo, `el guion salio con ${String(codigo)}:\n${salida}`).not.toBe(0);
   });
 
   /** Y la que impide que esto rechace a todo el mundo: con sitio y sin brecha, sigue. */
@@ -199,6 +229,29 @@ describe("#203 · lo que el flujo declara", () => {
       Number.isNaN(Date.parse(fecha)),
       `la fecha de la brecha, «${fecha}», no es una fecha`,
     ).toBe(false);
+  });
+
+  /**
+   * **Y que la brecha siga siendo real**, que es lo que impide que se quede puesta
+   * tapando lo siguiente. Es la reciprocidad de #25, medida contra el nodo **minimo**
+   * que el runner puede dar y no contra el que le toque a una corrida: `prod` tiene que
+   * SEGUIR sin caber en 2 CPU. El dia que quepa —menos demanda, o un runner minimo
+   * mayor—, esto sale rojo aqui, en un PR y sin clúster.
+   */
+  it("mientras la brecha este declarada, «prod» sigue sin caber en el runner minimo", () => {
+    const declarada = pasoDelPlanificador().env?.["BRECHA_DEL_RUNNER"];
+    if (declarada === undefined) return;
+
+    const problemas = auditarCapacidad(
+      manifiestosDelAmbiente(invariantesDe("prod")),
+      NODO_MINIMO_DEL_RUNNER,
+    );
+    expect(
+      problemas,
+      "«prod» ya cabe en el nodo minimo que el runner da (2 CPU): la brecha sobra. Retira " +
+        `«BRECHA_DEL_RUNNER: ${declarada}» del trabajo «capacidad» de .github/workflows/` +
+        `infra.yml y cierra el issue #${declarada.split("@")[0] ?? ""}.`,
+    ).not.toEqual([]);
   });
 
   /** Y que el nombre que el flujo teclea es el que el guion lee. Una letra de mas y no hay brecha. */

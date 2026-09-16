@@ -76,21 +76,35 @@ echo "   veredicto: ${VEREDICTO}"
 # verde habiendo dejado de medir — la direccion peligrosa del issue #252, otra vez.
 # Su unica exigencia es un nodo con CPU.
 #
-# Y esa CPU no la decide este repositorio. Medido: hasta la corrida `34817399680`
-# (2026-09-14 07:23Z) el nodo de `kind` repartia **4 CPU / 16373452Ki**; desde la
-# `34823544429` (08:36Z) reparte **2 CPU / 8128880Ki**, y el unico commit entre las
-# dos es un «stg despliega normativa@0f258a2c0668», que cambia una linea de
-# `Pulumi.stg.yaml`. O sea: **no cambio el repositorio, cambio el runner**.
+# Y esa CPU **no es estable, y eso es el hallazgo**. Medido, corrida a corrida:
 #
-# Un trabajo que falla por una condicion conocida, declarada y que nadie puede
-# arreglar desde un PR deja `main` en rojo permanente, y un `main` siempre rojo deja
-# de avisar de lo siguiente que se rompa (#25). Asi que mientras la brecha este
-# declarada en `BRECHA_DEL_RUNNER` —«<issue>@<AAAA-MM-DD>», que la pone el flujo—
-# este guion **no lo comprueba y lo dice**: «no se hace» NO es «esta bien».
+#   34817399680  2026-09-14 07:23Z   4 CPU / 16373452Ki   los tres trabajos verdes
+#   34823544429  2026-09-14 08:36Z   2 CPU /  8128880Ki   los tres rojos
+#   35039858531  2026-09-16 00:28Z   2 CPU /  8127868Ki   rojos
+#   35101337027  2026-09-16 13:23Z   4 CPU / 16373452Ki   cabe otra vez
 #
-# Y no puede quedarse puesta: en cuanto el nodo tenga CPU para el stack, el veredicto
-# vuelve a ser «cabe» y este guion **se pone ROJO** pidiendo que se retire. Es la
-# misma reciprocidad con la que `capacidad.test.ts` sostiene `nodeCapacityGapIssue`.
+# El unico commit entre las dos primeras es un «stg despliega normativa@0f258a2c0668»,
+# una linea de `Pulumi.stg.yaml`. **No cambia el repositorio: cambia el runner**, y
+# cambia en las dos direcciones. Asi que esto no es un nodo que encogio y hay que
+# esperar a que crezca: es un tamano que no esta garantizado.
+#
+# Un trabajo que sale rojo segun el runner que le toque no senala nada, y entrena a
+# mirar sus rojos como ruido — que es lo que este issue vino a cerrar. Asi que con la
+# brecha declarada en `BRECHA_DEL_RUNNER` —«<issue>@<AAAA-MM-DD>», que pone `infra.yml`—
+# el guion, **cuando el nodo no da**, no lo comprueba y lo dice: «no se hace» NO es
+# «esta bien». Y cuando el nodo SI da, lo comprueba entero, brecha o no: la brecha
+# nunca silencia una comprobacion que se puede hacer.
+#
+# ── Y LO QUE IMPIDE QUE LA BRECHA SE QUEDE PUESTA NO ESTA AQUI ──────────────────
+#
+# La primera version de este bloque salia ROJA cuando el nodo daba y la brecha estaba
+# puesta, «retirala». Se midio en la primera corrida del PR y estaba mal: con el runner
+# flotando, eso pone el trabajo en rojo justo en las corridas que SI pueden medir.
+#
+# La reciprocidad correcta no mira el nodo de ESTA corrida, sino el nodo MINIMO que el
+# runner puede dar: mientras `prod` no quepa en 2 CPU, la brecha es real. El dia que
+# quepa —porque baje la demanda o porque el runner minimo crezca—, la brecha sobra, y
+# eso lo dice `brecha-del-runner-en-el-flujo.test.ts` en un PR, sin clúster.
 BRECHA="${BRECHA_DEL_RUNNER:-}"
 # `[[ =~ ]]` y no `echo … | grep -q`: bajo `pipefail`, un consumidor que sale pronto
 # cierra la tuberia y el productor muere con SIGPIPE, y eso ya costo dos corridas rojas
@@ -99,14 +113,6 @@ if [ -n "$BRECHA" ] && [[ ! "$BRECHA" =~ ^[0-9]+@[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]];
     echo "::error::«BRECHA_DEL_RUNNER» vale «${BRECHA}» y tiene que ser «<issue>@<AAAA-MM-DD>»." \
          "Una brecha sin issue no se sigue, y una sin fecha no envejece: las dos se quedan" \
          "puestas para siempre, que es lo que este mecanismo existe para impedir."
-    exit 1
-fi
-
-if [ "$VEREDICTO" = "cabe" ] && [ -n "$BRECHA" ]; then
-    echo "::error::El nodo de kind reparte ${CPU} CPU y a «${AMBIENTE}» le quedan ${LIBRE_M}m," \
-         "que YA le bastan: el caso A se puede comprobar otra vez. Retira" \
-         "«BRECHA_DEL_RUNNER: ${BRECHA}» del trabajo «capacidad» de .github/workflows/infra.yml" \
-         "y cierra el issue #${BRECHA%@*}."
     exit 1
 fi
 
@@ -120,12 +126,14 @@ if [ "$VEREDICTO" != "cabe" ] && [ -n "$BRECHA" ]; then
     echo "espacio de nombres y las dos cifras que no alcanzan, antes de dar su veredicto."
     echo
     echo "Las salidas son dos, y ninguna se decide aqui:"
-    echo "  1. Un runner con mas CPU. Es lo que este trabajo TENIA hasta el 2026-09-14."
+    echo "  1. Un runner con CPU garantizada. Este trabajo la tuvo, y la vuelve a tener"
+    echo "     a ratos: el tamano del nodo flota entre 2 y 4 CPU sin que nada de aqui"
+    echo "     lo pida. Fijarlo es un runner mayor, y eso es dinero."
     echo "  2. Menos demanda en el stack, que es cambiar lo que se despliega en prod"
     echo "     para poder medirlo en CI — o sea, mover el sujeto de la medida."
     echo
-    echo "El dia que el nodo tenga CPU, este guion se pone ROJO pidiendo que se retire la"
-    echo "brecha: no hay que acordarse."
+    echo "En las corridas que SI tengan nodo, este mismo trabajo comprueba los dos casos"
+    echo "enteros: la brecha no silencia lo que se puede medir."
     exit 0
 fi
 

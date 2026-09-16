@@ -579,23 +579,31 @@ jobs:
       # ── LA BRECHA DEL RUNNER, DECLARADA (#203) ─────────────────────────────────
       #
       # Este trabajo necesita un nodo de `kind` con CPU para el stack ENTERO de `prod`
-      # —pico 2 510m—, y lo tuvo hasta el 2026-09-14: la corrida `34817399680` midió
-      # **4 CPU / 16373452Ki**. Desde la `34823544429`, hora y cuarto después, mide
-      # **2 CPU / 8128880Ki**, de los que el plano de control ya pide 950m; quedan
-      # 1 050m, y lo PERMANENTE de `prod` solo ya son 1 690m. El único commit entre
-      # las dos corridas es un «stg despliega normativa@0f258a2c0668», una línea de
-      # `Pulumi.stg.yaml`: **no cambió el repositorio, cambió el runner**.
+      # —pico 2 510m—, y **el tamaño de ese nodo no está garantizado**. Medido, corrida
+      # a corrida:
+      #
+      #   34817399680  2026-09-14 07:23Z   4 CPU / 16373452Ki   los tres trabajos verdes
+      #   34823544429  2026-09-14 08:36Z   2 CPU /  8128880Ki   los tres rojos
+      #   35039858531  2026-09-16 00:28Z   2 CPU /  8127868Ki   rojos
+      #   35101337027  2026-09-16 13:23Z   4 CPU / 16373452Ki   cabe otra vez
+      #
+      # El único commit entre las dos primeras es un «stg despliega
+      # normativa@0f258a2c0668», una línea de `Pulumi.stg.yaml`. **No cambia el
+      # repositorio: cambia el runner**, y cambia en las dos direcciones. Con 2 CPU
+      # quedan 1 050m libres, y lo PERMANENTE de `prod` solo ya son 1 690m.
       #
       # Lo que este guion mide es el stack entero contra un planificador de verdad, o
       # sea que encogerlo para que quepa es dejar de medir en verde — la dirección
-      # peligrosa del issue #252 otra vez. Y un runner mayor es dinero y no se decide
-      # en un PR. Así que se declara la brecha y **se dice que no se hace**, que es lo
-      # que #25 hace con `nodeCapacityGapIssue`: «no se hace» NO es «está bien».
+      # peligrosa del issue #252 otra vez. Y fijar el runner es dinero y no se decide
+      # en un PR. Así que se declara la brecha y **se dice que no se hace** cuando el
+      # nodo no da, que es lo que #25 hace con `nodeCapacityGapIssue`: «no se hace» NO
+      # es «está bien». Cuando el nodo SÍ da, se comprueba entero: la brecha nunca
+      # silencia una comprobación que se puede hacer.
       #
       # `<issue>@<fecha>`, y el guion exige ese formato: una brecha sin issue no se
-      # sigue y una sin fecha no envejece. Y no puede quedarse puesta de más — en
-      # cuanto el nodo vuelva a tener CPU, el veredicto vuelve a ser «cabe» y el guion
-      # se pone ROJO pidiendo que se retire esta línea.
+      # sigue y una sin fecha no envejece. Lo que impide que se quede puesta es
+      # `brecha-del-runner-en-el-flujo.test.ts`, que exige que `prod` SIGA sin caber en
+      # el nodo mínimo que el runner da — y sale rojo en un PR el día que quepa.
       - name: verificar-contra-el-planificador.sh
         env:
           BRECHA_DEL_RUNNER: '203@2026-09-16'
