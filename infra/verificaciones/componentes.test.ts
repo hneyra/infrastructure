@@ -696,6 +696,7 @@ describe("#151 · identidad", () => {
         ubigeo: invariantesDe(AMBIENTE).implantacion.ubigeo,
         administrador: invariantesDe(AMBIENTE).implantacion.administrador,
         cuentasDeOperacionDePrueba: invariantesDe(AMBIENTE).identity.seedTestUsers,
+        cuentaDeMedicion: invariantesDe(AMBIENTE).identity.seedTestUsers,
       }),
       "Job",
       "realm",
@@ -728,6 +729,7 @@ describe("#151 · identidad", () => {
         ubigeo: invariantesDe(AMBIENTE).implantacion.ubigeo,
         administrador: invariantesDe(AMBIENTE).implantacion.administrador,
         cuentasDeOperacionDePrueba: invariantesDe(AMBIENTE).identity.seedTestUsers,
+        cuentaDeMedicion: invariantesDe(AMBIENTE).identity.seedTestUsers,
       }),
       "Job",
       "realm",
@@ -843,6 +845,7 @@ describe("ADR-0012 · alta declarativa de usuarios", () => {
         ubigeo: "200101",
         administrador: "jperez",
         cuentasDeOperacionDePrueba: inv.identity.seedTestUsers,
+        cuentaDeMedicion: inv.identity.seedTestUsers,
       }),
       "Job",
       "realm",
@@ -1179,6 +1182,7 @@ describe("#415 · enrolamiento del ciudadano", () => {
       ubigeo: "200101",
       administrador: "jperez",
       cuentasDeOperacionDePrueba: inv.identity.seedTestUsers,
+      cuentaDeMedicion: inv.identity.seedTestUsers,
     });
     const cm = buscar(conEnrolado, "ConfigMap", "realm") as { data: Record<string, string> };
     const job = buscar(conEnrolado, "Job", "realm");

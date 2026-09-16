@@ -105,6 +105,9 @@
 #                             queda sin clave; con ella, la recibe TEMPORAL (#77)
 #   KC_CLAVE_INICIAL          clave inicial cuando no hay relay (#77). La pone el `Job` del
 #                             realm desde `clave-del-administrador`
+#   KC_CLAVE_DE_MEDICION      clave PERMANENTE de la cuenta de medicion (#196). La pone el `Job`
+#                             del realm desde `clave-de-medicion`, y solo donde se siembran
+#                             usuarios de prueba. Sin ella, una fila `MEDICION` falla diciendolo
 set -euo pipefail
 
 # El compose de la plataforma NO se llama como Compose espera (#74). `docker compose` busca
@@ -231,7 +234,12 @@ fi
 # Formato del TSV, una linea por fila, campos separados por tabulador:
 #   GRUPO     <nombre del grupo>   <municipalidadId>
 #   USUARIO   <cuenta> <nombre> <apellido> <correo> <municipalidadId> <grupo>
+#   MEDICION  <cuenta> <nombre> <apellido> <correo> <municipalidadId> <grupo> <clave>
 #   CIUDADANO <cuenta> <nombre> <apellido> <tipoDocumento> <numeroDocumento> <correo>
+#
+# `MEDICION` (#196) es un funcionario en todo menos en la entrega de la clave: nace SIN
+# `UPDATE_PASSWORD` y su clave es PERMANENTE. `<clave>` es el NOMBRE de la clave del inventario
+# —`clave-de-medicion`—, nunca su valor: el valor llega por `KC_CLAVE_DE_MEDICION`.
 DIRECTORIO="${KC_DIRECTORIO:-/realm}"
 LIMPIAR_TSV=0
 if [ -f "$DIRECTORIO/$ARCHIVO_TSV" ]; then
@@ -891,7 +899,11 @@ if [ "$CUAL" = operadores ]; then
 fi
 
 NUEVOS=""
-while IFS=$'\t' read -r tipo c1 c2 c3 c4 c5 c6; do
+# SIETE campos y no seis: la fila `MEDICION` lleva uno mas —el NOMBRE de la clave del inventario,
+# nunca su valor—. Y hay que leerlo como campo propio: `read` mete el resto de la linea en la
+# ULTIMA variable, asi que sin `c7` el grupo de esa fila seria «<grupo><TAB><clave>» y la cuenta
+# se afiliaria a un grupo que no existe. Las demas filas dejan `c7` vacio.
+while IFS=$'\t' read -r tipo c1 c2 c3 c4 c5 c6 c7; do
     [ -n "${tipo:-}" ] || continue
     case "$tipo" in
         GRUPO)
@@ -930,6 +942,48 @@ while IFS=$'\t' read -r tipo c1 c2 c3 c4 c5 c6; do
                     -s "attributes.municipalidad_id=$mid" >/dev/null
                 echo "Usuario «$cuenta» ya existia; atributo, correo y nombre al dia. Clave intacta."
             fi
+            kc update "users/$uid/groups/$gid" -r "$REALM" -n >/dev/null
+            ;;
+        MEDICION)
+            # La cuenta con la que se MIDE una interfaz desplegada (#196). Es un funcionario en
+            # todo menos en la entrega de la clave, y esas tres diferencias son a proposito:
+            #
+            #   - nace SIN `UPDATE_PASSWORD`, porque un arnes no puede cambiar la clave en una
+            #     pantalla;
+            #   - su clave es PERMANENTE y sale del inventario —`$c7` es el NOMBRE de la clave, y
+            #     el valor llega por `KC_CLAVE_DE_MEDICION`—;
+            #   - y se vuelve a fijar en CADA corrida, para que rotarla en el `Secret` la siga.
+            #
+            # Es el mismo trato que `OPERADOR_DE_PRUEBA` en el realm de operacion (#149), y por lo
+            # mismo: sin una clave permanente el `grant_type=password` contesta «Invalid user
+            # credentials», que se lee como una clave mal escrita.
+            cuenta="$c1"; nombre="$c2"; apellido="$c3"; correo="$c4"; mid="$c5"; grupo="$c6"
+            clave="${KC_CLAVE_DE_MEDICION:-}"
+            if [ -z "$clave" ]; then
+                echo "FALLO: la fila MEDICION declara la clave «$c7» del inventario y" >&2
+                echo "KC_CLAVE_DE_MEDICION llego vacia. Sin ella la cuenta «$cuenta» existiria y" >&2
+                echo "nadie sabria con que entra: la medicion de una interfaz desplegada no" >&2
+                echo "tendria con que recorrer el login (infrastructure#196)." >&2
+                exit 1
+            fi
+            gid=$(buscar_grupo "$grupo")
+            [ -n "$gid" ] || { echo "FALLO: el grupo «$grupo» no existe al afiliar a «$cuenta»." >&2; exit 1; }
+            uid=$(buscar_usuario "$cuenta")
+            if [ -z "$uid" ]; then
+                kc create users -r "$REALM" \
+                    -s "username=$cuenta" -s enabled=true -s emailVerified=true \
+                    -s "email=$correo" -s "firstName=$nombre" -s "lastName=$apellido" \
+                    -s "attributes.municipalidad_id=$mid" >/dev/null
+                uid=$(buscar_usuario "$cuenta")
+                [ -n "$uid" ] || { echo "FALLO: «$cuenta» no aparece despues de crearlo." >&2; exit 1; }
+                echo "Cuenta de medicion «$cuenta» creada (municipalidad $mid), sin UPDATE_PASSWORD."
+            else
+                kc update "users/$uid" -r "$REALM" \
+                    -s "email=$correo" -s "firstName=$nombre" -s "lastName=$apellido" \
+                    -s "attributes.municipalidad_id=$mid" >/dev/null
+                echo "Cuenta de medicion «$cuenta» ya existia; atributo, correo y nombre al dia."
+            fi
+            kc set-password -r "$REALM" --username "$cuenta" --new-password "$clave" >/dev/null
             kc update "users/$uid/groups/$gid" -r "$REALM" -n >/dev/null
             ;;
         CIUDADANO)
@@ -1000,10 +1054,28 @@ errores=0
 usuarios=0
 grupos=0
 ciudadanos=0
-while IFS=$'\t' read -r tipo c1 c2 c3 c4 c5 c6; do
+while IFS=$'\t' read -r tipo c1 c2 c3 c4 c5 c6 c7; do
     case "${tipo:-}" in
         GRUPO) grupos=$((grupos + 1)); continue ;;
         USUARIO) : ;;
+        MEDICION)
+            # Se comprueba como un funcionario —existe, `enabled`, su atributo y su grupo— y
+            # ademas que NO le quede `UPDATE_PASSWORD` pendiente. Esa es la unica de las cuatro
+            # que no se puede leer de la lista de arriba, y es la que decide si la cuenta sirve:
+            # con la accion pendiente Keycloak contesta `invalid_grant` a `grant_type=password`
+            # y la cuenta existe, esta habilitada, tiene su grupo y no abre nada.
+            uid=$(buscar_usuario "$c1")
+            detalle=$(kc get "users/$uid" -r "$REALM" 2>/dev/null || true)
+            case "${detalle//[[:space:]]/}" in
+                *'"UPDATE_PASSWORD"'*)
+                    echo "FALLO: la cuenta de medicion «$c1» tiene UPDATE_PASSWORD pendiente." >&2
+                    echo "  Con esa accion pendiente su clave permanente no sirve: el" >&2
+                    echo "  «grant_type=password» contesta «Invalid user credentials», que se lee" >&2
+                    echo "  como una clave mal escrita (infrastructure#196)." >&2
+                    errores=1
+                    ;;
+            esac
+            ;;
         CIUDADANO)
             ciudadanos=$((ciudadanos + 1))
             cuenta="$c1"; tipoDoc="$c4"; numeroDoc="$c5"

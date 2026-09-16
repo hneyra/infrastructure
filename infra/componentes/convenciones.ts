@@ -186,6 +186,25 @@ export const CLAVES = {
    */
   operadorDePruebaLector: "clave-operador-de-prueba-lector",
   operadorDePruebaSinRol: "clave-operador-de-prueba-sin-rol",
+  /**
+   * Clave PERMANENTE de la cuenta con la que se mide una interfaz desplegada (#196), solo donde
+   * se siembran usuarios de prueba.
+   *
+   * Vive en el `Secret` del EMISOR —`kamayuk-<amb>-identidad`, el mismo de
+   * `clave-del-administrador`— y no en uno propio, por lo mismo que la del cliente de Grafana vive
+   * en el de Grafana: el unico que la fija es el `Job` que reconcilia el realm, que corre en el
+   * namespace de la plataforma y ya monta ese `Secret`. Un `Secret` nuevo para una sola clave seria
+   * uno mas que rotar y uno mas que olvidar.
+   *
+   * **PERMANENTE, y ahi esta la diferencia con `administradorDelRealm`.** Aquella se entrega
+   * TEMPORAL a proposito: Keycloak obliga a cambiarla al entrar, asi que no sobrevive al primer
+   * acceso. Esta tiene que servir para `grant_type=password` en cada medicion, y una clave temporal
+   * ahi contesta `invalid_grant` / «Invalid user credentials» — que se lee como una clave mal
+   * escrita y es «Keycloak exige cambiarla al entrar». Es el hallazgo que `preparar-identidades.sh`
+   * ya documenta para el paso 2 del compose, y por eso ese paso usa `crear-usuario.sh` SIN
+   * `--reset`.
+   */
+  cuentaDeMedicion: "clave-de-medicion",
   /** Clave de `rol_carga_parametros` (issue #387). */
   carga: "clave-carga",
   /** Clave de `rol_ingestor_catastro` (P5C, C-7 §6). */
