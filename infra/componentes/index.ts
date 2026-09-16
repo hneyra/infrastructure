@@ -92,6 +92,9 @@ export function construirManifiestos(s: Invariants): Manifiesto[] {
       // Las dos cuentas con que se demuestra el login de Grafana sin navegador (#149): donde se
       // siembran usuarios de prueba, y en ningun otro sitio.
       cuentasDeOperacionDePrueba: s.identity.seedTestUsers,
+      // Y la cuenta con la que se mide una interfaz desplegada con un login de verdad (#196):
+      // donde se siembran usuarios de prueba, y en ningun otro sitio.
+      cuentaDeMedicion: s.identity.seedTestUsers,
     }),
     ...manifiestosDeIngreso({
       environment,

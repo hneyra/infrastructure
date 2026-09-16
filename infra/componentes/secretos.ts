@@ -14,7 +14,7 @@ import {
 import { namespaceName, type Environment, type Invariants } from "../config";
 import { SISTEMAS } from "../descriptor/sistemas";
 import { municipalidadesJson } from "./fuentes";
-import { CUENTAS_DE_OPERACION_DE_PRUEBA } from "./Identidad";
+import { CUENTA_DE_MEDICION, CUENTAS_DE_OPERACION_DE_PRUEBA } from "./Identidad";
 import { entornoDelAmbiente } from "../herramientas/emitir-manifiestos";
 
 /**
@@ -542,7 +542,36 @@ export function inventarioDelAmbiente(invariantes: Invariants): EntradaDeSecreto
       )
     : [];
 
-  return [...plataforma, ...deOperacionDePrueba, ...deLosSistemas];
+  // La clave PERMANENTE de la cuenta con la que se mide una interfaz desplegada (#196), SOLO donde
+  // se siembran usuarios de prueba. Va aqui y no en `inventarioDeSecretos` por lo mismo que las dos
+  // de arriba: depende de esa bandera del stack.
+  //
+  // **DONDE VIVE, dicho en el inventario y no en un runbook**: en el `Secret`
+  // `kamayuk-<amb>-identidad` del namespace de la plataforma, el mismo que ya guarda la clave del
+  // administrador de Keycloak y la inicial del administrador del realm. La GENERA
+  // `secretos/bootstrap-secretos.sh` —nunca `pulumi up` (ADR-0011 §3)—, la FIJA el `Job` que
+  // reconcilia el realm, y quien la necesita la lee de ahi con el `KUBECONFIG` del ambiente, que
+  // vive en el *environment* `stg` de GitHub Actions. El procedimiento exacto esta en
+  // `docs/B0-operacion/runbooks/medir-una-interfaz-con-login-real.md`.
+  const deMedicion: EntradaDeSecreto[] = invariantes.identity.seedTestUsers
+    ? [
+        {
+          rol: "cuenta-de-medicion",
+          namespace: namespaceName(invariantes.environment),
+          secreto: nombres.identidad,
+          clave: CLAVES.cuentaDeMedicion,
+          consumidor:
+            `La cuenta «${CUENTA_DE_MEDICION}» del realm de funcionarios: el Job del realm se la ` +
+            "fija PERMANENTE en cada corrida, y con ella se mide una interfaz desplegada con un " +
+            "login de verdad (#196). Su fila de `usuario` la crea la implantacion de `identidad`",
+          // Rotarla es volver a correr el Job del realm, que la vuelve a fijar. Semestral como las
+          // dos de operacion de prueba: solo existe donde no hay padron real detras.
+          periodicidad: "semestral",
+        },
+      ]
+    : [];
+
+  return [...plataforma, ...deOperacionDePrueba, ...deMedicion, ...deLosSistemas];
 }
 
 /**

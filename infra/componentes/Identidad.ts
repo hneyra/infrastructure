@@ -115,6 +115,12 @@ export interface IdentidadArgs {
    * verificacion: dos cuentas con clave permanente son una puerta que `prod` no necesita.
    */
   cuentasDeOperacionDePrueba: boolean;
+  /**
+   * Sembrar en el realm de funcionarios la cuenta con la que se mide una interfaz desplegada con
+   * un login de verdad (#196). Solo donde se siembran usuarios de prueba, por lo mismo que el
+   * cliente de verificacion: una cuenta con clave permanente es una puerta que `prod` no necesita.
+   */
+  cuentaDeMedicion: boolean;
 }
 
 /**
@@ -132,6 +138,31 @@ export const CUENTAS_DE_OPERACION_DE_PRUEBA: readonly {
   { cuenta: "operador-de-prueba-lector", rol: "lector", clave: CLAVES.operadorDePruebaLector },
   { cuenta: "operador-de-prueba-sin-rol", rol: undefined, clave: CLAVES.operadorDePruebaSinRol },
 ];
+
+/**
+ * La cuenta con la que se mide una interfaz desplegada **con un login de verdad** (#196).
+ *
+ * ## Que cierra
+ *
+ * Medido el 2026-09-16 contra `stg`: la interfaz de `caja` contesta 200, su `configuracion.js`
+ * monta el emisor `…/keycloak/realms/kamayuk` con `kamayuk-backoffice`, el emisor contesta su
+ * `.well-known`, y `GET /caja/api/v1/seguridad/sesion` contesta **401** — que es lo correcto sin
+ * token. Para pasar de ahi hace falta una cuenta con clave en el realm, y no habia ninguna
+ * disponible fuera del clúster.
+ *
+ * ## Solo donde se siembran usuarios de prueba
+ *
+ * La misma reparticion que {@link CLIENTE_DE_VERIFICACION} y que
+ * {@link CUENTAS_DE_OPERACION_DE_PRUEBA}: una cuenta con clave PERMANENTE es una puerta que `prod`
+ * no necesita (INF-03 §4). **Su fila en la copia de la autorizacion, en cambio, la crea la
+ * implantacion de `identidad` en los dos ambientes** (`identidad`#49), y eso no la abre: quien
+ * decide si alguien puede autenticarse es el emisor, y el emisor es esto.
+ *
+ * El nombre tiene que ser el mismo `preferred_username` que da de alta
+ * `ImplantarMunicipalidad.CUENTA_DE_MEDICION` —es lo unico que une la cuenta con su fila
+ * (ADR-0005)—, y lo ata `verificaciones/la-cuenta-de-medicion.test.ts` contra el clon hermano.
+ */
+export const CUENTA_DE_MEDICION = "medicion-de-interfaces";
 
 /** El cliente que existe solo para que CI consiga un token sin navegador. */
 export const CLIENTE_DE_VERIFICACION = "kamayuk-verificacion";
@@ -929,6 +960,11 @@ export function documentosDeIdentidades(args: {
   ciudadanos?: { ubigeo: string; contenido: string }[];
   ubigeo: string;
   administrador: string;
+  /**
+   * Sembrar la cuenta de medicion (#196). Donde se siembran usuarios de prueba, y en ningun otro
+   * sitio: ver {@link CUENTA_DE_MEDICION}.
+   */
+  cuentaDeMedicion?: boolean;
 }): DocumentosDeIdentidades {
   const fuente = args.municipalidades.find((m) => m.ubigeo === args.ubigeo);
   if (fuente === undefined) {
@@ -993,6 +1029,28 @@ export function documentosDeIdentidades(args: {
       ["USUARIO", u.cuenta, u.nombre, u.apellido, u.correo, String(m.municipalidadId), m.grupo].join(
         "\t",
       ),
+    );
+  }
+
+  // La cuenta de medicion (#196), en el MISMO TSV y con el mismo grupo y el mismo
+  // `municipalidad_id` que los funcionarios: lo que cambia es la ENTREGA de la clave —permanente,
+  // del `Secret`, y sin `UPDATE_PASSWORD`—, y por eso es un tipo de fila propio y no una entrada
+  // mas de `usuarios[]` del archivo versionado. Ahi no puede ir: ese archivo se aplica en los DOS
+  // ambientes y no tiene donde decir «esta lleva clave», y declararla como funcionario la dejaria
+  // con `UPDATE_PASSWORD` pendiente — o sea sin poder pedir un token por `grant_type=password`,
+  // que es lo unico que un arnes puede usar (`preparar-identidades.sh`, paso 2).
+  if (args.cuentaDeMedicion === true) {
+    filas.push(
+      [
+        "MEDICION",
+        CUENTA_DE_MEDICION,
+        "Medicion",
+        "De interfaces",
+        `${CUENTA_DE_MEDICION}@example.pe`,
+        String(m.municipalidadId),
+        m.grupo,
+        CLAVES.cuentaDeMedicion,
+      ].join("\t"),
     );
   }
 
@@ -1249,6 +1307,7 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
     administrador,
     recursos,
     cuentasDeOperacionDePrueba,
+    cuentaDeMedicion,
   } = args;
   const nombre = servicioDeIdentidad(environment);
   const nombreDelCorreo = resourceName(environment, "correo");
@@ -1281,6 +1340,10 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
     ciudadanos: ciudadanosJson(),
     ubigeo,
     administrador,
+    // La cuenta con la que se mide una interfaz desplegada (#196). Va en el MISMO TSV que los
+    // funcionarios: su realm es el suyo y su grupo es el suyo; lo que cambia es la entrega de la
+    // clave.
+    cuentaDeMedicion,
   });
   // El realm de quien OPERA la plataforma (ADR-0041, #148), y su primer operador, derivado del
   // administrador que `identidades` acaba de validar.
@@ -1544,6 +1607,25 @@ export function manifiestosDeIdentidad(args: IdentidadArgs): Manifiesto[] {
               },
             },
           },
+          // La clave PERMANENTE de la cuenta de medicion (#196). Va SOLO donde esa cuenta se
+          // siembra: pasarla siempre haria que el `Job` de `prod` montara una clave que ninguna
+          // fila del TSV reclama, y una credencial de mas en un pod es una credencial de mas.
+          // Por `env` y no montada, como `KC_CLAVE_INICIAL` —que tambien es la clave de un
+          // usuario—: es UNA y no crece con las municipalidades, que es lo que obligo a montar
+          // las de los clientes de servicio.
+          ...(cuentaDeMedicion
+            ? [
+                {
+                  name: "KC_CLAVE_DE_MEDICION",
+                  valueFrom: {
+                    secretKeyRef: {
+                      name: secreto.identidad,
+                      key: CLAVES.cuentaDeMedicion,
+                    },
+                  },
+                },
+              ]
+            : []),
           { name: "KC_CLIENTES", value: documentos.clientesComprobados.join(" ") },
           // El realm del ciudadano y su cliente, para la segunda pasada.
           { name: "KC_REALM_CIUDADANO", value: realmDelCiudadano(realm) },
