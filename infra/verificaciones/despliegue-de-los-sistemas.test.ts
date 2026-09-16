@@ -18,6 +18,13 @@ import { SISTEMAS } from "../descriptor/sistemas";
 import { CONTENEDOR_DE_ESPERA } from "../componentes/espera-al-motor";
 import { REGISTRO_PROPIO } from "./imagenes-publicadas";
 import { prefijoDeLaImplantacion, variableDe } from "./prefijo-de-la-implantacion";
+import {
+  enUnPerfilQueTermina,
+  enUnPerfilSinDeclarar,
+  perfilesDeclarados,
+  perfilesQueTerminan,
+  type ProcesoDesplegado,
+} from "./perfiles-del-artefacto";
 import { correElBackend } from "./procesos-de-un-sistema";
 import { invariantesDe } from "./stacks";
 
@@ -594,6 +601,7 @@ describe("C-14 · el egreso declarado ES el que se aplica", () => {
  * | remedido con `identidad`#7 | 1200m / **5248Mi** | `identidad` pide la mitad de memoria —web 256Mi, cada `Job` 128Mi—: **-512Mi**, la CPU no se mueve |
  * | medido con la etapa 4 de ADR-0039 (identidad#4) | **1400m** / **6272Mi** | los cuatro satelites estrenan su `CronJob` consumidor del buzon de `identidad`, 50m/256Mi cada uno: **+200m / +1024Mi**, contados uno a uno mientras aterrizaban (con tres dentro, 1350m) |
  * | medido con las interfaces de `normativa` y de `catastro` | **1500m** / **6400Mi** | los dos ultimos sistemas sin pantalla desplegada estrenan la suya: un `Deployment` cada uno, 50m/64Mi: **+100m / +128Mi** |
+ * | medido con el publicador del buzon de `caja` (`caja`#79) | **1550m** / **6656Mi** | `caja` estrena el `Deployment` del perfil `publicador`, que saca su buzon de pagos: **+50m / +256Mi** |
  *
  * La memoria de esa cuarta fila decia **`0Mi`**, y no era una medida: la cifra escrita en la
  * constante era 6272Mi y 6272 = 5248 + 1024, o sea la fila anterior mas lo que la etapa 4 suma.
@@ -618,8 +626,15 @@ describe("C-14 · el egreso declarado ES el que se aplica", () => {
  * **1500m / 6400Mi** en los dos ambientes, contra 1400m / 6272Mi antes. Un `Deployment` cuenta
  * en el pico **y** en lo permanente, que es por lo que aqui suben las dos mitades a la vez y no
  * solo el pico como pasaba con los `CronJob`.
+ *
+ * **Y lo mismo con el publicador del buzon de `caja`** (`caja`#79): un `Deployment` mas del mismo
+ * jar, en el perfil `publicador`, con los `requests` de `RECURSOS_DE_ARRANQUE` —50m / 256Mi, los
+ * que ya llevan el `CronJob` y los dos `Job` de ese descriptor—. Medido con el clon en `main`:
+ * `picoDeArranque` de los cinco sistemas **1550m / 6656Mi** en los dos ambientes, contra
+ * 1500m / 6400Mi antes. Lo que sube es una DEMANDA nueva y no un ajuste: hasta #79 nadie sacaba
+ * ese buzon en el clúster —`pago_evento` = 0 en `stg` el 2026-09-14—, asi que el techo se remide.
  */
-const TECHO_DE_LOS_SISTEMAS = { cpuEnMili: 1500, memoriaEnMi: 6400 };
+const TECHO_DE_LOS_SISTEMAS = { cpuEnMili: 1550, memoriaEnMi: 6656 };
 
 describe("C-14 · lo que los cinco sistemas anaden al nodo", () => {
   it.each(ENVIRONMENTS)("en «%s» no crece en silencio", (ambiente) => {
@@ -659,8 +674,40 @@ describe("C-14 · lo que los cinco sistemas anaden al nodo", () => {
    * Y se añade la MEMORIA, que antes no se miraba y es el eje que aprieta: el margen son 307Mi
    * sobre 9 747Mi disponibles, el 3%. La CPU sobra —2 440m— y la memoria no, asi que afirmar
    * solo la CPU dejaria sin vigilancia justo el numero que puede volver a romper el despliegue.
+   *
+   * **Y el eje justo se paso: el 2026-09-16.** `caja`#79 despliega el publicador de su buzon de
+   * pagos —un `Deployment` mas, 50m / 256Mi— y el pico de `prod` pasa de 9 568Mi a **9 824Mi**
+   * contra los 9 747Mi disponibles: **faltan 77Mi**. Los 307Mi de margen no daban para 256Mi, y
+   * eso es exactamente lo que esta guarda existe para decir con un numero en vez de con un
+   * `pulumi up` colgado.
+   *
+   * Asi que la prueba **vuelve a dar la vuelta a su afirmacion**, y esta vez a la mitad: la CPU
+   * sigue cabiendo con holgura —2 290m— y la memoria no. Lo que se fija ahora es **cuanto falta**,
+   * porque es lo unico que convierte esto en una decision con cifras: 77Mi. El dia que el nodo
+   * crezca, o que la demanda baje, esta cifra deja de cuadrar y obliga a volver aqui, igual que
+   * `capacidad.test.ts` obliga a retirar la brecha declarada en `Pulumi.prod.yaml`.
+   *
+   * **Lo que NO se hace es subir el numero.** Las salidas medidas, y lo que cuesta cada una:
+   *
+   *   1. **El nodo crece** (INF-01 §2, D-25). Es lo que la tabla de INF-01 §2 dice desde el
+   *      principio —8 CPU / 16 GB— y lo unico que no le quita nada a nadie. Bastarian 77Mi mas
+   *      de asignable, o sea que el salto es de hierro y no de arquitectura.
+   *   2. **El publicador pide menos.** Bajarlo de 256Mi a 128Mi deja el pico en 9 696Mi y 51Mi de
+   *      margen — pero 128Mi seria MENOS de lo que piden el `CronJob` y los dos `Job` de `caja`
+   *      que corren ese mismo jar, sin una medida de su consumo real detras. Eso es una cifra
+   *      inventada, y la que se rompe cuando el pod muere por OOM es la ventanilla.
+   *   3. **`replicas: 0` en `prod`.** Deja el pico en 9 568Mi, pero apaga el unico proceso que
+   *      entrega el evento de cada pago: dinero cobrado sin registrar, que es lo que ADR-0026 §4
+   *      manda avisar. Y el descriptor **no ramifica por ambiente** a proposito.
+   *   4. **Bajar la reserva del nodo.** `infra/vps/reservar-recursos-del-nodo.sh` reserva 1 CPU y
+   *      1 Gi por partida doble; quitarle 1 Gi devolveria 1 024Mi de asignable. Es lo que INF-01
+   *      §2 dice que protege al kubelet de una rafaga de la aplicacion, asi que no se toca sin
+   *      medir contra el nodo real.
+   *
+   * Mientras no se decida, **`prod` no puede programar su stack**, y eso no falla: se cuelga
+   * (`capacidad.ts`). Por eso la brecha se declara, que es lo que apaga `aplicar-prod` (#25).
    */
-  it("en prod cabe el pico del arranque, y por memoria con 307Mi", () => {
+  it("en prod el pico del arranque ya no cabe por memoria: faltan 77Mi, y la CPU sigue sobrando", () => {
     const demanda = demandaDelStack(manifiestosDelAmbiente(invariantesDe("prod")));
     const nodo = invariantesDe("prod").node;
     // 200m/160Mi de los pods de serie de k3s, como descuenta `auditarCapacidad`.
@@ -681,15 +728,24 @@ describe("C-14 · lo que los cinco sistemas anaden al nodo", () => {
         "alguien declaro un nodo mas pequeño del que hay.",
     ).toBeLessThanOrEqual(cpuDisponible);
 
-    // La memoria es la que aprieta, y por eso se afirma AQUI y no solo en `capacidad.test.ts`:
-    // el margen son 307Mi de 9 747Mi, o sea el 3%. Un sistema nuevo, una replica mas o un
-    // `requests` que suba 512Mi lo consume entero.
+    // Y la memoria, que es la que aprieta y la que se paso. Se afirma CUANTO falta, no «no
+    // cabe»: sin la cifra, esta guarda no distingue «faltan 77Mi» de «falta un nodo entero», y
+    // es justo esa cifra la que hace que la decision se pueda tomar.
     expect(
-      demanda.picoDeArranque.memoriaEnMi,
-      "el pico del arranque de `prod` dejo de caber por MEMORIA, que es el eje justo: el " +
-        "margen medido el 2026-09-11 eran 307Mi. No se arregla subiendo esta cifra — se decide " +
-        "si el nodo crece (INF-01 §2, D-25) o si baja la demanda con volumetria detras (C-19).",
-    ).toBeLessThanOrEqual(memoriaDisponible);
+      demanda.picoDeArranque.memoriaEnMi - memoriaDisponible,
+      "el hueco de memoria de `prod` dejo de ser 77Mi. Si BAJO, algo de la demanda se movio o " +
+        "el nodo crecio: hay que remedir, actualizar esta cifra y —si ya cabe— retirar " +
+        "`nodeCapacityGapIssue` de `Pulumi.prod.yaml`. Si SUBIO, la demanda crecio otra vez " +
+        "sobre un ambiente que ya no despliega, y eso se decide (INF-01 §2, D-25), no se suma.",
+    ).toBe(77);
+
+    // Y lo que hace que ese hueco no se despliegue a ciegas: la brecha declarada, que es lo que
+    // apaga `aplicar-prod` (#25). Sin esto, `pulumi up` empezaria y se quedaria esperando.
+    expect(
+      nodo.capacityGapIssue,
+      "`prod` no cabe en su nodo y no declara `nodeCapacityGapIssue`: `aplicar-prod` empezaria " +
+        "un despliegue que no falla, se cuelga (#252).",
+    ).toBeDefined();
   });
 });
 
@@ -764,9 +820,22 @@ describe("C-17 §5 · ningun `Deployment` de un sistema corre un perfil que term
    * distinguir «termino» de «se murio»: la forma miente en las dos direcciones. Donde el perfil
    * `batch` SI corre es en un `Job` —la implantacion— y en un `CronJob` —el ingestor—, que crean
    * su pod cuando hay trabajo y lo dejan morir al acabar.
+   *
+   * **Y lo que se prohibe es «un perfil que TERMINA», no «todo lo que no sea `web`».** Hasta
+   * `caja`#79 esto se escribia `SPRING_PROFILES_ACTIVE === "web"`, que decia las dos cosas a la
+   * vez porque no habia mas perfiles de larga vida. `caja` estrena `publicador` —no atiende HTTP,
+   * saca el buzon de pagos cada pocos segundos y **no sale**, sujeto por `spring.main.keep-alive`—
+   * y con la regla escrita contra `web` salia rojo acusando de un `CrashLoopBackOff` imposible.
+   * Que perfiles terminan se LEE del `main` de cada clon (`perfiles-del-artefacto.ts`), que es
+   * quien lo decide: `entorno.matchesProfiles(PERFIL_BATCH)`.
+   *
+   * La segunda mitad es la que impide que aflojar la primera afloje la guarda: el perfil que
+   * corre tiene que estar **declarado** en el `application.yaml` del artefacto. Un `publicadorr`
+   * mal escrito no termina por `matchesProfiles`, pero arranca con la configuracion base —con
+   * servidor web y sin `keep-alive`— y da el mismo sintoma por otro camino.
    */
-  it.each(SISTEMAS_DEL_PRODUCTO)("«%s»", (sistema) => {
-    const enBatch: string[] = [];
+  const procesosDesplegadosDe = (sistema: string): ProcesoDesplegado[] => {
+    const procesos: ProcesoDesplegado[] = [];
     for (const m of delSistema(AMBIENTE, sistema)) {
       if (m.kind !== "Deployment") continue;
       for (const c of m.spec.template.spec.containers) {
@@ -775,17 +844,60 @@ describe("C-17 §5 · ningun `Deployment` de un sistema corre un perfil que term
         // `undefined` por «un perfil que termina» denuncia un CrashLoopBackOff sobre un proceso
         // que no puede tenerlo. Ver `procesos-de-un-sistema.ts`.
         if (!correElBackend(sistema, c)) continue;
-        if (valorDe(c, "SPRING_PROFILES_ACTIVE") !== "web") {
-          enBatch.push(`${m.metadata.name}/${c.name} → ${valorDe(c, "SPRING_PROFILES_ACTIVE")}`);
-        }
+        procesos.push({
+          donde: `${m.metadata.name}/${c.name}`,
+          perfil: valorDe(c, "SPRING_PROFILES_ACTIVE"),
+        });
       }
     }
+    return procesos;
+  };
+
+  it.each(SISTEMAS_DEL_PRODUCTO)("«%s»", (sistema) => {
+    const procesos = procesosDesplegadosDe(sistema);
+    expect(procesos.length, `«${sistema}» no despliega ningun \`Deployment\` del jar`).toBeGreaterThan(0);
+
     expect(
-      enBatch,
+      enUnPerfilQueTermina(procesos, perfilesQueTerminan(sistema)),
       "un `Deployment` en un perfil que termina es un CrashLoopBackOff garantizado: el proceso " +
         "sale con codigo 0 y `restartPolicy: Always` lo vuelve a crear. El trabajo por lotes va " +
-        "en un `Job` o en un `CronJob`, que crean su pod cuando hay algo que hacer.",
+        "en un `Job` o en un `CronJob`, que crean su pod cuando hay algo que hacer. Que perfiles " +
+        "terminan lo dice `KamayukAplicacion.main` de ese clon, y de ahi se lee.",
     ).toEqual([]);
+
+    expect(
+      enUnPerfilSinDeclarar(procesos, perfilesDeclarados(sistema)),
+      `estos \`Deployment\` de «${sistema}» corren un perfil que su \`application.yaml\` no ` +
+        "declara, asi que arrancarian con la configuracion base: con servidor web donde no lo " +
+        "hay, o sin el `keep-alive` que sujeta a un proceso de larga vida sin servidor. El " +
+        "sintoma es el mismo `CrashLoopBackOff` de C-17 §5 por otro camino.",
+    ).toEqual([]);
+  });
+
+  /**
+   * Y que muerde, sobre los manifiestos DE VERDAD y no sobre una muestra.
+   *
+   * La mutacion es la del defecto historico: poner el perfil que termina en el `Deployment` de
+   * larga vida que `caja` estreno en #79. Se hace sobre lo que el descriptor compone, no sobre el
+   * clon —este repositorio no escribe el codigo de nadie—, y por eso la deteccion vive en una
+   * funcion aparte.
+   */
+  it("y muerde: el `Deployment` del publicador de `caja`, puesto en el perfil que TERMINA", () => {
+    const terminan = perfilesQueTerminan("caja");
+    expect(terminan, "`caja` dejo de hacer terminar `batch`").toContain("batch");
+
+    const procesos = procesosDesplegadosDe("caja");
+    const publicador = procesos.find((p) => p.donde.includes("publicador"));
+    expect(publicador, "`caja` ya no despliega su publicador: esta mutacion se quedo sin sujeto").toBeDefined();
+
+    const mutados = procesos.map((p) =>
+      p === publicador ? { ...p, perfil: terminan[0] as string } : p,
+    );
+    expect(enUnPerfilQueTermina(mutados, terminan)).toEqual([
+      "kamayuk-caja-publicador/caja → batch",
+    ]);
+    // Y sin la mutacion, nada: si tambien saliera rojo aqui, la guarda no mediria nada.
+    expect(enUnPerfilQueTermina(procesos, terminan)).toEqual([]);
   });
 
   /**

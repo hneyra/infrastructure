@@ -123,11 +123,15 @@ describe("cada sistema trae su compose, y dice lo mismo que su descriptor", () =
     // de mas: un servicio que el descriptor no despliega es configuracion que solo existe en
     // local, y entonces «funciona en mi maquina» deja de ser una broma.
     //
-    // Los tres del jar son siempre; lo demas **se deriva del descriptor** y no se escribe aqui.
+    // Los del jar **se derivan del descriptor** igual que lo demas, y no se escriben aqui.
     // Eran tres fijos hasta que `caja` estreno su interfaz de ventanilla (#16), que trae su
     // cuarto servicio; con la lista escrita a mano el rojo decia «un servicio de mas» de un
-    // compose que estaba bien.
-    const delJar = ["web", "migrador", "implantacion"].map((p) => servicioDe(sistema, p));
+    // compose que estaba bien. Y volvieron a mentir con `caja`#79, que estrena un proceso mas
+    // del MISMO jar —el publicador del buzon de pagos, `caja-publicador`— sin estrenar imagen:
+    // no entraba ni por los tres escritos ni por `imagenes`, asi que el rojo decia «sobra
+    // caja-publicador» de un compose que estaba bien. `procesos` es hoy uno por perfil de larga
+    // vida mas el migrador y la implantacion, y sale del descriptor.
+    const delJar = Object.values(esperadoDe(sistema).procesos).map((p) => p.servicio);
     const extras = (
       SISTEMAS.find((s) => s.descriptor.sistema === sistema)?.descriptor.imagenes ?? []
     )

@@ -78,6 +78,31 @@ config:
   # dice `cabe` con las dos cifras de arriba. Y no habia que acordarse — `capacidad.test.ts`
   # exige que quien declara la brecha SIGA sin caber, asi que se pone roja sola en cuanto quepa.
   #
+  # ── Y HAY OTRA BRECHA DESDE EL 2026-09-16, POR MEMORIA Y POR 77Mi ──
+  #
+  # `caja`#79 despliega `kamayuk-caja-publicador`, el `Deployment` que saca su buzon de pagos
+  # (ADR-0026 §3). Hasta entonces NADIE lo sacaba en el cluster —medido en `stg` el 2026-09-14,
+  # `pago_evento` = 0 en la base de `rentas`—, asi que no es un ajuste: es una demanda que antes
+  # no existia. Con sus `requests` de arranque —50m / 256Mi— el pico de este ambiente pasa de
+  # 9 568Mi a 9 824Mi, contra los 9 747Mi disponibles (9 907Mi asignables menos los 160Mi de los
+  # pods de serie de k3s). El margen eran 307Mi y no daba para 256Mi.
+  #
+  # Medido con `yarn capacidad --ambiente prod`, con los cinco clones hermanos en `main`:
+  #
+  #   permanente     1690m / 5920Mi
+  #   pico arranque  2510m / 9824Mi
+  #   Faltan 77Mi (0.07 Gi).
+  #
+  # La CPU sobra —2 510m contra 4 800m—, asi que el eje es uno solo. Las salidas y lo que cuesta
+  # cada una estan medidas en el issue #199, y la recomendacion es la primera: que crezca el nodo
+  # (INF-01 §2, D-25). Las otras tres —el publicador pidiendo 128Mi, `replicas: 0` en prod, o
+  # bajar la reserva del nodo— ahorran menos de lo que un solo `requests` pide y cambian lo que el
+  # sistema hace.
+  #
+  # Mientras esto este aqui, `aplicar-prod` NO aplica y lo dice (#25): un `pulumi up` que empieza
+  # sin sitio no falla, deja los pods `Pending` y espera indefinidamente (#252).
+  kamayuk:nodeCapacityGapIssue: "199"
+  #
   # Cuanto pide este ambiente sobre su nodo (C-19). `dimensionado` es la tabla de INF-01 §2,
   # que es la que este archivo ha usado siempre: esta linea NO cambia una sola peticion de
   # `prod` — se comprobo comparando `yarn manifiestos --ambiente prod` byte a byte antes y
