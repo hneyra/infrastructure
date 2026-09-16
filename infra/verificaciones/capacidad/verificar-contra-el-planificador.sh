@@ -69,6 +69,101 @@ echo "── Caso A: el veredicto de capacidad.ts contra lo que queda LIBRE en e
 VEREDICTO="$(cd "$INFRA" && yarn --silent capacidad --ambiente "$AMBIENTE" --cpu "${LIBRE_M}m" --memoria "$MEM")"
 echo "   veredicto: ${VEREDICTO}"
 
+# ── LA BRECHA DEL RUNNER, DECLARADA (#203) ──────────────────────────────────────
+#
+# Este guion NO se puede encoger para que quepa: lo que mide es el stack ENTERO de
+# `<ambiente>` contra un planificador de verdad, asi que aplicar menos seria pasar en
+# verde habiendo dejado de medir — la direccion peligrosa del issue #252, otra vez.
+# Su unica exigencia es un nodo con CPU.
+#
+# Y esa CPU **no es estable, y eso es el hallazgo**. Medido sobre las 24 ultimas corridas
+# de `infra.yml` —las 18 que conservan registro—, cruzando lo que este guion imprime en su
+# primera linea con como acabaron los TRES trabajos que necesitan nodo:
+#
+#   nodo     corridas   capacidad   «Una alerta…»   «Los tableros…»
+#   4 CPU      12       12 verdes     12 verdes       12 verdes
+#   2 CPU       6        6 rojos       6 rojos         6 rojos
+#
+# **Sin una sola excepcion, en los dos sentidos.** Las de 2 CPU van del 2026-09-15 19:46Z
+# al 2026-09-16 00:28Z; antes (2026-09-14 07:23Z) y despues (desde las 10:24Z del 09-16)
+# el nodo reparte 4. El unico commit entre la ultima verde del 09-14 y la primera roja es
+# `d0b09de` «stg despliega normativa@0f258a2c0668», una linea de `Pulumi.stg.yaml`. **No
+# cambia el repositorio: cambia el runner**, y cambia en las dos direcciones.
+#
+# ── Y NO ES UNA CARRERA POR LA CPU DEL RUNNER, que es la otra explicacion ───────
+#
+# Tres cosas la descartan, y las tres se miden:
+#
+#   1. Lo que este guion imprime es `status.allocatable.cpu` del nodo: **cuantos vCPU
+#      tiene la maquina**, no cuanta CPU esta libre en ella. 2 y 4 son dos tamanos de
+#      runner, no dos momentos del mismo.
+#   2. «Insufficient cpu» es el veredicto del PLANIFICADOR, y lo calcula comparando los
+#      `requests` DECLARADOS con lo asignable. La carga real no entra en esa cuenta. Una
+#      carrera por tiempo de CPU se ve como lentitud o como un plazo agotado — nunca
+#      como «Insufficient cpu».
+#   3. La correlacion de arriba es perfecta en 18 corridas. Una carrera daria mezcla.
+#
+# Asi que ni es un nodo que encogio y hay que esperar a que crezca, ni una carrera que se
+# gane esperando: es un tamano que no esta garantizado. **Esperar no sirve** —lo asignable
+# no crece mientras el trabajo espera—; lo unico que cambia el resultado es que a la
+# siguiente corrida le toque otra maquina.
+#
+# Un trabajo que sale rojo segun el runner que le toque no senala nada, y entrena a
+# mirar sus rojos como ruido — que es lo que este issue vino a cerrar. Asi que con la
+# brecha declarada en `BRECHA_DEL_RUNNER` —«<issue>@<AAAA-MM-DD>», que pone `infra.yml`—
+# el guion, **cuando el nodo no da**, no lo comprueba y lo dice: «no se hace» NO es
+# «esta bien». Y cuando el nodo SI da, lo comprueba entero, brecha o no: la brecha
+# nunca silencia una comprobacion que se puede hacer.
+#
+# ── Y LO QUE IMPIDE QUE LA BRECHA SE QUEDE PUESTA NO ESTA AQUI ──────────────────
+#
+# La primera version de este bloque salia ROJA cuando el nodo daba y la brecha estaba
+# puesta, «retirala». Se midio en la primera corrida del PR y estaba mal: con el runner
+# flotando, eso pone el trabajo en rojo justo en las corridas que SI pueden medir.
+#
+# La reciprocidad correcta no mira el nodo de ESTA corrida, sino el nodo MINIMO que el
+# runner puede dar: mientras `prod` no quepa en 2 CPU, la brecha es real. El dia que
+# quepa —porque baje la demanda o porque el runner minimo crezca—, la brecha sobra, y
+# eso lo dice `brecha-del-runner-en-el-flujo.test.ts` en un PR, sin clúster.
+BRECHA="${BRECHA_DEL_RUNNER:-}"
+# `[[ =~ ]]` y no `echo … | grep -q`: bajo `pipefail`, un consumidor que sale pronto
+# cierra la tuberia y el productor muere con SIGPIPE, y eso ya costo dos corridas rojas
+# con un mensaje falso (`tuberias-que-cierran-pronto.test.ts`).
+if [ -n "$BRECHA" ] && [[ ! "$BRECHA" =~ ^[0-9]+@[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    echo "::error::«BRECHA_DEL_RUNNER» vale «${BRECHA}» y tiene que ser «<issue>@<AAAA-MM-DD>»." \
+         "Una brecha sin issue no se sigue, y una sin fecha no envejece: las dos se quedan" \
+         "puestas para siempre, que es lo que este mecanismo existe para impedir."
+    exit 1
+fi
+
+if [ "$VEREDICTO" != "cabe" ] && [ -n "$BRECHA" ]; then
+    echo "::warning::El caso A NO se ha comprobado, y no es que este bien: es que NO SE HACE." \
+         "El nodo de kind reparte ${CPU} CPU, su plano de control ya pide ${PEDIDO_M}m y a" \
+         "«${AMBIENTE}» le quedan ${LIBRE_M}m, que no le bastan. Brecha declarada en el issue" \
+         "#${BRECHA%@*} desde el ${BRECHA#*@}."
+    echo
+    echo "Lo que falta esta medido AHI ARRIBA: «yarn capacidad» ya escribio el desglose por"
+    echo "espacio de nombres y las dos cifras que no alcanzan, antes de dar su veredicto."
+    echo
+    echo "Esto NO tapa algo intermitente, y es la diferencia que hay que leer:"
+    echo "  · la condicion esta MEDIDA y escrita arriba —«${CPU} CPU asignables»—, no supuesta;"
+    echo "  · y este MISMO trabajo comprueba los dos casos enteros en cuanto le toca una"
+    echo "    maquina de 4 CPU, que medido son 12 de las ultimas 18 corridas con registro."
+    echo "    Un defecto de «capacidad.ts» sigue saliendo rojo ahi."
+    echo
+    echo "Si hace falta la respuesta AHORA, relanzar el trabajo vale: lo que decide es el"
+    echo "tamano de la maquina que toque, no la carga. Esperar dentro del trabajo no sirve,"
+    echo "porque lo asignable no crece mientras espera."
+    echo
+    echo "Las salidas de fondo son dos, y ninguna se decide aqui:"
+    echo "  1. Un runner con CPU garantizada. Este trabajo la tiene a ratos: el tamano del"
+    echo "     nodo flota entre 2 y 4 CPU sin que nada de aqui lo pida. Fijarlo es un"
+    echo "     runner mayor, y eso es dinero."
+    echo "  2. Menos demanda en el stack, que es cambiar lo que se despliega en prod"
+    echo "     para poder medirlo en CI — o sea, mover el sujeto de la medida."
+    exit 0
+fi
+
 if [ "$VEREDICTO" != "cabe" ]; then
     echo "::error::El nodo de kind reparte ${CPU} CPU y su plano de control ya pide ${PEDIDO_M}m," \
          "asi que a «${AMBIENTE}» le quedan ${LIBRE_M}m y no le bastan. El caso A —la direccion" \

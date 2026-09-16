@@ -575,7 +575,42 @@ jobs:
       # manifiestos` y `yarn capacidad` los necesitan desde ADR-0031 y C-16, y hasta C-20
       # este trabajo no los tenia — moria en «Cannot find module
       # '../../../caja/infrastructure/src/descriptor'» antes de mirar un solo pod.
+      #
+      # ── LA BRECHA DEL RUNNER, DECLARADA (#203) ─────────────────────────────────
+      #
+      # Este trabajo necesita un nodo de `kind` con CPU para el stack ENTERO de `prod`
+      # —pico 2 510m—, y **el tamaño de ese nodo no está garantizado**. Medido sobre las
+      # 24 últimas corridas de este flujo —las 18 que conservan registro—, cruzando el
+      # nodo que el guion imprime con cómo acabaron los tres trabajos que lo necesitan:
+      #
+      #   nodo     corridas   capacidad   «Una alerta…»   «Los tableros…»
+      #   4 CPU      12       12 verdes     12 verdes       12 verdes
+      #   2 CPU       6        6 rojos       6 rojos         6 rojos
+      #
+      # Sin una sola excepción. Con 2 CPU quedan 1 050m libres y lo PERMANENTE de `prod`
+      # solo ya son 1 690m. El único commit entre la última verde del 09-14 y la primera
+      # roja es `d0b09de` «stg despliega normativa@0f258a2c0668», una línea de
+      # `Pulumi.stg.yaml`: **no cambia el repositorio, cambia el runner** — y cambia en
+      # las dos direcciones. **No es una carrera por la CPU del runner**: lo que se lee
+      # es `allocatable` (cuántos vCPU tiene la máquina) y «Insufficient cpu» lo calcula
+      # el planificador sobre los `requests` declarados, donde la carga no entra. El
+      # porqué entero, en la cabecera del guion.
+      #
+      # Lo que este guion mide es el stack entero contra un planificador de verdad, o
+      # sea que encogerlo para que quepa es dejar de medir en verde — la dirección
+      # peligrosa del issue #252 otra vez. Y fijar el runner es dinero y no se decide
+      # en un PR. Así que se declara la brecha y **se dice que no se hace** cuando el
+      # nodo no da, que es lo que #25 hace con `nodeCapacityGapIssue`: «no se hace» NO
+      # es «está bien». Cuando el nodo SÍ da, se comprueba entero: la brecha nunca
+      # silencia una comprobación que se puede hacer.
+      #
+      # `<issue>@<fecha>`, y el guion exige ese formato: una brecha sin issue no se
+      # sigue y una sin fecha no envejece. Lo que impide que se quede puesta es
+      # `brecha-del-runner-en-el-flujo.test.ts`, que exige que `prod` SIGA sin caber en
+      # el nodo mínimo que el runner da — y sale rojo en un PR el día que quepa.
       - name: verificar-contra-el-planificador.sh
+        env:
+          BRECHA_DEL_RUNNER: '203@2026-09-16'
         run: infrastructure/infra/verificaciones/capacidad/verificar-contra-el-planificador.sh
 
   secretos:

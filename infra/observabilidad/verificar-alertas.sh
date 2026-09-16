@@ -33,39 +33,19 @@ cd "$INFRA"
 command -v kubectl >/dev/null 2>&1 || { echo "FALLO: falta kubectl." >&2; exit 1; }
 
 echo "· Aplicando el manifiesto de stg contra el clúster"
-# El mismo filtro que el trabajo `manifiestos` de infra.yml: los recursos de Traefik
-# no tienen CRD en un `kind` limpio.
+# Solo lo que esta comprobacion necesita levantar. Los recursos de Traefik no tienen
+# CRD en un `kind` limpio; y todo lo demas que el filtro quita competiria por la CPU
+# del nodo UNICO con postgres y Prometheus/Alertmanager, que SI hacen falta —medido
+# en CI: con el manifiesto completo el planificador reportaba «Insufficient cpu», y
+# bajo esa saturacion hasta Prometheus, ya listo y sirviendo, dejaba de contestar a
+# tiempo—.
 #
-# Interfaz, aplicacion, Keycloak (identidad + el Job de realm) y los Job de
-# migracion/implantacion tambien se excluyen aqui, aunque el bucle de mas abajo
-# nunca los espera: aplicados igual compiten por la CPU del nodo UNICO de `kind`
-# con postgres y Prometheus/Alertmanager, que SI hacen falta. Encontrado en
-# `verificar-tableros.sh` (issue #156/#157, misma causa): con el manifiesto
-# completo el scheduler reportaba "Insufficient cpu", y bajo esa saturacion hasta
-# Prometheus -ya listo, sirviendo peticiones- dejaba de contestar a tiempo.
+# Que se quita y por que cada cosa —incluidos los CINCO espacios de nombres que
+# ADR-0031 anadio y que hasta #203 se aplicaban enteros— esta escrito en la cabecera
+# del filtro, que es UNO SOLO para este guion y para `verificar-tableros.sh`: hasta
+# #203 la lista vivia copiada en los dos.
 yarn --silent manifiestos --ambiente stg \
-    | node -e '
-        const entrada = JSON.parse(require("fs").readFileSync(0, "utf8"));
-        const deTraefik = ["IngressRoute", "Middleware", "TLSOption", "HelmChartConfig"];
-        entrada.items = entrada.items.filter((i) => !deTraefik.includes(i.kind));
-
-        const pesados = [
-          { kind: "Deployment", prefijo: "kamayuk-stg-interfaz" },
-          { kind: "Service", prefijo: "kamayuk-stg-interfaz" },
-          { kind: "Deployment", prefijo: "kamayuk-stg-identidad" },
-          { kind: "Job", prefijo: "kamayuk-stg-realm-" },
-          { kind: "Job", prefijo: "kamayuk-stg-migracion-" },
-          { kind: "Job", prefijo: "kamayuk-stg-implantacion-" },
-          { kind: "Deployment", prefijo: "kamayuk-stg-aplicacion" },
-          { kind: "CronJob", prefijo: "kamayuk-stg-lote" },
-        ];
-        entrada.items = entrada.items.filter((i) => {
-          const nombre = i.metadata?.name ?? "";
-          return !pesados.some((p) => i.kind === p.kind && nombre.startsWith(p.prefijo));
-        });
-
-        process.stdout.write(JSON.stringify(entrada));
-      ' \
+    | node observabilidad/lo-que-la-observabilidad-necesita.mjs stg \
     | kubectl apply -f - >/dev/null
 
 echo "· Generando los secretos que faltan (issue #154)"
