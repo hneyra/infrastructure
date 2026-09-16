@@ -14,12 +14,19 @@ import { invariantesDe } from "./stacks";
  * **y lo dice**.
  *
  * `verificar-contra-el-planificador.sh` necesita un nodo de `kind` con CPU para el stack
- * ENTERO de `prod`, y **el tamano de ese nodo no esta garantizado**. Medido, corrida a
- * corrida: `34817399680` (2026-09-14 07:23Z) 4 CPU y los tres trabajos verdes;
- * `34823544429` (08:36Z) 2 CPU y los tres rojos, con un unico commit entre medias que
- * cambia una linea de `Pulumi.stg.yaml`; `35039858531` (09-16 00:28Z) 2 CPU;
- * `35101337027` (09-16 13:23Z) **4 otra vez**. No cambia el repositorio: cambia el runner,
- * y cambia en las dos direcciones.
+ * ENTERO de `prod`, y **el tamano de ese nodo no esta garantizado**. Medido sobre las 24
+ * ultimas corridas de `infra.yml` —las 18 con registro—, cruzando el nodo que el guion
+ * imprime con como acabaron los tres trabajos que lo necesitan: **con 4 CPU, 12 corridas
+ * y los tres verdes las 12; con 2 CPU, 6 corridas y los tres rojos las 6**, sin una sola
+ * excepcion. El unico commit entre la ultima verde del 09-14 y la primera roja cambia una
+ * linea de `Pulumi.stg.yaml`: no cambia el repositorio, cambia el runner — y cambia en las
+ * dos direcciones.
+ *
+ * **Y no es una carrera por la CPU del runner**: lo que el guion lee es `allocatable` —los
+ * vCPU que tiene la maquina, no los que estan libres— y «Insufficient cpu» lo calcula el
+ * planificador sobre los `requests` DECLARADOS, donde la carga no entra; una carrera por
+ * tiempo de CPU se ve como lentitud, nunca como «Insufficient cpu». Esperar dentro del
+ * trabajo tampoco sirve: lo asignable no crece mientras espera.
  *
  * Y este guion no se puede encoger para que quepa — lo que mide es el stack entero contra un
  * planificador de verdad, asi que aplicar menos es pasar en verde habiendo dejado de medir—.

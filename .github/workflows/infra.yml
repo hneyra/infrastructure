@@ -579,18 +579,22 @@ jobs:
       # ── LA BRECHA DEL RUNNER, DECLARADA (#203) ─────────────────────────────────
       #
       # Este trabajo necesita un nodo de `kind` con CPU para el stack ENTERO de `prod`
-      # —pico 2 510m—, y **el tamaño de ese nodo no está garantizado**. Medido, corrida
-      # a corrida:
+      # —pico 2 510m—, y **el tamaño de ese nodo no está garantizado**. Medido sobre las
+      # 24 últimas corridas de este flujo —las 18 que conservan registro—, cruzando el
+      # nodo que el guion imprime con cómo acabaron los tres trabajos que lo necesitan:
       #
-      #   34817399680  2026-09-14 07:23Z   4 CPU / 16373452Ki   los tres trabajos verdes
-      #   34823544429  2026-09-14 08:36Z   2 CPU /  8128880Ki   los tres rojos
-      #   35039858531  2026-09-16 00:28Z   2 CPU /  8127868Ki   rojos
-      #   35101337027  2026-09-16 13:23Z   4 CPU / 16373452Ki   cabe otra vez
+      #   nodo     corridas   capacidad   «Una alerta…»   «Los tableros…»
+      #   4 CPU      12       12 verdes     12 verdes       12 verdes
+      #   2 CPU       6        6 rojos       6 rojos         6 rojos
       #
-      # El único commit entre las dos primeras es un «stg despliega
-      # normativa@0f258a2c0668», una línea de `Pulumi.stg.yaml`. **No cambia el
-      # repositorio: cambia el runner**, y cambia en las dos direcciones. Con 2 CPU
-      # quedan 1 050m libres, y lo PERMANENTE de `prod` solo ya son 1 690m.
+      # Sin una sola excepción. Con 2 CPU quedan 1 050m libres y lo PERMANENTE de `prod`
+      # solo ya son 1 690m. El único commit entre la última verde del 09-14 y la primera
+      # roja es `d0b09de` «stg despliega normativa@0f258a2c0668», una línea de
+      # `Pulumi.stg.yaml`: **no cambia el repositorio, cambia el runner** — y cambia en
+      # las dos direcciones. **No es una carrera por la CPU del runner**: lo que se lee
+      # es `allocatable` (cuántos vCPU tiene la máquina) y «Insufficient cpu» lo calcula
+      # el planificador sobre los `requests` declarados, donde la carga no entra. El
+      # porqué entero, en la cabecera del guion.
       #
       # Lo que este guion mide es el stack entero contra un planificador de verdad, o
       # sea que encogerlo para que quepa es dejar de medir en verde — la dirección
