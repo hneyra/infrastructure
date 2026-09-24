@@ -169,7 +169,7 @@ config:
   # `yarn imagenes` contestaba `NO EXISTE`—. En `catastro` ademas la imagen se llamaba `-web`.
   kamayuk:versionDeCatastro: 71b530886e1852fdde9e8e7ce2073e1e35737784
   kamayuk:versionDeNormativa: c7ca0b5b577e504fe6adbcd714a4ad77a2e9fa0a
-  kamayuk:versionDeCaja: 114cf59ab1fe90a8e1c5811eb08dfb49e56bbfaf
+  kamayuk:versionDeCaja: 4d6a96c7c586ecca65eaa3b17157e7c881a5d34a
   # El quinto (ADR-0039). Es el `sha` de `main` de `hneyra/identidad` —su etapa 1 se integro
   # como `89eca30`—, medido con `git -C ../identidad rev-parse origin/main` y no tecleado:
   # cuarenta caracteres hexadecimales inventados pasan la comprobacion de forma, y lo que
