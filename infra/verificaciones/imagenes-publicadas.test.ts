@@ -363,9 +363,14 @@ describe("quien puede traerse una imagen privada", () => {
    * cambia de forma—, «ninguna se queda sin credencial» seguiria pasando en verde y nadie lo
    * diria. Es C-15/C-16, y por eso la cifra se cuenta antes.
    *
-   * VEINTISEIS: **diez** `Deployment`, diez `Job` y seis `CronJob`, y las **veintiseis** viven
+   * VEINTISIETE: **diez** `Deployment`, diez `Job` y siete `CronJob`, y las **veintisiete** viven
    * fuera del espacio de nombres de la plataforma —donde desde `E` no queda ninguna imagen del
    * producto—. Las tres que suma `identidad` (ADR-0039) son su `Deployment` web y sus dos `Job`.
+   *
+   * **Eran VEINTISEIS hasta `rentas`#400**: el `CronJob` que suma es `kamayuk-rentas-corridas`,
+   * el que invoca las etapas de la generacion masiva de valores y de papeletas. Corre **la misma
+   * imagen** que el resto de `rentas` en perfil `batch`, asi que no trae imagen nueva: este censo
+   * cuenta CARGAS. Los `Deployment` y los `Job` no se mueven.
    *
    * **Eran VEINTICINCO hasta `caja`#79**: el `Deployment` que suma es `kamayuk-caja-publicador`,
    * el proceso que saca el buzon de pagos (ADR-0026 §3). Corre **la misma imagen** que
@@ -397,9 +402,9 @@ describe("quien puede traerse una imagen privada", () => {
    * Esta cifra se toca a mano y con su motivo, como manda su antecesora: cada carga nueva pasa
    * por aqui.
    */
-  it.each(ENVIRONMENTS)("las VEINTISEIS cargas que traen una imagen del producto, en «%s»", (ambiente) => {
+  it.each(ENVIRONMENTS)("las VEINTISIETE cargas que traen una imagen del producto, en «%s»", (ambiente) => {
     const todas = cargasConImagenDelProducto(ambiente);
-    expect(todas).toHaveLength(26);
+    expect(todas).toHaveLength(27);
     expect([...new Set(todas.map((p) => p.espacio))].sort()).toEqual([
       `kamayuk-caja-${ambiente}`,
       `kamayuk-catastro-${ambiente}`,
