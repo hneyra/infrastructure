@@ -99,6 +99,18 @@ config:
   # bajar la reserva del nodo— ahorran menos de lo que un solo `requests` pide y cambian lo que el
   # sistema hace.
   #
+  # Y EL HUECO CRECE EL 2026-09-25, DE 77Mi A 333Mi (`rentas`#400). `rentas` estrena el `CronJob`
+  # `kamayuk-rentas-corridas`, el que invoca las etapas de la generacion masiva —hasta entonces
+  # sus rutas contestaban 201 y ningun proceso las corria—, con los mismos 50m / 256Mi. Medido
+  # igual, con `rentas` en la rama de su PR y los otros cuatro en `main`:
+  #
+  #   permanente     1690m / 5920Mi
+  #   pico arranque  2560m / 10080Mi
+  #   Faltan 333Mi (0.32 Gi).
+  #
+  # La brecha es la misma y la decision tambien; lo que cambia es su tamano: con 333Mi el
+  # publicador a 128Mi ya no bastaria ni sobre el papel, y el nodo tiene que crecer 333Mi y no 77Mi.
+  #
   # Mientras esto este aqui, `aplicar-prod` NO aplica y lo dice (#25): un `pulumi up` que empieza
   # sin sitio no falla, deja los pods `Pending` y espera indefinidamente (#252).
   kamayuk:nodeCapacityGapIssue: "199"

@@ -391,11 +391,28 @@ describe("C-19 · el perfil de recursos de un ambiente no alcanza al otro", () =
    * arregla subiendo una cifra, asi que queda **declarado** como brecha de capacidad en
    * `Pulumi.prod.yaml`, que es lo que apaga `aplicar-prod` (#25) en vez de dejarlo empezar un
    * despliegue que se colgaria. `stg` sigue cabiendo: pide 8 832Mi contra los mismos 9 747Mi.
+   *
+   * ## Y sube SOLO EL PICO con las corridas de la generacion masiva de `rentas` (`rentas`#400)
+   *
+   * `rentas` estrena `kamayuk-rentas-corridas`, el `CronJob` del perfil `batch` que invoca las
+   * etapas de la generacion masiva: hasta #400 sus rutas contestaban 201 y los candidatos se
+   * quedaban `PENDIENTE` para siempre. Lleva `RECURSOS_DE_ARRANQUE` —50m / 256Mi— y es un
+   * `CronJob`, asi que como los cuatro consumidores **solo mueve el pico**.
+   *
+   * | | permanente | pico |
+   * |---|---|---|
+   * | con el publicador de `caja` | 1690m / 5920Mi | 2510m / 9824Mi |
+   * | y con las corridas de `rentas` | **1690m / 5920Mi** | **2560m / 10080Mi** |
+   *
+   * Medido con `yarn capacidad --ambiente prod`. **`prod` no cambia de veredicto —ya no cabia—
+   * pero su hueco crece de 77Mi a 333Mi**, y eso lo fija `despliegue-de-los-sistemas.test.ts`
+   * con su motivo. `stg` sigue cabiendo: pide 9 088Mi contra
+   * los mismos 9 747Mi disponibles —659Mi de margen, medido con `yarn capacidad --ambiente stg`—.
    */
-  it("prod pide exactamente lo medido en `E`, mas el ingestor de #21, el quinto sistema, sus cuatro consumidores, las dos interfaces nuevas y el publicador de `caja`", () => {
+  it("prod pide exactamente lo medido en `E`, mas el ingestor de #21, el quinto sistema, sus cuatro consumidores, las dos interfaces nuevas, el publicador de `caja` y las corridas de `rentas`", () => {
     const demanda = demandaDelStack(manifiestosDe("prod"));
     expect(demanda.permanente).toEqual({ cpuEnMili: 1690, memoriaEnMi: 5920 });
-    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 2510, memoriaEnMi: 9824 });
+    expect(demanda.picoDeArranque).toEqual({ cpuEnMili: 2560, memoriaEnMi: 10080 });
   });
 
   /** Y `prod` declara el perfil dimensionado, que es la tabla base. */

@@ -93,7 +93,7 @@ describe("#44 · quien habla con el motor, y quien lo espera", () => {
    * afirmaciones en verde sin haber mirado nada — que es la leccion de C-15/C-16 y la que #10
    * volvio a pagar.
    */
-  it.each(ENVIRONMENTS)("«%s»: los dieciseis esperan, y son dieciseis", (ambiente) => {
+  it.each(ENVIRONMENTS)("«%s»: los diecisiete esperan, y son diecisiete", (ambiente) => {
     const procesos = procesosQueHablanConElMotor(ambiente);
     expect(procesos.filter((p) => !p.espera).map((p) => p.nombre)).toEqual([]);
     // Eran DIEZ hasta ADR-0039: los dos que suma `identidad` son sus dos `Job` —migracion e
@@ -105,7 +105,10 @@ describe("#44 · quien habla con el motor, y quien lo espera", () => {
     // `catastro`, `normativa` y `caja`—, que escriben la copia local de la autorizacion en su
     // propia base y por eso declaran `KAMAYUK_DB_URL`. Tampoco hubo que tocar sus descriptores
     // para que esperen: la plataforma los encuentra por la URL, igual que a los otros doce.
-    expect(procesos.length).toBe(16);
+    // Y DIECISIETE desde `rentas`#400: el que suma es `kamayuk-rentas-corridas`, el `CronJob`
+    // que invoca las etapas de la generacion masiva y escribe en la base de `rentas` con
+    // `kamayuk_app`. Tampoco se toco nada para que espere: la URL basta.
+    expect(procesos.length).toBe(17);
   });
 
   /** Y el `sha` no ensucia la clave: la deuda es del proceso, no de su version. */

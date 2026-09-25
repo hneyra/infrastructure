@@ -602,6 +602,7 @@ describe("C-14 · el egreso declarado ES el que se aplica", () => {
  * | medido con la etapa 4 de ADR-0039 (identidad#4) | **1400m** / **6272Mi** | los cuatro satelites estrenan su `CronJob` consumidor del buzon de `identidad`, 50m/256Mi cada uno: **+200m / +1024Mi**, contados uno a uno mientras aterrizaban (con tres dentro, 1350m) |
  * | medido con las interfaces de `normativa` y de `catastro` | **1500m** / **6400Mi** | los dos ultimos sistemas sin pantalla desplegada estrenan la suya: un `Deployment` cada uno, 50m/64Mi: **+100m / +128Mi** |
  * | medido con el publicador del buzon de `caja` (`caja`#79) | **1550m** / **6656Mi** | `caja` estrena el `Deployment` del perfil `publicador`, que saca su buzon de pagos: **+50m / +256Mi** |
+ * | medido con las corridas de la generacion masiva de `rentas` (`rentas`#400) | **1600m** / **6912Mi** | `rentas` estrena el `CronJob` `kamayuk-rentas-corridas`, que invoca las etapas de la generacion masiva: **+50m / +256Mi** |
  *
  * La memoria de esa cuarta fila decia **`0Mi`**, y no era una medida: la cifra escrita en la
  * constante era 6272Mi y 6272 = 5248 + 1024, o sea la fila anterior mas lo que la etapa 4 suma.
@@ -633,8 +634,18 @@ describe("C-14 · el egreso declarado ES el que se aplica", () => {
  * `picoDeArranque` de los cinco sistemas **1550m / 6656Mi** en los dos ambientes, contra
  * 1500m / 6400Mi antes. Lo que sube es una DEMANDA nueva y no un ajuste: hasta #79 nadie sacaba
  * ese buzon en el clúster —`pago_evento` = 0 en `stg` el 2026-09-14—, asi que el techo se remide.
+ *
+ * **Y lo mismo con las corridas de la generacion masiva de `rentas`** (`rentas`#400): un `CronJob`
+ * mas del mismo jar, en el perfil `batch` y en la ventana de lote, con los `requests` de
+ * `RECURSOS_DE_ARRANQUE` —50m / 256Mi, los del ingestor y el consumidor de ese descriptor—. Es el
+ * que invoca `CorrerLasCorridasDeValores` y `CorrerLasCorridasDePapeletas`: hasta #400
+ * `POST /valores/masivo` y las dos `…/valores/generacion-masiva` contestaban 201 y sus candidatos
+ * se quedaban `PENDIENTE` para siempre, porque ningun proceso invocaba las etapas. Medido con el
+ * techo a cero y el «but was» leido, con el clon de `rentas` en la rama del PR y los otros cuatro
+ * en `main`: **1600m / 6912Mi** en los dos ambientes, y **1550m / 6656Mi** con `rentas` en `main`.
+ * Un `CronJob` solo cuenta en el pico, asi que lo permanente no se mueve.
  */
-const TECHO_DE_LOS_SISTEMAS = { cpuEnMili: 1550, memoriaEnMi: 6656 };
+const TECHO_DE_LOS_SISTEMAS = { cpuEnMili: 1600, memoriaEnMi: 6912 };
 
 describe("C-14 · lo que los cinco sistemas anaden al nodo", () => {
   it.each(ENVIRONMENTS)("en «%s» no crece en silencio", (ambiente) => {
@@ -706,8 +717,19 @@ describe("C-14 · lo que los cinco sistemas anaden al nodo", () => {
    *
    * Mientras no se decida, **`prod` no puede programar su stack**, y eso no falla: se cuelga
    * (`capacidad.ts`). Por eso la brecha se declara, que es lo que apaga `aplicar-prod` (#25).
+   *
+   * **Y el hueco CRECIO el 2026-09-25, de 77Mi a 333Mi**, con `rentas`#400: el `CronJob`
+   * `kamayuk-rentas-corridas` —50m / 256Mi, un `RECURSOS_DE_ARRANQUE`— pide su pod en la misma
+   * cuenta del pico. Medido con `yarn capacidad --ambiente prod`: pico **2 560m / 10 080Mi**
+   * contra 9 747Mi disponibles, lo permanente sin moverse. No es un ajuste de prueba sino una
+   * DEMANDA que no existia —la generacion masiva no tenia quien la corriera—, y lo que esta
+   * frase manda de arriba sigue en pie: **la cifra se reescribe porque es la medida, no porque se
+   * haya decidido nada**. La decision es la misma de #199 y lo que cambia es su tamano, que es lo
+   * que un numero escrito aqui tiene que decir: con 333Mi **ya no basta la salida 2** —el
+   * publicador a 128Mi ahorraria 128Mi— y la 1 pasa de 77Mi a 333Mi de hierro. La CPU sigue
+   * sobrando —2 240m—.
    */
-  it("en prod el pico del arranque ya no cabe por memoria: faltan 77Mi, y la CPU sigue sobrando", () => {
+  it("en prod el pico del arranque ya no cabe por memoria: faltan 333Mi, y la CPU sigue sobrando", () => {
     const demanda = demandaDelStack(manifiestosDelAmbiente(invariantesDe("prod")));
     const nodo = invariantesDe("prod").node;
     // 200m/160Mi de los pods de serie de k3s, como descuenta `auditarCapacidad`.
@@ -733,11 +755,11 @@ describe("C-14 · lo que los cinco sistemas anaden al nodo", () => {
     // es justo esa cifra la que hace que la decision se pueda tomar.
     expect(
       demanda.picoDeArranque.memoriaEnMi - memoriaDisponible,
-      "el hueco de memoria de `prod` dejo de ser 77Mi. Si BAJO, algo de la demanda se movio o " +
+      "el hueco de memoria de `prod` dejo de ser 333Mi. Si BAJO, algo de la demanda se movio o " +
         "el nodo crecio: hay que remedir, actualizar esta cifra y —si ya cabe— retirar " +
         "`nodeCapacityGapIssue` de `Pulumi.prod.yaml`. Si SUBIO, la demanda crecio otra vez " +
         "sobre un ambiente que ya no despliega, y eso se decide (INF-01 §2, D-25), no se suma.",
-    ).toBe(77);
+    ).toBe(333);
 
     // Y lo que hace que ese hueco no se despliegue a ciegas: la brecha declarada, que es lo que
     // apaga `aplicar-prod` (#25). Sin esto, `pulumi up` empezaria y se quedaria esperando.
@@ -905,8 +927,13 @@ describe("C-17 §5 · ningun `Deployment` de un sistema corre un perfil que term
    * ADR-0039 (identidad#4) `rentas` tiene DOS `CronJob` en `batch` —el ingestor de `catastro` y
    * el consumidor del buzon de `identidad`— y no uno; la cifra se toca a mano porque un
    * `CronJob` mas es exactamente lo que esta guarda existe para ver.
+   *
+   * Y TRES desde `rentas`#400: el tercero es `kamayuk-rentas-corridas`, el que invoca las etapas
+   * de la generacion masiva de valores y de papeletas. Corre en `batch` porque es un proceso que
+   * TERMINA —recorre las corridas pendientes municipalidad por municipalidad y sale—, que es
+   * justo lo que esta guarda separa de un `Deployment`.
    */
-  it("`rentas` sigue corriendo el perfil `batch` en su Job y en sus dos CronJob", () => {
+  it("`rentas` sigue corriendo el perfil `batch` en su Job y en sus tres CronJob", () => {
     const suyos = delSistema(AMBIENTE, "rentas");
     const enBatch = suyos
       .flatMap((m) => podsDe(m).map((p) => ({ m, pod: p.pod })))
@@ -914,7 +941,7 @@ describe("C-17 §5 · ningun `Deployment` de un sistema corre un perfil que term
         pod.containers.some((c) => valorDe(c, "SPRING_PROFILES_ACTIVE") === "batch"),
       )
       .map(({ m }) => m.kind);
-    expect(enBatch.sort()).toEqual(["CronJob", "CronJob", "Job"]);
+    expect(enBatch.sort()).toEqual(["CronJob", "CronJob", "CronJob", "Job"]);
   });
 });
 
