@@ -163,7 +163,7 @@ config:
   # por el otro lado: el `Job` de migracion de ese sistema
   # lleva la version en el nombre, asi que un valor nuevo no modifica un Job — crea otro, y ese
   # Job aplica las migraciones de esa version.
-  kamayuk:versionDeRentas: 88771e343214bc996ac488eed4bcc3c93c93b7ff
+  kamayuk:versionDeRentas: 24f274c635cfe0727167ed7f7ef041b766737de9
   # Sube con el estreno de su interfaz: el manifiesto pasa a pedir
   # `kamayuk-<sistema>-interfaz:<sha>`, y con el `sha` anterior esa etiqueta **no existe** —medido,
   # `yarn imagenes` contestaba `NO EXISTE`—. En `catastro` ademas la imagen se llamaba `-web`.
