@@ -786,6 +786,30 @@ public abstract class ProhibicionesEnElCodigoFuenteTestBase {
 
     @Test
     @DisplayName(
+            "el escaner detecta la cifra normativa escrita sin digito: BigDecimal.TEN (regla 5,"
+                    + " rentas#381)")
+    void elEscanerDetectaLaConstanteNormativaSinDigito() throws IOException {
+        // `UIT_DEL_TRAMO_INAFECTO = BigDecimal.TEN` paso en verde en rentas: el patron exigia un
+        // digito antes del `;`, y las constantes de BigDecimal no llevan ninguno.
+        FuenteDeMuestra muestra =
+                FuenteDeMuestra.de("dominio/MuestraDeConstanteNormativaSinDigito.java");
+
+        assertThat(muestra.texto())
+                .as("la muestra tiene que existir para poder detectarla")
+                .isNotBlank();
+
+        List<Hallazgo> hallazgos =
+                RevisorDeCodigoFuente.revisarValoresTributarios(muestra.nombre(), muestra.texto());
+
+        assertThat(hallazgos.stream().map(Hallazgo::fragmento).toList())
+                .as("las dos con nombre normativo, y no la que solo vale uno")
+                .anySatisfy(f -> assertThat(f).contains("UIT_DEL_TRAMO_INAFECTO"))
+                .anySatisfy(f -> assertThat(f).contains("ALICUOTA_DEL_TRIBUTO"))
+                .noneSatisfy(f -> assertThat(f).contains("UNIDAD ="));
+    }
+
+    @Test
+    @DisplayName(
             "el escaner detecta la muestra con el factor de actualizacion compilado (regla 5, #437)")
     void elEscanerDetectaLaMuestraDeFactorDeActualizacionCompilado() throws IOException {
         // D-11: el `% actualizacion` es el unico de los cuatro factores que sigue sin fuente, y el

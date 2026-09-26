@@ -300,7 +300,11 @@ public final class RevisorDeCodigoFuente {
                             // afirma que el factor vale 1 en todo ejercicio y toda municipalidad.
                             // Octava vez que el hueco se abre por el mismo sitio.
                             + "|ACTUALIZACION|FACTOR)"
-                            + "\\w*\\s*=\\s*[^;\\n]*[0-9]");
+                            // rentas#381: la cifra no siempre lleva un digito. `BigDecimal.TEN`
+                            // escribio el tramo inafecto de la alcabala —10 UIT— y paso en verde:
+                            // el patron exigia un [0-9] antes del `;`. Las constantes de
+                            // `BigDecimal` y `BigInteger` son cifras igual que un literal.
+                            + "\\w*\\s*=\\s*[^;\\n]*([0-9]|\\bBig(Decimal|Integer)\\.(ONE|TWO|TEN)\\b)");
 
     /**
      * Un area convertida a texto a mano, en cualquiera de las dos formas (#607).
