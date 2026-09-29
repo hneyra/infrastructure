@@ -240,29 +240,42 @@ export const DIVERGENCIAS_DECLARADAS: readonly DivergenciaDeclarada[] = [
   {
     pieza: "plataforma",
     archivo: "autorizacion/ComprobadorDeAcceso.java",
-    grupos: "caja, catastro, identidad, normativa | rentas",
+    grupos: "caja, catastro, normativa | identidad | rentas",
     clase: "codigo",
     motivo:
-      "De #29 §8, y la divergencia es **inherente y no trabajo pendiente**: los sistemas que " +
-      "no administran la seguridad ganan `conoceAlUsuario(String)` para poder separar «no tienes " +
-      "el privilegio» de «no estas dado de alta AQUI», que llegaban al funcionario como el mismo " +
-      "403. `rentas` no lo necesita ni lo puede necesitar: las nueve escrituras de administracion " +
-      "de seguridad viven alli (ADR-0030 §3), asi que en `rentas` la segunda causa se arregla " +
-      "dando de alta al usuario y no hay nada que distinguir. Unificarlo seria darle a `rentas` " +
-      "un metodo cuyo `false` no puede ocurrir. **No cierra ninguna libreria de #22.**",
+      "De #29 §8: `caja`, `catastro`, `normativa` e `identidad` ganan `conoceAlUsuario(String)` " +
+      "para separar «no tienes el privilegio» de «no estas dado de alta AQUI», que llegaban al " +
+      "funcionario como el mismo 403. `rentas` no lo tiene, y el motivo con que se declaro —que " +
+      "las escrituras de administracion de seguridad vivian alli (ADR-0030 §3)— **dejo de ser " +
+      "cierto en la etapa 4 de ADR-0039**: viven en `identidad`. Si `rentas` lo gana es trabajo " +
+      "de su repositorio; hasta entonces su lado de esta entrada no cambia. **`identidad` se " +
+      "separa de los otros tres desde `identidad`#32, y solo en el javadoc**: alli el alta SI se " +
+      "hace en el propio sistema, en «Usuarios del sistema», asi que la frase de los otros tres " +
+      "—que la administracion vive en otro sistema— seria falsa en esa copia. `caja`#140 " +
+      "tambien reescribe el javadoc de la suya, asi que al mezclarse esta entrada se vuelve a " +
+      "medir, igual que la siguiente. **No cierra ninguna libreria de #22.**",
   },
   {
     pieza: "plataforma",
     archivo: "autorizacion/GuardiaDeAcceso.java",
-    grupos: "caja, catastro, identidad, normativa | rentas",
+    grupos: "caja, catastro, normativa | identidad | rentas",
     clase: "codigo",
     motivo:
       "La otra mitad de la anterior: el `if (!comprobador.conoceAlUsuario(usuario))` que lanza " +
-      "nombrando la causa antes de decir «no tiene el privilegio». Mismo motivo, misma direccion, " +
-      "y el mismo argumento para no unificarlo. **Los tres se dejaron identicos a proposito** " +
-      "—`caja`#52 y `normativa`#27 movieron el comentario que #29 §8 dejo huerfano—: hasta " +
-      "entonces esta guarda veia TRES grupos y el tercero era un comentario de sitio, que es " +
-      "exactamente el ruido que hace que una lista de divergencias deje de leerse.",
+      "nombrando la causa antes de decir «no tiene el privilegio». `rentas` queda aparte por lo " +
+      "mismo que en la anterior. **`identidad` tiene su propia frase desde `identidad`#32, y es " +
+      "deliberado**: el 403 de `caja`, `catastro` y `normativa` decia que «la administracion de " +
+      "usuarios, grupos y permisos vive en rentas», falso en los cinco desde la etapa 4 de " +
+      "ADR-0039, y en `identidad` ademas al reves: alli el alta SI se hace. Su copia conserva el " +
+      "arranque de los otros tres —«no esta dada de alta en este sistema. No es que le falte un " +
+      "privilegio: no tiene ninguna ficha aqui», la subcadena con la que los consumidores del " +
+      "buzon reconocen este 403— y sigue con lo que es cierto alli: la da de alta un " +
+      "administrador de ese mismo sistema, en «Usuarios del sistema». Los otros tres se dejaron " +
+      "identicos a proposito —`caja`#52 y `normativa`#27 movieron el comentario que #29 §8 dejo " +
+      "huerfano—, y `caja`#140 cambia su frase a mandar el alta a `identidad`: cuando se mezcle, " +
+      "`caja` se separara de `catastro` y `normativa` hasta que copien la suya, y esta entrada se " +
+      "vuelve a medir. `identidad` no puede volver a juntarse con ellos: alli se da el alta, y en " +
+      "los otros cuatro no.",
   },
   {
     pieza: "plataforma",
